@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useRef, useEffect, useMemo } from "react"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Send, Zap, Tag, Edit3, Plus, X, Circle, GitBranch } from "lucide-react"
+import { Send, Zap, Edit3, Plus, X, Circle, GitBranch } from "lucide-react"
+import Image from "next/image"
 
 interface Message {
   id: string
@@ -42,12 +42,12 @@ interface BranchPoint {
 // Development logger for debugging
 const DEV_LOG = {
   enabled: process.env.NODE_ENV === 'development',
-  data: (message: string, data?: any) => {
+  data: (message: string, data?: unknown) => {
     if (DEV_LOG.enabled) {
       console.log(`[BranchingChat] ${message}`, data || '')
     }
   },
-  error: (message: string, error?: any) => {
+  error: (message: string, error?: unknown) => {
     if (DEV_LOG.enabled) {
       console.error(`[BranchingChat] ${message}`, error || '')
     }
@@ -58,7 +58,6 @@ export function BranchingChatUI() {
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
-  const [chatData, setChatData] = useState<any>(null)
 
   const [currentLineId, setCurrentLineId] = useState<string>('')
 
@@ -76,9 +75,6 @@ export function BranchingChatUI() {
   }>({ name: "", tags: [], newTag: "" })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
 
   const getRelativeTime = (dateString: string): string => {
     if (!dateString) return ""
@@ -104,14 +100,18 @@ export function BranchingChatUI() {
   }
 
   // 新しいデータ構造をそのまま使用（変換不要）
-  const loadNewDataStructure = (data: any) => {
+  const loadNewDataStructure = (data: {
+    messages?: Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>;
+    lines?: Line[];
+    branchPoints?: Record<string, BranchPoint>;
+  }) => {
     const newMessages: Record<string, Message> = {}
     const newLines: Record<string, Line> = {}
     const newBranchPoints: Record<string, BranchPoint> = {}
 
     // メッセージデータをそのまま使用
     if (data.messages) {
-      Object.entries(data.messages).forEach(([id, msg]: [string, any]) => {
+      Object.entries(data.messages).forEach(([id, msg]) => {
         newMessages[id] = {
           ...msg,
           timestamp: new Date(msg.timestamp)
@@ -121,14 +121,14 @@ export function BranchingChatUI() {
 
     // ラインデータをRecord形式に変換
     if (data.lines && Array.isArray(data.lines)) {
-      data.lines.forEach((line: any) => {
+      data.lines.forEach((line) => {
         newLines[line.id] = line
       })
     }
 
     // 分岐点データをそのまま使用
     if (data.branchPoints) {
-      Object.entries(data.branchPoints).forEach(([id, branchPoint]: [string, any]) => {
+      Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
         newBranchPoints[id] = branchPoint
       })
     }
@@ -136,94 +136,12 @@ export function BranchingChatUI() {
     return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints }
   }
 
-  // 旧データ構造から新データ構造への変換
-  const convertToLineBasedStructure = (oldData: any) => {
-    const newMessages: Record<string, Message> = {}
-    const newLines: Record<string, Line> = {}
-    const newBranchPoints: Record<string, BranchPoint> = {}
-
-    // 旧メッセージから新メッセージ構造への変換
-    Object.values(oldData.messages as any).forEach((msg: any) => {
-      newMessages[msg.id] = {
-        ...msg,
-        lineId: '', // 後で設定
-        prevInLine: undefined,
-        nextInLine: undefined,
-        branchFromMessageId: undefined
-      }
-    })
-
-    // 旧ブランチから新ライン構造への変換
-    if (oldData.branches) {
-      oldData.branches.forEach((branch: any, index: number) => {
-        const lineId = branch.id || `line-${index}`
-        const messageIds = branch.messageIds || []
-
-        newLines[lineId] = {
-          id: lineId,
-          name: branch.name,
-          description: branch.description,
-          messageIds: messageIds,
-          startMessageId: messageIds[0],
-          endMessageId: messageIds.length > 0 ? messageIds[messageIds.length - 1] : undefined,
-          branchFromMessageId: undefined, // 後で設定
-          tags: branch.tags,
-          created_at: branch.created_at,
-          updated_at: branch.updated_at
-        }
-
-        // メッセージにラインIDを設定
-        messageIds.forEach((msgId: string, msgIndex: number) => {
-          if (newMessages[msgId]) {
-            newMessages[msgId].lineId = lineId
-            newMessages[msgId].prevInLine = msgIndex > 0 ? messageIds[msgIndex - 1] : undefined
-            newMessages[msgId].nextInLine = msgIndex < messageIds.length - 1 ? messageIds[msgIndex + 1] : undefined
-          }
-        })
-      })
-    }
-
-    // 分岐点の検出とBranchPoint構造の構築
-    Object.values(newMessages).forEach((message) => {
-      // 旧データの children プロパティを使用して分岐点を検出
-      const oldMessage = oldData.messages[message.id]
-      if (oldMessage && oldMessage.children && oldMessage.children.length > 1) {
-        // このメッセージは分岐点
-        const branchingLines: string[] = []
-
-        oldMessage.children.forEach((childId: string) => {
-          const childMessage = newMessages[childId]
-          if (childMessage) {
-            branchingLines.push(childMessage.lineId)
-            // 分岐先ラインの branchFromMessageId を設定
-            if (newLines[childMessage.lineId]) {
-              newLines[childMessage.lineId].branchFromMessageId = message.id
-            }
-            // 分岐先ラインの最初のメッセージに branchFromMessageId を設定
-            if (newLines[childMessage.lineId] && newLines[childMessage.lineId].startMessageId === childId) {
-              newMessages[childId].branchFromMessageId = message.id
-            }
-          }
-        })
-
-        if (branchingLines.length > 1) {
-          newBranchPoints[message.id] = {
-            messageId: message.id,
-            lines: branchingLines
-          }
-        }
-      }
-    })
-
-    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints }
-  }
 
   useEffect(() => {
     const loadChatData = async () => {
       try {
         const response = await fetch('/data/chat-sample.json')
         const data = await response.json()
-        setChatData(data)
 
         DEV_LOG.data('Chat data loaded successfully', {
           messagesCount: Object.keys(data.messages || {}).length,
@@ -272,7 +190,7 @@ export function BranchingChatUI() {
     })
   }
 
-  const handlePaste = async (e: ClipboardEvent) => {
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
     const items = e.clipboardData?.items
     if (!items) return
 
@@ -298,7 +216,7 @@ export function BranchingChatUI() {
         console.error('Failed to process images:', error)
       }
     }
-  }
+  }, [])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -314,7 +232,7 @@ export function BranchingChatUI() {
       document.removeEventListener('paste', handlePaste)
       document.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+  }, [handlePaste])
 
   // 新しいライン構造に対応した分岐取得
   const getBranchingLines = (messageId: string): Line[] => {
@@ -325,7 +243,7 @@ export function BranchingChatUI() {
   }
 
   // ラインの祖先チェーンをメモ化で取得
-  const getLineAncestry = (lineId: string): string[] => {
+  const getLineAncestry = useCallback((lineId: string): string[] => {
     // キャッシュチェック
     if (lineAncestryCache.has(lineId)) {
       return lineAncestryCache.get(lineId)!
@@ -351,10 +269,10 @@ export function BranchingChatUI() {
     // キャッシュに保存
     lineAncestryCache.set(lineId, ancestry)
     return ancestry
-  }
+  }, [lines, messages, lineAncestryCache])
 
   // パフォーマンス最適化されたパス取得
-  const getOptimizedPath = (lineId: string): { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> } => {
+  const getOptimizedPath = useCallback((lineId: string): { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> } => {
     // キャッシュチェック
     if (pathCache.has(lineId)) {
       return pathCache.get(lineId)!
@@ -363,8 +281,8 @@ export function BranchingChatUI() {
     const ancestry = getLineAncestry(lineId)
     const fullLineChain = [...ancestry, lineId]
 
-    let allMessages: Message[] = []
-    let transitions: Array<{ index: number, lineId: string, lineName: string }> = []
+    const allMessages: Message[] = []
+    const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
 
     for (let i = 0; i < fullLineChain.length; i++) {
       const currentLineInChain = lines[fullLineChain[i]]
@@ -407,10 +325,10 @@ export function BranchingChatUI() {
     // キャッシュに保存
     pathCache.set(lineId, result)
     return result
-  }
+  }, [getLineAncestry, lines, messages, pathCache])
 
   // メモ化されたタイムライン取得
-  const getCompleteTimeline = () => {
+  const getCompleteTimeline = useCallback(() => {
     if (!currentLineId || !lines[currentLineId]) {
       DEV_LOG.data('No current line found', {
         currentLineId,
@@ -421,12 +339,12 @@ export function BranchingChatUI() {
 
     const result = getOptimizedPath(currentLineId)
     return result
-  }
+  }, [currentLineId, lines, getOptimizedPath])
 
   // useMemoでメモ化されたタイムラインを取得
   const completeTimeline = useMemo(() => {
     return getCompleteTimeline()
-  }, [currentLineId, messages, lines, pathCache, lineAncestryCache])
+  }, [getCompleteTimeline])
 
   // ラインの切り替え（キャッシュクリアあり）
   const switchToLine = (lineId: string) => {
@@ -929,9 +847,11 @@ export function BranchingChatUI() {
                       <div className="mt-2 space-y-2">
                         {message.images.map((imageUrl, imageIndex) => (
                           <div key={`${message.id}-image-${imageIndex}`} className="relative">
-                            <img
+                            <Image
                               src={imageUrl}
                               alt={`Image ${imageIndex + 1}`}
+                              width={500}
+                              height={300}
                               className={`max-w-full h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
                                 !messageLineInfo.isCurrentLine ? 'border-blue-200 opacity-80' : 'border-gray-200'
                               }`}
@@ -956,7 +876,7 @@ export function BranchingChatUI() {
                     <span className="text-xs text-gray-500">分岐しました（{branchingLines.length}ライン）</span>
                   </div>
                   <div className="space-y-1">
-                    {branchingLines.map((line, lineIndex) => {
+                    {branchingLines.map((line) => {
                       const isCurrentLine = line.id === currentLineId
                       const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
                       const lastMessage = lastMessageId ? messages[lastMessageId] : null
@@ -1059,9 +979,11 @@ export function BranchingChatUI() {
             <div className="flex flex-wrap gap-2">
               {pendingImages.map((imageUrl, index) => (
                 <div key={index} className="relative">
-                  <img
+                  <Image
                     src={imageUrl}
                     alt={`Preview ${index + 1}`}
+                    width={64}
+                    height={64}
                     className="w-16 h-16 object-cover rounded border border-blue-300"
                   />
                   <Button
