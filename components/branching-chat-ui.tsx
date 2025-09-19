@@ -186,7 +186,7 @@ export function BranchingChatUI() {
             <div key={messageId} className="space-y-4">
               <div
                 className={`cursor-pointer transition-all duration-200 ${
-                  isSelected ? "bg-emerald-50 -mx-2 px-2 py-2 rounded-lg border border-emerald-200" : ""
+                  isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
                 }`}
                 onClick={() => handleMessageTap(messageId)}
               >
@@ -203,7 +203,13 @@ export function BranchingChatUI() {
                   <div className="flex-1">
                     <div className="flex items-start gap-2">
                       {message.hasBookmark && <div className="w-3 h-3 border border-gray-300 mt-1 flex-shrink-0" />}
-                      <div className="text-gray-900 leading-relaxed whitespace-pre-wrap text-sm">{message.content}</div>
+                      <div className={`leading-relaxed whitespace-pre-wrap text-sm ${
+                        isSelected
+                          ? "text-gray-900"
+                          : "text-gray-900"
+                      }`}>
+                        {message.content}
+                      </div>
                     </div>
 
                     {/* タグ表示 */}
@@ -252,11 +258,6 @@ export function BranchingChatUI() {
                       ))}
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  {index < currentBranch.length - 1 && (
-                    <Badge variant="secondary" className="text-xs bg-emerald-50 text-emerald-700">
-                      現在の流れを表示中
-                    </Badge>
-                  )}
                 </div>
               )}
             </div>
