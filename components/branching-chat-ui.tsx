@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -11,29 +11,45 @@ interface Message {
   id: string
   content: string
   timestamp: Date
-  parentId?: string
-  children: string[]
+  lineId: string // 所属するラインID
+  prevInLine?: string // 同ライン内の前のメッセージ
+  nextInLine?: string // 同ライン内の次のメッセージ
+  branchFromMessageId?: string // 分岐元のメッセージID（このラインの最初のメッセージの場合）
   tags?: string[]
   hasBookmark?: boolean
   author?: string
   images?: string[]
 }
 
-interface Branch {
+interface Line {
   id: string
   name: string
   description: string
-  messageIds: string[]
+  messageIds: string[] // このラインに属するメッセージのIDリスト
+  startMessageId: string // ラインの開始メッセージ
+  endMessageId?: string // ラインの終了メッセージ（まだ続いている場合はundefined）
+  branchFromMessageId?: string // 分岐元のメッセージID（メインライン以外）
   tags?: string[]
   created_at: string
   updated_at: string
 }
 
+interface BranchPoint {
+  messageId: string // 分岐点となるメッセージ
+  lines: string[] // この分岐点から派生するラインのIDリスト
+}
+
 export function BranchingChatUI() {
   const [messages, setMessages] = useState<Record<string, Message>>({})
+  const [lines, setLines] = useState<Record<string, Line>>({})
+  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [chatData, setChatData] = useState<any>(null)
 
-  const [currentBranch, setCurrentBranch] = useState<string[]>([])
+  const [currentLineId, setCurrentLineId] = useState<string>('')
+
+  // パフォーマンス最適化: パスキャッシュとメモ化
+  const [pathCache, setPathCache] = useState<Map<string, { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }>>(new Map())
+  const [lineAncestryCache, setLineAncestryCache] = useState<Map<string, string[]>>(new Map())
   const [inputValue, setInputValue] = useState("")
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
   const [pendingImages, setPendingImages] = useState<string[]>([])
@@ -72,18 +88,149 @@ export function BranchingChatUI() {
     return `${diffMonths}ヶ月前`
   }
 
+  // 新しいデータ構造をそのまま使用（変換不要）
+  const loadNewDataStructure = (data: any) => {
+    const newMessages: Record<string, Message> = {}
+    const newLines: Record<string, Line> = {}
+    const newBranchPoints: Record<string, BranchPoint> = {}
+
+    // メッセージデータをそのまま使用
+    if (data.messages) {
+      Object.entries(data.messages).forEach(([id, msg]: [string, any]) => {
+        newMessages[id] = {
+          ...msg,
+          timestamp: new Date(msg.timestamp)
+        }
+      })
+    }
+
+    // ラインデータをRecord形式に変換
+    if (data.lines && Array.isArray(data.lines)) {
+      data.lines.forEach((line: any) => {
+        newLines[line.id] = line
+      })
+    }
+
+    // 分岐点データをそのまま使用
+    if (data.branchPoints) {
+      Object.entries(data.branchPoints).forEach(([id, branchPoint]: [string, any]) => {
+        newBranchPoints[id] = branchPoint
+      })
+    }
+
+    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints }
+  }
+
+  // 旧データ構造から新データ構造への変換
+  const convertToLineBasedStructure = (oldData: any) => {
+    const newMessages: Record<string, Message> = {}
+    const newLines: Record<string, Line> = {}
+    const newBranchPoints: Record<string, BranchPoint> = {}
+
+    // 旧メッセージから新メッセージ構造への変換
+    Object.values(oldData.messages as any).forEach((msg: any) => {
+      newMessages[msg.id] = {
+        ...msg,
+        lineId: '', // 後で設定
+        prevInLine: undefined,
+        nextInLine: undefined,
+        branchFromMessageId: undefined
+      }
+    })
+
+    // 旧ブランチから新ライン構造への変換
+    if (oldData.branches) {
+      oldData.branches.forEach((branch: any, index: number) => {
+        const lineId = branch.id || `line-${index}`
+        const messageIds = branch.messageIds || []
+
+        newLines[lineId] = {
+          id: lineId,
+          name: branch.name,
+          description: branch.description,
+          messageIds: messageIds,
+          startMessageId: messageIds[0],
+          endMessageId: messageIds.length > 0 ? messageIds[messageIds.length - 1] : undefined,
+          branchFromMessageId: undefined, // 後で設定
+          tags: branch.tags,
+          created_at: branch.created_at,
+          updated_at: branch.updated_at
+        }
+
+        // メッセージにラインIDを設定
+        messageIds.forEach((msgId: string, msgIndex: number) => {
+          if (newMessages[msgId]) {
+            newMessages[msgId].lineId = lineId
+            newMessages[msgId].prevInLine = msgIndex > 0 ? messageIds[msgIndex - 1] : undefined
+            newMessages[msgId].nextInLine = msgIndex < messageIds.length - 1 ? messageIds[msgIndex + 1] : undefined
+          }
+        })
+      })
+    }
+
+    // 分岐点の検出とBranchPoint構造の構築
+    Object.values(newMessages).forEach((message) => {
+      // 旧データの children プロパティを使用して分岐点を検出
+      const oldMessage = oldData.messages[message.id]
+      if (oldMessage && oldMessage.children && oldMessage.children.length > 1) {
+        // このメッセージは分岐点
+        const branchingLines: string[] = []
+
+        oldMessage.children.forEach((childId: string) => {
+          const childMessage = newMessages[childId]
+          if (childMessage) {
+            branchingLines.push(childMessage.lineId)
+            // 分岐先ラインの branchFromMessageId を設定
+            if (newLines[childMessage.lineId]) {
+              newLines[childMessage.lineId].branchFromMessageId = message.id
+            }
+            // 分岐先ラインの最初のメッセージに branchFromMessageId を設定
+            if (newLines[childMessage.lineId] && newLines[childMessage.lineId].startMessageId === childId) {
+              newMessages[childId].branchFromMessageId = message.id
+            }
+          }
+        })
+
+        if (branchingLines.length > 1) {
+          newBranchPoints[message.id] = {
+            messageId: message.id,
+            lines: branchingLines
+          }
+        }
+      }
+    })
+
+    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints }
+  }
+
   useEffect(() => {
     const loadChatData = async () => {
       try {
         const response = await fetch('/data/chat-sample.json')
         const data = await response.json()
         setChatData(data)
-        setMessages(data.messages)
 
-        // デフォルトブランチを設定
-        if (data.branches && data.branches.length > 0) {
-          const defaultBranch = data.branches.find((b: any) => b.id === 'main') || data.branches[0]
-          setCurrentBranch(defaultBranch.messageIds)
+        console.log('Loaded data:', data) // デバッグ用
+
+        // 新しいデータ構造をそのまま使用
+        const loaded = loadNewDataStructure(data)
+        setMessages(loaded.messages)
+        setLines(loaded.lines)
+        setBranchPoints(loaded.branchPoints)
+
+        // キャッシュをクリア
+        setPathCache(new Map())
+        setLineAncestryCache(new Map())
+
+        console.log('Processed messages:', loaded.messages) // デバッグ用
+        console.log('Processed lines:', loaded.lines) // デバッグ用
+        console.log('Processed branchPoints:', loaded.branchPoints) // デバッグ用
+
+        // デフォルトラインを設定（メインラインまたは最初のライン）
+        const mainLine = loaded.lines['main'] || Object.values(loaded.lines)[0]
+        if (mainLine) {
+          setCurrentLineId(mainLine.id)
+          console.log('Set current line:', mainLine.id) // デバッグ用
         }
       } catch (error) {
         console.error('Failed to load chat data:', error)
@@ -95,7 +242,7 @@ export function BranchingChatUI() {
 
   useEffect(() => {
     scrollToBottom()
-  }, [currentBranch])
+  }, [currentLineId])
 
   const handleImageFile = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -153,144 +300,292 @@ export function BranchingChatUI() {
     }
   }, [])
 
-  const getBranches = (messageId: string): Branch[] => {
-    const message = messages[messageId]
-    if (!message || message.children.length <= 1) return []
+  // 新しいライン構造に対応した分岐取得
+  const getBranchingLines = (messageId: string): Line[] => {
+    const branchPoint = branchPoints[messageId]
+    if (!branchPoint || !branchPoint.lines.length) return []
 
-    // 各子メッセージに対応するブランチを見つける
-    return message.children.map((childId) => {
-      // このchildIdを含むブランチを探す
-      const matchingBranch = chatData?.branches?.find((branch: any) =>
-        branch.messageIds.includes(childId)
-      )
+    return branchPoint.lines.map(lineId => lines[lineId]).filter(Boolean)
+  }
 
-      if (matchingBranch) {
-        return matchingBranch
+  // ラインの祖先チェーンをメモ化で取得
+  const getLineAncestry = (lineId: string): string[] => {
+    // キャッシュチェック
+    if (lineAncestryCache.has(lineId)) {
+      return lineAncestryCache.get(lineId)!
+    }
+
+    const line = lines[lineId]
+    if (!line) {
+      return []
+    }
+
+    let ancestry: string[] = []
+
+    // 分岐元がある場合は親ラインの祖先を取得
+    if (line.branchFromMessageId) {
+      const branchFromMessage = messages[line.branchFromMessageId]
+      if (branchFromMessage) {
+        const parentLineId = branchFromMessage.lineId
+        const parentAncestry = getLineAncestry(parentLineId)
+        ancestry = [...parentAncestry, parentLineId]
+      }
+    }
+
+    // キャッシュに保存
+    lineAncestryCache.set(lineId, ancestry)
+    return ancestry
+  }
+
+  // パフォーマンス最適化されたパス取得
+  const getOptimizedPath = (lineId: string): { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> } => {
+    // キャッシュチェック
+    if (pathCache.has(lineId)) {
+      return pathCache.get(lineId)!
+    }
+
+    const ancestry = getLineAncestry(lineId)
+    const fullLineChain = [...ancestry, lineId]
+
+    let allMessages: Message[] = []
+    let transitions: Array<{ index: number, lineId: string, lineName: string }> = []
+
+    for (let i = 0; i < fullLineChain.length; i++) {
+      const currentLineInChain = lines[fullLineChain[i]]
+      if (!currentLineInChain) continue
+
+      // ライン切り替えポイントを記録
+      if (i > 0) {
+        transitions.push({
+          index: allMessages.length,
+          lineId: currentLineInChain.id,
+          lineName: currentLineInChain.name
+        })
       }
 
-      // ブランチが見つからない場合は、動的に作成
-      const pathFromRoot = getPathFromRoot(childId)
-      const endMessage = messages[childId]
-      const now = new Date().toISOString()
-      return {
-        id: childId,
-        name: `分岐 ${childId}`,
-        description: endMessage ? endMessage.content.slice(0, 30) + (endMessage.content.length > 30 ? "..." : "") : "",
-        messageIds: pathFromRoot,
-        tags: [],
-        created_at: now,
-        updated_at: now
-      }
-    }).filter(Boolean)
-  }
-
-  const getPathToEnd = (startId: string): string[] => {
-    const path = [startId]
-    let current = messages[startId]
-
-    while (current && current.children.length > 0) {
-      // 最初の子を選択（実際のアプリでは最新のメッセージを選択する可能性がある）
-      const nextId = current.children[0]
-      path.push(nextId)
-      current = messages[nextId]
-    }
-
-    return path
-  }
-
-  const switchToBranch = (branchId: string) => {
-    // まず既存のブランチから探す
-    const branch = chatData?.branches.find((b: any) => b.id === branchId)
-    if (branch) {
-      setCurrentBranch(branch.messageIds)
-      return
-    }
-
-    // 動的ブランチの場合：branchIdはchildIdと同じなので、そこからパスを生成
-    if (messages[branchId]) {
-      const path = getPathFromRoot(branchId)
-      setCurrentBranch(path)
-    }
-  }
-
-  const getPathFromRoot = (messageId: string): string[] => {
-    const path = []
-    let current = messages[messageId]
-
-    while (current) {
-      path.unshift(current.id)
-      if (current.parentId) {
-        current = messages[current.parentId]
+      // メッセージを追加
+      if (i < fullLineChain.length - 1) {
+        // 中間ライン: 分岐点までのメッセージのみ
+        const nextLine = lines[fullLineChain[i + 1]]
+        if (nextLine?.branchFromMessageId) {
+          const branchPointIndex = currentLineInChain.messageIds.indexOf(nextLine.branchFromMessageId)
+          if (branchPointIndex >= 0) {
+            const segmentMessages = currentLineInChain.messageIds
+              .slice(0, branchPointIndex + 1)
+              .map(msgId => messages[msgId])
+              .filter(Boolean)
+            allMessages.push(...segmentMessages)
+          }
+        }
       } else {
-        break
+        // 最終ライン: 全メッセージ
+        const lineMessages = currentLineInChain.messageIds
+          .map(msgId => messages[msgId])
+          .filter(Boolean)
+        allMessages.push(...lineMessages)
       }
     }
 
-    return path
+    const result = { messages: allMessages, transitions }
+
+    // キャッシュに保存
+    pathCache.set(lineId, result)
+    return result
   }
 
-  const getCurrentBranch = (): Branch | null => {
-    if (!currentBranch.length) return null
-
-    // 既存のブランチから探す
-    if (chatData?.branches) {
-      const existingBranch = chatData.branches.find((branch: any) =>
-        JSON.stringify(branch.messageIds) === JSON.stringify(currentBranch)
-      )
-      if (existingBranch) return existingBranch
+  // メモ化されたタイムライン取得
+  const getCompleteTimeline = () => {
+    if (!currentLineId || !lines[currentLineId]) {
+      console.log('No current line found for ID:', currentLineId)
+      console.log('Available lines:', Object.keys(lines))
+      return { messages: [], transitions: [] }
     }
 
-    // 既存ブランチが見つからない場合は動的に作成
-    const lastMessageId = currentBranch[currentBranch.length - 1]
-    const lastMessage = messages[lastMessageId]
-    const now = new Date()
-    const isoTimestamp = now.toISOString()
+    const result = getOptimizedPath(currentLineId)
+    console.log('Complete timeline (cached):', result.messages.length, 'messages with', result.transitions.length, 'transitions')
+
+    return result
+  }
+
+  // useMemoでメモ化されたタイムラインを取得
+  const completeTimeline = useMemo(() => {
+    return getCompleteTimeline()
+  }, [currentLineId, messages, lines, pathCache, lineAncestryCache])
+
+  // ラインの切り替え（キャッシュクリアあり）
+  const switchToLine = (lineId: string) => {
+    if (lines[lineId]) {
+      setCurrentLineId(lineId)
+      // 新しいラインに切り替えたらキャッシュをクリアしない（再利用可能）
+    }
+  }
+
+  // メッセージのライン情報を取得（表示用）
+  const getMessageLineInfo = (messageIndex: number, timeline: { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }) => {
+    const { transitions } = timeline
+    const message = timeline.messages[messageIndex]
+
+    if (!message) {
+      return {
+        isLineStart: false,
+        isCurrentLine: false,
+        lineInfo: null,
+        transitionInfo: null
+      }
+    }
+
+    // このメッセージがラインの開始点かどうかをチェック
+    const transitionAtThisIndex = transitions.find(t => t.index === messageIndex)
+    const isLineStart = transitionAtThisIndex !== undefined
+
+    // 現在ラインかどうかをチェック
+    const isCurrentLine = message.lineId === currentLineId
 
     return {
-      id: `dynamic-${currentBranch.join('-')}`,
-      name: `branch_${isoTimestamp.slice(0, 19).replace(/[-:]/g, '').replace('T', '')}`,
-      description: lastMessage ? `${lastMessage.content.slice(0, 30)}...` : "",
-      messageIds: currentBranch,
-      tags: [],
-      created_at: isoTimestamp,
-      updated_at: isoTimestamp
+      isLineStart,
+      isCurrentLine,
+      lineInfo: lines[message.lineId],
+      transitionInfo: transitionAtThisIndex || null
     }
+  }
+
+  // 現在のラインオブジェクトを取得
+  const getCurrentLine = (): Line | null => {
+    return lines[currentLineId] || null
   }
 
   const handleSendMessage = () => {
     if (!inputValue.trim() && pendingImages.length === 0) return
 
-    const newMessageId = `msg${Date.now()}`
-    const baseMessageId = selectedBaseMessage || currentBranch[currentBranch.length - 1]
+    console.log('Sending message, current line ID:', currentLineId)
+    console.log('Available lines:', Object.keys(lines))
 
-    const newMessage: Message = {
-      id: newMessageId,
-      content: inputValue,
-      timestamp: new Date(),
-      parentId: baseMessageId,
-      children: [],
-      author: "User",
-      ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+    const newMessageId = `msg${Date.now()}`
+    const currentLine = lines[currentLineId]
+    if (!currentLine) {
+      console.error('No current line found for message sending')
+      return
     }
 
-    setMessages((prev) => {
-      const updated = { ...prev }
-      updated[newMessageId] = newMessage
+    // 現在のタイムラインの最後のメッセージを取得
+    const timeline = completeTimeline
+    const lastMessage = timeline.messages[timeline.messages.length - 1]
+    const baseMessageId = selectedBaseMessage || lastMessage?.id
 
-      // 親メッセージの子リストに追加
-      if (updated[baseMessageId]) {
-        updated[baseMessageId] = {
-          ...updated[baseMessageId],
-          children: [...updated[baseMessageId].children, newMessageId],
-        }
+    console.log('Adding message to line:', currentLine.id, 'after message:', baseMessageId)
+
+    // ベースメッセージが選択されている場合は常に新しいラインを作成
+    const shouldCreateNewLine = selectedBaseMessage !== null
+
+    if (shouldCreateNewLine) {
+      // 新しいラインを作成
+      const newLineId = `line-${Date.now()}`
+      const newLineName = `分岐 ${Object.keys(lines).length + 1}`
+
+      const newMessage: Message = {
+        id: newMessageId,
+        content: inputValue,
+        timestamp: new Date(),
+        lineId: newLineId,
+        branchFromMessageId: selectedBaseMessage,
+        author: "User",
+        ...(pendingImages.length > 0 && { images: [...pendingImages] }),
       }
 
-      return updated
-    })
+      // 新しいラインを作成
+      const newLine: Line = {
+        id: newLineId,
+        name: newLineName,
+        description: `${inputValue.slice(0, 50)}${inputValue.length > 50 ? '...' : ''}`,
+        messageIds: [newMessageId],
+        startMessageId: newMessageId,
+        endMessageId: newMessageId,
+        branchFromMessageId: selectedBaseMessage,
+        tags: [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
 
-    // 新しいメッセージを含むブランチに切り替え
-    const pathToBase = getPathFromRoot(baseMessageId)
-    setCurrentBranch([...pathToBase, newMessageId])
+      // メッセージを追加
+      setMessages((prev) => ({
+        ...prev,
+        [newMessageId]: newMessage
+      }))
+
+      // ラインを追加
+      setLines((prev) => ({
+        ...prev,
+        [newLineId]: newLine
+      }))
+
+      // 分岐点を更新
+      setBranchPoints((prev) => {
+        const updated = { ...prev }
+        if (updated[selectedBaseMessage!]) {
+          // 既存の分岐点に新しいラインを追加
+          updated[selectedBaseMessage!] = {
+            ...updated[selectedBaseMessage!],
+            lines: [...updated[selectedBaseMessage!].lines, newLineId]
+          }
+        } else {
+          // 新しい分岐点を作成
+          updated[selectedBaseMessage!] = {
+            messageId: selectedBaseMessage!,
+            lines: [newLineId]
+          }
+        }
+        return updated
+      })
+
+      // 新しいラインに切り替え
+      setCurrentLineId(newLineId)
+
+    } else {
+      // 既存のライン継続
+      const newMessage: Message = {
+        id: newMessageId,
+        content: inputValue,
+        timestamp: new Date(),
+        lineId: currentLineId,
+        prevInLine: baseMessageId,
+        author: "User",
+        ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+      }
+
+      // メッセージを追加
+      setMessages((prev) => {
+        const updated = { ...prev }
+        updated[newMessageId] = newMessage
+
+        // 前のメッセージのnextInLineを更新
+        if (updated[baseMessageId]) {
+          updated[baseMessageId] = {
+            ...updated[baseMessageId],
+            nextInLine: newMessageId,
+          }
+        }
+
+        return updated
+      })
+
+      // ラインにメッセージを追加
+      setLines((prev) => {
+        const updated = { ...prev }
+        if (updated[currentLineId]) {
+          updated[currentLineId] = {
+            ...updated[currentLineId],
+            messageIds: [...updated[currentLineId].messageIds, newMessageId],
+            endMessageId: newMessageId,
+            updated_at: new Date().toISOString()
+          }
+        }
+        return updated
+      })
+    }
+
+    // キャッシュをクリア（構造が変わった可能性があるため）
+    setPathCache(new Map())
+    setLineAncestryCache(new Map())
 
     setInputValue("")
     setPendingImages([])
@@ -301,60 +596,32 @@ export function BranchingChatUI() {
     setSelectedBaseMessage(messageId)
   }
 
-  const handleEditBranch = () => {
-    const currentBranchInfo = getCurrentBranch()
-    if (currentBranchInfo) {
+  const handleEditLine = () => {
+    const currentLineInfo = getCurrentLine()
+    if (currentLineInfo) {
       setEditingBranchData({
-        name: currentBranchInfo.name,
-        tags: [...(currentBranchInfo.tags || [])],
+        name: currentLineInfo.name,
+        tags: [...(currentLineInfo.tags || [])],
         newTag: ""
       })
       setIsEditingBranch(true)
     }
   }
 
-  const handleSaveBranchEdit = () => {
-    const currentBranchInfo = getCurrentBranch()
-    if (currentBranchInfo && chatData) {
-      let updatedBranches
-
-      // 既存のブランチかどうかチェック
-      const existingBranchIndex = chatData.branches.findIndex((branch: any) =>
-        branch.id === currentBranchInfo.id
-      )
-
-      if (existingBranchIndex >= 0) {
-        // 既存ブランチの更新
-        updatedBranches = chatData.branches.map((branch: any) => {
-          if (branch.id === currentBranchInfo.id) {
-            return {
-              ...branch,
-              name: editingBranchData.name,
-              description: branch.description, // 既存の説明を保持
-              tags: editingBranchData.tags,
-              updated_at: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-            }
+  const handleSaveLineEdit = () => {
+    const currentLineInfo = getCurrentLine()
+    if (currentLineInfo) {
+      setLines((prev) => {
+        const updated = { ...prev }
+        if (updated[currentLineId]) {
+          updated[currentLineId] = {
+            ...updated[currentLineId],
+            name: editingBranchData.name,
+            tags: editingBranchData.tags,
+            updated_at: new Date().toISOString()
           }
-          return branch
-        })
-      } else {
-        // 新しいブランチの追加
-        const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
-        const newBranch = {
-          id: `branch-${Date.now()}`,
-          name: editingBranchData.name,
-          description: currentBranchInfo.description,
-          messageIds: currentBranch,
-          tags: editingBranchData.tags,
-          created_at: now,
-          updated_at: now
         }
-        updatedBranches = [...chatData.branches, newBranch]
-      }
-
-      setChatData({
-        ...chatData,
-        branches: updatedBranches
+        return updated
       })
       setIsEditingBranch(false)
     }
@@ -377,47 +644,80 @@ export function BranchingChatUI() {
     }))
   }
 
-  const currentBranchInfo = getCurrentBranch()
+  const currentLineInfo = getCurrentLine()
+  // completeTimelineは既にuseMemoで定義済み
+
+  // デバッグ: 現在の状態をログ出力
+  console.log('Render - Current Line ID:', currentLineId)
+  console.log('Render - Current Line Info:', currentLineInfo)
+  console.log('Render - Complete Timeline Count:', completeTimeline.messages.length)
+  console.log('Render - Transitions:', completeTimeline.transitions)
+  console.log('Render - All Lines:', Object.keys(lines))
+  console.log('Render - All Messages:', Object.keys(messages))
 
   const renderTimelineMinimap = () => {
-    if (currentBranch.length === 0) return null
+    if (!completeTimeline.messages.length) return null
 
     return (
       <div className="px-4 py-2 border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between">
           <div className="flex gap-1 overflow-x-auto pb-1 flex-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {currentBranch.map((messageId, index) => {
-            const message = messages[messageId]
-            const hasBranches = message && message.children.length > 1
-            const isLast = index === currentBranch.length - 1
+          {completeTimeline.messages.map((message, index) => {
+            const hasBranches = branchPoints[message.id]?.lines.length > 0
+            const isLast = index === completeTimeline.messages.length - 1
+            const messageLineInfo = getMessageLineInfo(index, completeTimeline)
+            const isLineTransition = messageLineInfo.isLineStart && index > 0
 
             return (
-              <div key={messageId} className="flex items-center gap-1 flex-shrink-0">
+              <div key={`${message.id}-${index}`} className="flex items-center gap-1 flex-shrink-0">
+                {isLineTransition && (
+                  <div className="flex items-center gap-1 mx-1">
+                    <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
+                    <div className="text-xs text-blue-600 font-medium whitespace-nowrap">
+                      {messageLineInfo.transitionInfo?.lineName}
+                    </div>
+                    <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
+                    <div className="w-2 h-0.5 bg-blue-400"></div>
+                  </div>
+                )}
                 <button
                   className={`relative flex items-center justify-center transition-all duration-200 ${
                     hasBranches
                       ? 'w-6 h-6 bg-emerald-100 hover:bg-emerald-200 border-2 border-emerald-300 rounded-full'
-                      : 'w-4 h-4 bg-gray-200 hover:bg-gray-300 rounded-full'
+                      : messageLineInfo.isCurrentLine
+                      ? 'w-4 h-4 bg-gray-200 hover:bg-gray-300 rounded-full'
+                      : 'w-4 h-4 bg-blue-100 hover:bg-blue-200 border border-blue-200 rounded-full'
                   }`}
                   onClick={() => {
-                    const element = document.getElementById(`message-${messageId}`)
+                    const element = document.getElementById(`message-${message.id}`)
                     element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
                   }}
                 >
                   {hasBranches ? (
                     <GitBranch className="w-3 h-3 text-emerald-600" />
                   ) : (
-                    <Circle className="w-2 h-2 text-gray-500 fill-current" />
+                    <Circle className={`w-2 h-2 fill-current ${
+                      messageLineInfo.isCurrentLine ? 'text-gray-500' : 'text-blue-500'
+                    }`} />
                   )}
                 </button>
                 {!isLast && (
-                  <div className="w-3 h-0.5 bg-gray-300"></div>
+                  <div className={`w-3 h-0.5 ${
+                    messageLineInfo.isCurrentLine ? 'bg-gray-300' : 'bg-blue-300'
+                  }`}></div>
                 )}
               </div>
             )
           })}
           </div>
-          <span className="text-xs text-gray-400 ml-3 flex-shrink-0">{currentBranch.length}メッセージ</span>
+          <span className="text-xs text-gray-400 ml-3 flex-shrink-0">
+            {completeTimeline.messages.length}メッセージ
+            {completeTimeline.transitions.length > 0 && (
+              <span className="text-blue-600 ml-1">
+                ({completeTimeline.transitions.length}ライン)
+              </span>
+            )}
+          </span>
         </div>
       </div>
     )
@@ -428,29 +728,32 @@ export function BranchingChatUI() {
       {/* Timeline Minimap */}
       {renderTimelineMinimap()}
 
-      {/* Current Branch Header */}
-      {currentBranchInfo && (
+      {/* Current Line Header */}
+      {currentLineInfo && (
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
           {!isEditingBranch ? (
             <>
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-medium text-gray-800">{currentBranchInfo.name}</h2>
-                  <p className="text-xs text-gray-500">{currentBranchInfo.description}</p>
+                  <h2 className="font-medium text-gray-800">{currentLineInfo.name}</h2>
+                  <p className="text-xs text-gray-500">{currentLineInfo.description}</p>
+                  {currentLineInfo.branchFromMessageId && (
+                    <p className="text-xs text-blue-500">分岐元: {messages[currentLineInfo.branchFromMessageId]?.content.slice(0, 20)}...</p>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleEditBranch}
+                  onClick={handleEditLine}
                   className="h-8 px-2 text-gray-400 hover:text-gray-600"
                 >
                   <Edit3 className="h-4 w-4" />
                 </Button>
               </div>
-              {currentBranchInfo.tags && currentBranchInfo.tags.length > 0 && (
+              {currentLineInfo.tags && currentLineInfo.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {currentBranchInfo.tags.map((tag, tagIndex) => (
-                    <Badge key={`current-branch-tag-${tagIndex}`} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                  {currentLineInfo.tags.map((tag, tagIndex) => (
+                    <Badge key={`current-line-tag-${tagIndex}`} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
                       {tag}
                     </Badge>
                   ))}
@@ -464,7 +767,7 @@ export function BranchingChatUI() {
                 <Input
                   value={editingBranchData.name}
                   onChange={(e) => setEditingBranchData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="ブランチタイトル"
+                  placeholder="ラインタイトル"
                   className="text-sm font-medium"
                 />
               </div>
@@ -516,7 +819,7 @@ export function BranchingChatUI() {
                   キャンセル
                 </Button>
                 <Button
-                  onClick={handleSaveBranchEdit}
+                  onClick={handleSaveLineEdit}
                   size="sm"
                   className="text-xs bg-emerald-500 hover:bg-emerald-600"
                 >
@@ -530,23 +833,52 @@ export function BranchingChatUI() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
-        {currentBranch.map((messageId, index) => {
-          const message = messages[messageId]
-          const branches = getBranches(messageId)
-          const isSelected = selectedBaseMessage === messageId
+        {completeTimeline.messages.map((message, index) => {
+          const branchingLines = getBranchingLines(message.id)
+          const isSelected = selectedBaseMessage === message.id
+          const messageLineInfo = getMessageLineInfo(index, completeTimeline)
+          const isLineTransition = messageLineInfo.isLineStart && index > 0
 
           return (
-            <div key={messageId} className="space-y-4">
+            <div key={`${message.id}-${index}`} className="space-y-4">
+              {/* ライン切り替わりインジケーター */}
+              {isLineTransition && (
+                <div className="flex items-center gap-3 py-3 -mx-4 px-4 bg-gradient-to-r from-blue-50 to-transparent border-l-4 border-blue-400">
+                  <GitBranch className="w-4 h-4 text-blue-600" />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-blue-800">
+                      → {messageLineInfo.transitionInfo?.lineName}
+                    </div>
+                    <div className="text-xs text-blue-600">
+                      {messageLineInfo.lineInfo?.description}
+                    </div>
+                  </div>
+                  {messageLineInfo.lineInfo?.tags && messageLineInfo.lineInfo.tags.length > 0 && (
+                    <div className="flex gap-1">
+                      {messageLineInfo.lineInfo.tags.slice(0, 2).map((tag, tagIndex) => (
+                        <Badge key={tagIndex} variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div
-                id={`message-${messageId}`}
+                id={`message-${message.id}`}
                 className={`cursor-pointer transition-all duration-200 ${
                   isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
+                } ${
+                  !messageLineInfo.isCurrentLine ? "border-l-2 border-blue-200 pl-3 ml-1" : ""
                 }`}
-                onClick={() => handleMessageTap(messageId)}
+                onClick={() => handleMessageTap(message.id)}
               >
                 <div className="flex gap-3">
                   {/* 時刻表示 */}
-                  <div className="text-xs text-gray-400 font-mono min-w-[35px] pt-0.5 leading-relaxed">
+                  <div className={`text-xs font-mono min-w-[35px] pt-0.5 leading-relaxed ${
+                    !messageLineInfo.isCurrentLine ? 'text-blue-400' : 'text-gray-400'
+                  }`}>
                     {new Date(message.timestamp).toLocaleTimeString("ja-JP", {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -558,7 +890,9 @@ export function BranchingChatUI() {
                     <div className="flex items-start gap-2">
                       {message.hasBookmark && <div className="w-3 h-3 border border-gray-300 mt-1 flex-shrink-0" />}
                       <div className={`leading-relaxed whitespace-pre-wrap text-sm ${
-                        isSelected
+                        !messageLineInfo.isCurrentLine
+                          ? "text-gray-600"
+                          : isSelected
                           ? "text-gray-900"
                           : "text-gray-900"
                       }`}>
@@ -570,13 +904,14 @@ export function BranchingChatUI() {
                     {message.images && message.images.length > 0 && (
                       <div className="mt-2 space-y-2">
                         {message.images.map((imageUrl, imageIndex) => (
-                          <div key={`${messageId}-image-${imageIndex}`} className="relative">
+                          <div key={`${message.id}-image-${imageIndex}`} className="relative">
                             <img
                               src={imageUrl}
                               alt={`Image ${imageIndex + 1}`}
-                              className="max-w-full h-auto rounded-lg border border-gray-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                              className={`max-w-full h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
+                                !messageLineInfo.isCurrentLine ? 'border-blue-200 opacity-80' : 'border-gray-200'
+                              }`}
                               onClick={() => {
-                                // 画像をフルサイズで表示するロジックを後で追加
                                 window.open(imageUrl, '_blank')
                               }}
                             />
@@ -589,40 +924,40 @@ export function BranchingChatUI() {
                 </div>
               </div>
 
-              {/* Branch indicator */}
-              {branches.length > 0 && (
+              {/* Line Branch indicator */}
+              {branchingLines.length > 0 && (
                 <div className="ml-10 space-y-2">
                   <div className="flex items-center gap-2 mb-3">
                     <Zap className="h-3 w-3 text-emerald-500" />
-                    <span className="text-xs text-gray-500">分岐しました（{branches.length}流れ）</span>
+                    <span className="text-xs text-gray-500">分岐しました（{branchingLines.length}ライン）</span>
                   </div>
                   <div className="space-y-1">
-                    {branches.map((branch, branchIndex) => {
-                      const isCurrentBranch = JSON.stringify(branch.messageIds) === JSON.stringify(currentBranch)
-                      const lastMessageId = branch.messageIds[branch.messageIds.length - 1]
-                      const lastMessage = messages[lastMessageId]
+                    {branchingLines.map((line, lineIndex) => {
+                      const isCurrentLine = line.id === currentLineId
+                      const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
+                      const lastMessage = lastMessageId ? messages[lastMessageId] : null
                       const lastMessagePreview = lastMessage?.content.slice(0, 25) + (lastMessage?.content.length > 25 ? "..." : "")
-                      const firstTag = branch.tags?.[0]
-                      const relativeTime = branch.created_at ? getRelativeTime(branch.created_at) : ""
+                      const firstTag = line.tags?.[0]
+                      const relativeTime = line.created_at ? getRelativeTime(line.created_at) : ""
 
                       return (
                         <button
-                          key={`${messageId}-branch-${branch.id}`}
-                          onClick={() => switchToBranch(branch.id)}
+                          key={`${message.id}-line-${line.id}`}
+                          onClick={() => switchToLine(line.id)}
                           className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 ${
-                            isCurrentBranch
+                            isCurrentLine
                               ? 'bg-emerald-100 border-2 border-emerald-300 text-emerald-800'
                               : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent text-gray-700 hover:text-gray-900'
                           }`}
                         >
                           <div className="flex items-center justify-between w-full">
                             <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <span className={`font-medium text-sm truncate ${isCurrentBranch ? 'text-emerald-700' : 'text-gray-900'}`}>
-                                {branch.name}
+                              <span className={`font-medium text-sm truncate ${isCurrentLine ? 'text-emerald-700' : 'text-gray-900'}`}>
+                                {line.name}
                               </span>
                               {firstTag && (
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
-                                  isCurrentBranch ? 'bg-emerald-200 text-emerald-600' : 'bg-gray-200 text-gray-500'
+                                  isCurrentLine ? 'bg-emerald-200 text-emerald-600' : 'bg-gray-200 text-gray-500'
                                 }`}>
                                   {firstTag}
                                 </span>
@@ -637,7 +972,7 @@ export function BranchingChatUI() {
                                   {relativeTime}
                                 </span>
                               )}
-                              {isCurrentBranch && (
+                              {isCurrentLine && (
                                 <Circle className="w-3 h-3 text-emerald-500 fill-current" />
                               )}
                             </div>
@@ -658,19 +993,28 @@ export function BranchingChatUI() {
       <div className="p-4 border-t border-gray-100 bg-white">
         {selectedBaseMessage && (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
-            <span className="text-gray-500">基点: </span>
-            <span className="font-medium text-gray-800">
-              {messages[selectedBaseMessage]?.content.slice(0, 30)}
-              {messages[selectedBaseMessage]?.content.length > 30 ? "..." : ""}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="ml-2 h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100"
-              onClick={() => setSelectedBaseMessage(null)}
-            >
-              ✕
-            </Button>
+            <div className="flex items-start justify-between">
+              <div className="flex-1">
+                <span className="text-gray-500">分岐基点: </span>
+                <span className="font-medium text-gray-800">
+                  {messages[selectedBaseMessage]?.content.slice(0, 30)}
+                  {messages[selectedBaseMessage]?.content.length > 30 ? "..." : ""}
+                </span>
+                <div className="mt-1">
+                  <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                    🌿 新しい分岐を作成
+                  </span>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100"
+                onClick={() => setSelectedBaseMessage(null)}
+              >
+                ✕
+              </Button>
+            </div>
           </div>
         )}
 
@@ -712,6 +1056,15 @@ export function BranchingChatUI() {
             </div>
           </div>
         )}
+        {/* メッセージが選択されていない場合の状態表示 */}
+        {!selectedBaseMessage && (
+          <div className="mb-3 p-2 bg-gray-50 rounded-lg text-sm border border-gray-200">
+            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
+              📝 現在のラインに追加
+            </span>
+          </div>
+        )}
+
         <div className="flex gap-3">
           <Input
             value={inputValue}
