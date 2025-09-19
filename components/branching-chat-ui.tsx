@@ -16,6 +16,7 @@ interface Message {
   tags?: string[]
   hasBookmark?: boolean
   author?: string
+  images?: string[]
 }
 
 interface Branch {
@@ -58,6 +59,7 @@ export function BranchingChatUI() {
   const [currentBranch, setCurrentBranch] = useState<string[]>(["msg1", "msg2", "msg3"])
   const [inputValue, setInputValue] = useState("")
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
+  const [pendingImages, setPendingImages] = useState<string[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -67,6 +69,62 @@ export function BranchingChatUI() {
   useEffect(() => {
     scrollToBottom()
   }, [currentBranch])
+
+  const handleImageFile = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const result = e.target?.result as string
+        resolve(result)
+      }
+      reader.onerror = () => reject(new Error('Failed to read file'))
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const handlePaste = async (e: ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+
+    const imageFiles: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.type.startsWith('image/')) {
+        const file = item.getAsFile()
+        if (file) {
+          imageFiles.push(file)
+        }
+      }
+    }
+
+    if (imageFiles.length > 0) {
+      e.preventDefault()
+      try {
+        const imageUrls = await Promise.all(
+          imageFiles.map(file => handleImageFile(file))
+        )
+        setPendingImages(prev => [...prev, ...imageUrls])
+      } catch (error) {
+        console.error('Failed to process images:', error)
+      }
+    }
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'v') {
+        // Clipboard paste will be handled by handlePaste
+      }
+    }
+
+    document.addEventListener('paste', handlePaste)
+    document.addEventListener('keydown', handleKeyDown)
+
+    return () => {
+      document.removeEventListener('paste', handlePaste)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   const getBranches = (messageId: string): Branch[] => {
     const message = messages[messageId]
@@ -132,7 +190,7 @@ export function BranchingChatUI() {
   }
 
   const handleSendMessage = () => {
-    if (!inputValue.trim()) return
+    if (!inputValue.trim() && pendingImages.length === 0) return
 
     const newMessageId = `msg${Date.now()}`
     const baseMessageId = selectedBaseMessage || currentBranch[currentBranch.length - 1]
@@ -144,6 +202,7 @@ export function BranchingChatUI() {
       parentId: baseMessageId,
       children: [],
       author: "User",
+      ...(pendingImages.length > 0 && { images: [...pendingImages] }),
     }
 
     setMessages((prev) => {
@@ -166,6 +225,7 @@ export function BranchingChatUI() {
     setCurrentBranch([...pathToBase, newMessageId])
 
     setInputValue("")
+    setPendingImages([])
     setSelectedBaseMessage(null)
   }
 
@@ -211,6 +271,25 @@ export function BranchingChatUI() {
                         {message.content}
                       </div>
                     </div>
+
+                    {/* 画像表示 */}
+                    {message.images && message.images.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        {message.images.map((imageUrl, imageIndex) => (
+                          <div key={`${messageId}-image-${imageIndex}`} className="relative">
+                            <img
+                              src={imageUrl}
+                              alt={`Image ${imageIndex + 1}`}
+                              className="max-w-full h-auto rounded-lg border border-gray-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                              onClick={() => {
+                                // 画像をフルサイズで表示するロジックを後で追加
+                                window.open(imageUrl, '_blank')
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* タグ表示 */}
                     {message.tags && message.tags.length > 0 && (
@@ -285,6 +364,45 @@ export function BranchingChatUI() {
             </Button>
           </div>
         )}
+
+        {/* 添付画像プレビュー */}
+        {pendingImages.length > 0 && (
+          <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-blue-800">画像 ({pendingImages.length})</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-blue-400 hover:text-blue-600 hover:bg-blue-100"
+                onClick={() => setPendingImages([])}
+              >
+                すべて削除
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {pendingImages.map((imageUrl, index) => (
+                <div key={index} className="relative">
+                  <img
+                    src={imageUrl}
+                    alt={`Preview ${index + 1}`}
+                    className="w-16 h-16 object-cover rounded border border-blue-300"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute -top-1 -right-1 w-5 h-5 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                    onClick={() => setPendingImages(prev => prev.filter((_, i) => i !== index))}
+                  >
+                    ✕
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="text-xs text-blue-600 mt-2">
+              Cmd+V でクリップボードから画像をペースト
+            </div>
+          </div>
+        )}
         <div className="flex gap-3">
           <Input
             value={inputValue}
@@ -297,7 +415,7 @@ export function BranchingChatUI() {
             onClick={handleSendMessage}
             size="sm"
             className="bg-emerald-500 hover:bg-emerald-600 px-3"
-            disabled={!inputValue.trim()}
+            disabled={!inputValue.trim() && pendingImages.length === 0}
           >
             <Send className="h-4 w-4" />
           </Button>
