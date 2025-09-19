@@ -610,7 +610,13 @@ export function BranchingChatUI() {
   }
 
   const handleMessageTap = (messageId: string) => {
-    setSelectedBaseMessage(messageId)
+    // If the clicked message is already selected, deselect it
+    if (selectedBaseMessage === messageId) {
+      setSelectedBaseMessage(null)
+    } else {
+      // Otherwise, select it
+      setSelectedBaseMessage(messageId)
+    }
   }
 
   const handleEditLine = () => {
