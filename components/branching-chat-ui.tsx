@@ -39,6 +39,21 @@ interface BranchPoint {
   lines: string[] // この分岐点から派生するラインのIDリスト
 }
 
+// Development logger for debugging
+const DEV_LOG = {
+  enabled: process.env.NODE_ENV === 'development',
+  data: (message: string, data?: any) => {
+    if (DEV_LOG.enabled) {
+      console.log(`[BranchingChat] ${message}`, data || '')
+    }
+  },
+  error: (message: string, error?: any) => {
+    if (DEV_LOG.enabled) {
+      console.error(`[BranchingChat] ${message}`, error || '')
+    }
+  }
+}
+
 export function BranchingChatUI() {
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
@@ -210,7 +225,11 @@ export function BranchingChatUI() {
         const data = await response.json()
         setChatData(data)
 
-        console.log('Loaded data:', data) // デバッグ用
+        DEV_LOG.data('Chat data loaded successfully', {
+          messagesCount: Object.keys(data.messages || {}).length,
+          linesCount: data.lines?.length || 0,
+          branchPointsCount: Object.keys(data.branchPoints || {}).length
+        })
 
         // 新しいデータ構造をそのまま使用
         const loaded = loadNewDataStructure(data)
@@ -222,18 +241,14 @@ export function BranchingChatUI() {
         setPathCache(new Map())
         setLineAncestryCache(new Map())
 
-        console.log('Processed messages:', loaded.messages) // デバッグ用
-        console.log('Processed lines:', loaded.lines) // デバッグ用
-        console.log('Processed branchPoints:', loaded.branchPoints) // デバッグ用
-
         // デフォルトラインを設定（メインラインまたは最初のライン）
         const mainLine = loaded.lines['main'] || Object.values(loaded.lines)[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
-          console.log('Set current line:', mainLine.id) // デバッグ用
+          DEV_LOG.data('Default line set', mainLine.id)
         }
       } catch (error) {
-        console.error('Failed to load chat data:', error)
+        DEV_LOG.error('Failed to load chat data', error)
       }
     }
 
@@ -396,14 +411,14 @@ export function BranchingChatUI() {
   // メモ化されたタイムライン取得
   const getCompleteTimeline = () => {
     if (!currentLineId || !lines[currentLineId]) {
-      console.log('No current line found for ID:', currentLineId)
-      console.log('Available lines:', Object.keys(lines))
+      DEV_LOG.data('No current line found', {
+        currentLineId,
+        availableLines: Object.keys(lines)
+      })
       return { messages: [], transitions: [] }
     }
 
     const result = getOptimizedPath(currentLineId)
-    console.log('Complete timeline (cached):', result.messages.length, 'messages with', result.transitions.length, 'transitions')
-
     return result
   }
 
@@ -457,13 +472,10 @@ export function BranchingChatUI() {
   const handleSendMessage = () => {
     if (!inputValue.trim() && pendingImages.length === 0) return
 
-    console.log('Sending message, current line ID:', currentLineId)
-    console.log('Available lines:', Object.keys(lines))
-
     const newMessageId = `msg${Date.now()}`
     const currentLine = lines[currentLineId]
     if (!currentLine) {
-      console.error('No current line found for message sending')
+      DEV_LOG.error('No current line found for message sending', { currentLineId })
       return
     }
 
@@ -472,7 +484,11 @@ export function BranchingChatUI() {
     const lastMessage = timeline.messages[timeline.messages.length - 1]
     const baseMessageId = selectedBaseMessage || lastMessage?.id
 
-    console.log('Adding message to line:', currentLine.id, 'after message:', baseMessageId)
+    DEV_LOG.data('Sending message', {
+      lineId: currentLine.id,
+      baseMessageId,
+      isNewBranch: selectedBaseMessage !== null
+    })
 
     // ベースメッセージが選択されている場合は常に新しいラインを作成
     const shouldCreateNewLine = selectedBaseMessage !== null
@@ -647,13 +663,14 @@ export function BranchingChatUI() {
   const currentLineInfo = getCurrentLine()
   // completeTimelineは既にuseMemoで定義済み
 
-  // デバッグ: 現在の状態をログ出力
-  console.log('Render - Current Line ID:', currentLineId)
-  console.log('Render - Current Line Info:', currentLineInfo)
-  console.log('Render - Complete Timeline Count:', completeTimeline.messages.length)
-  console.log('Render - Transitions:', completeTimeline.transitions)
-  console.log('Render - All Lines:', Object.keys(lines))
-  console.log('Render - All Messages:', Object.keys(messages))
+  // Development state logging (minimal)
+  if (DEV_LOG.enabled && currentLineId && !currentLineInfo) {
+    DEV_LOG.data('Render state mismatch', {
+      currentLineId,
+      hasLineInfo: !!currentLineInfo,
+      timelineCount: completeTimeline.messages.length
+    })
+  }
 
   const renderTimelineMinimap = () => {
     if (!completeTimeline.messages.length) return null
