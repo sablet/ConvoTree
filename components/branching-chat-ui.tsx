@@ -255,9 +255,10 @@ export function BranchingChatUI() {
     loadChatData()
   }, [])
 
-  useEffect(() => {
-    scrollToBottom()
-  }, [currentLineId])
+  // ブランチ選択時の自動スクロールを無効化
+  // useEffect(() => {
+  //   scrollToBottom()
+  // }, [currentLineId])
 
   const handleImageFile = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
