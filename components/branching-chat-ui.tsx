@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Send, Zap, Tag } from "lucide-react"
+import { Send, Zap, Tag, Edit3, Plus, X } from "lucide-react"
 
 interface Message {
   id: string
@@ -21,50 +21,54 @@ interface Message {
 
 interface Branch {
   id: string
-  messages: string[]
-  endMessage: string
+  name: string
+  description: string
+  messageIds: string[]
+  tags?: string[]
+  created_at: string
+  updated_at: string
 }
 
 export function BranchingChatUI() {
-  const [messages, setMessages] = useState<Record<string, Message>>({
-    msg1: {
-      id: "msg1",
-      content:
-        "今日の午前中はしっかり作業に連続して取り組みできてた。しかしだいぶストレスフルではあったんだろうな。あんな高々ゲームでイライラが募ったのは久々だったような。",
-      timestamp: new Date("2024-01-15T20:26:00"),
-      children: ["msg2"],
-      author: "User1",
-    },
-    msg2: {
-      id: "msg2",
-      content:
-        "直近のメッセージラインがあり、その末尾がリストにある。その中の誰かを選んで新しいメッセージを足していくイメージ。\n\n実際にはラインの途中から分岐したくなるケースもあるだろうけど、大半はライン作っておけばグルーピングできそう。\n\nまたは後からここからここまでは特定のトピックのラインだったと気づくことも。\n\nこの小ラインをグループみたいなものとみなして良いはず",
-      timestamp: new Date("2024-01-15T20:38:00"),
-      parentId: "msg1",
-      children: ["msg3"],
-      hasBookmark: true,
-      author: "User2",
-    },
-    msg3: {
-      id: "msg3",
-      content:
-        "了解です！\nここまでの議論を整理して、Slack風の直線タイムラインを基本にしつつ、分岐が出たときだけ工夫するモバイルUIワイヤーフレーム案をまとめます。\n\n━━━━\n\n📱 分岐対応チャットUIワイヤーフレーム案（モバイル）\n\n1. 通常表示（分岐なし＝Slack同等）",
-      timestamp: new Date("2024-01-15T21:15:00"),
-      parentId: "msg2",
-      children: [],
-      author: "User3",
-    },
-  })
+  const [messages, setMessages] = useState<Record<string, Message>>({})
+  const [chatData, setChatData] = useState<any>(null)
 
-  const [currentBranch, setCurrentBranch] = useState<string[]>(["msg1", "msg2", "msg3"])
+  const [currentBranch, setCurrentBranch] = useState<string[]>([])
   const [inputValue, setInputValue] = useState("")
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
   const [pendingImages, setPendingImages] = useState<string[]>([])
+  const [isEditingBranch, setIsEditingBranch] = useState(false)
+  const [editingBranchData, setEditingBranchData] = useState<{
+    name: string
+    tags: string[]
+    newTag: string
+  }>({ name: "", tags: [], newTag: "" })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
+
+  useEffect(() => {
+    const loadChatData = async () => {
+      try {
+        const response = await fetch('/data/chat-sample.json')
+        const data = await response.json()
+        setChatData(data)
+        setMessages(data.messages)
+
+        // デフォルトブランチを設定
+        if (data.branches && data.branches.length > 0) {
+          const defaultBranch = data.branches.find((b: any) => b.id === 'main') || data.branches[0]
+          setCurrentBranch(defaultBranch.messageIds)
+        }
+      } catch (error) {
+        console.error('Failed to load chat data:', error)
+      }
+    }
+
+    loadChatData()
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
@@ -130,15 +134,28 @@ export function BranchingChatUI() {
     const message = messages[messageId]
     if (!message || message.children.length <= 1) return []
 
+    // 各子メッセージに対応するブランチを見つける
     return message.children.map((childId) => {
+      // このchildIdを含むブランチを探す
+      const matchingBranch = chatData?.branches?.find((branch: any) =>
+        branch.messageIds.includes(childId)
+      )
+
+      if (matchingBranch) {
+        return matchingBranch
+      }
+
+      // ブランチが見つからない場合は、動的に作成
       const path = getPathToEnd(childId)
       const endMessage = messages[path[path.length - 1]]
       return {
         id: childId,
-        messages: path,
-        endMessage: endMessage.content.slice(0, 30) + (endMessage.content.length > 30 ? "..." : ""),
+        name: `分岐 ${childId}`,
+        description: endMessage ? endMessage.content.slice(0, 30) + (endMessage.content.length > 30 ? "..." : "") : "",
+        messageIds: path,
+        tags: []
       }
-    })
+    }).filter(Boolean)
   }
 
   const getPathToEnd = (startId: string): string[] => {
@@ -156,13 +173,9 @@ export function BranchingChatUI() {
   }
 
   const switchToBranch = (branchId: string) => {
-    // 分岐点を見つける
-    const branchPoint = Object.values(messages).find((msg) => msg.children.includes(branchId))
-
-    if (branchPoint) {
-      const pathToBranch = getPathFromRoot(branchPoint.id)
-      const branchPath = getPathToEnd(branchId)
-      setCurrentBranch([...pathToBranch, ...branchPath])
+    const branch = chatData?.branches.find((b: any) => b.id === branchId)
+    if (branch) {
+      setCurrentBranch(branch.messageIds)
     }
   }
 
@@ -182,11 +195,37 @@ export function BranchingChatUI() {
     return path
   }
 
-  const getBreadcrumb = (): string[] => {
-    return currentBranch.map((msgId) => {
-      const msg = messages[msgId]
-      return `${msg.author}: ${msg.content.slice(0, 15)}${msg.content.length > 15 ? "..." : ""}`
-    })
+  const getCurrentBranch = (): Branch | null => {
+    if (!currentBranch.length) return null
+
+    // 既存のブランチから探す
+    if (chatData?.branches) {
+      const existingBranch = chatData.branches.find((branch: any) =>
+        JSON.stringify(branch.messageIds) === JSON.stringify(currentBranch)
+      )
+      if (existingBranch) return existingBranch
+    }
+
+    // 既存ブランチが見つからない場合は動的に作成
+    const lastMessageId = currentBranch[currentBranch.length - 1]
+    const lastMessage = messages[lastMessageId]
+    const now = new Date()
+    const localTimestamp = now.getFullYear() +
+      String(now.getMonth() + 1).padStart(2, '0') +
+      String(now.getDate()).padStart(2, '0') + 'T' +
+      String(now.getHours()).padStart(2, '0') +
+      String(now.getMinutes()).padStart(2, '0') +
+      String(now.getSeconds()).padStart(2, '0')
+
+    return {
+      id: `dynamic-${currentBranch.join('-')}`,
+      name: `branch_${localTimestamp}`,
+      description: lastMessage ? `${lastMessage.content.slice(0, 30)}...` : "",
+      messageIds: currentBranch,
+      tags: [],
+      created_at: now.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }),
+      updated_at: now.toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+    }
   }
 
   const handleSendMessage = () => {
@@ -233,8 +272,186 @@ export function BranchingChatUI() {
     setSelectedBaseMessage(messageId)
   }
 
+  const handleEditBranch = () => {
+    const currentBranchInfo = getCurrentBranch()
+    if (currentBranchInfo) {
+      setEditingBranchData({
+        name: currentBranchInfo.name,
+        tags: [...(currentBranchInfo.tags || [])],
+        newTag: ""
+      })
+      setIsEditingBranch(true)
+    }
+  }
+
+  const handleSaveBranchEdit = () => {
+    const currentBranchInfo = getCurrentBranch()
+    if (currentBranchInfo && chatData) {
+      let updatedBranches
+
+      // 既存のブランチかどうかチェック
+      const existingBranchIndex = chatData.branches.findIndex((branch: any) =>
+        branch.id === currentBranchInfo.id
+      )
+
+      if (existingBranchIndex >= 0) {
+        // 既存ブランチの更新
+        updatedBranches = chatData.branches.map((branch: any) => {
+          if (branch.id === currentBranchInfo.id) {
+            return {
+              ...branch,
+              name: editingBranchData.name,
+              description: branch.description, // 既存の説明を保持
+              tags: editingBranchData.tags,
+              updated_at: new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+            }
+          }
+          return branch
+        })
+      } else {
+        // 新しいブランチの追加
+        const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })
+        const newBranch = {
+          id: `branch-${Date.now()}`,
+          name: editingBranchData.name,
+          description: currentBranchInfo.description,
+          messageIds: currentBranch,
+          tags: editingBranchData.tags,
+          created_at: now,
+          updated_at: now
+        }
+        updatedBranches = [...chatData.branches, newBranch]
+      }
+
+      setChatData({
+        ...chatData,
+        branches: updatedBranches
+      })
+      setIsEditingBranch(false)
+    }
+  }
+
+  const handleAddTag = () => {
+    if (editingBranchData.newTag.trim()) {
+      setEditingBranchData(prev => ({
+        ...prev,
+        tags: [...prev.tags, prev.newTag.trim()],
+        newTag: ""
+      }))
+    }
+  }
+
+  const handleRemoveTag = (tagIndex: number) => {
+    setEditingBranchData(prev => ({
+      ...prev,
+      tags: prev.tags.filter((_, index) => index !== tagIndex)
+    }))
+  }
+
+  const currentBranchInfo = getCurrentBranch()
+
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-white">
+      {/* Current Branch Header */}
+      {currentBranchInfo && (
+        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+          {!isEditingBranch ? (
+            <>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-medium text-gray-800">{currentBranchInfo.name}</h2>
+                  <p className="text-xs text-gray-500">{currentBranchInfo.description}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleEditBranch}
+                  className="h-8 px-2 text-gray-400 hover:text-gray-600"
+                >
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+              </div>
+              {currentBranchInfo.tags && currentBranchInfo.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {currentBranchInfo.tags.map((tag, tagIndex) => (
+                    <Badge key={`current-branch-tag-${tagIndex}`} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="space-y-3">
+              {/* タイトル編集 */}
+              <div>
+                <Input
+                  value={editingBranchData.name}
+                  onChange={(e) => setEditingBranchData(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="ブランチタイトル"
+                  className="text-sm font-medium"
+                />
+              </div>
+
+              {/* タグ編集 */}
+              <div>
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {editingBranchData.tags.map((tag, tagIndex) => (
+                    <div key={tagIndex} className="flex items-center">
+                      <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-700 pr-1">
+                        {tag}
+                        <button
+                          onClick={() => handleRemoveTag(tagIndex)}
+                          className="ml-1 text-emerald-500 hover:text-emerald-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={editingBranchData.newTag}
+                    onChange={(e) => setEditingBranchData(prev => ({ ...prev, newTag: e.target.value }))}
+                    placeholder="新しいタグ"
+                    className="text-xs flex-1"
+                    onKeyPress={(e) => e.key === "Enter" && handleAddTag()}
+                  />
+                  <Button
+                    onClick={handleAddTag}
+                    size="sm"
+                    variant="outline"
+                    className="px-2"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* 保存・キャンセルボタン */}
+              <div className="flex gap-2 justify-end">
+                <Button
+                  onClick={() => setIsEditingBranch(false)}
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleSaveBranchEdit}
+                  size="sm"
+                  className="text-xs bg-emerald-500 hover:bg-emerald-600"
+                >
+                  保存
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
         {currentBranch.map((messageId, index) => {
@@ -253,7 +470,7 @@ export function BranchingChatUI() {
                 <div className="flex gap-3">
                   {/* 時刻表示 */}
                   <div className="text-xs text-gray-400 font-mono min-w-[35px] pt-0.5 leading-relaxed">
-                    {message.timestamp.toLocaleTimeString("ja-JP", {
+                    {new Date(message.timestamp).toLocaleTimeString("ja-JP", {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
@@ -291,20 +508,6 @@ export function BranchingChatUI() {
                       </div>
                     )}
 
-                    {/* タグ表示 */}
-                    {message.tags && message.tags.length > 0 && (
-                      <div className="flex items-center gap-2 mt-3">
-                        <div className="flex items-center gap-1 text-gray-400">
-                          <Tag className="h-3 w-3" />
-                          <span className="text-xs">タグを追加</span>
-                        </div>
-                        {message.tags.map((tag, tagIndex) => (
-                          <Badge key={`${messageId}-tag-${tagIndex}`} variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
@@ -329,10 +532,19 @@ export function BranchingChatUI() {
                         <DropdownMenuItem
                           key={`${messageId}-branch-${branch.id}`}
                           onClick={() => switchToBranch(branch.id)}
-                          className="flex flex-col items-start gap-1 p-3"
+                          className="flex flex-col items-start gap-2 p-3"
                         >
-                          <div className="font-medium">枝{branchIndex + 1}</div>
-                          <div className="text-xs text-gray-500">末尾: {branch.endMessage}</div>
+                          <div className="font-medium">{branch.name}</div>
+                          <div className="text-xs text-gray-500">{branch.description}</div>
+                          {branch.tags && branch.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {branch.tags.map((tag, tagIndex) => (
+                                <Badge key={`${branch.id}-tag-${tagIndex}`} variant="secondary" className="text-xs bg-gray-100 text-gray-600">
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </DropdownMenuItem>
                       ))}
                     </DropdownMenuContent>
