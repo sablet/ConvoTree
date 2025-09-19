@@ -960,7 +960,7 @@ export function BranchingChatUI() {
                       const isCurrentLine = line.id === currentLineId
                       const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
                       const lastMessage = lastMessageId ? messages[lastMessageId] : null
-                      const lastMessagePreview = lastMessage?.content.slice(0, 25) + (lastMessage?.content.length > 25 ? "..." : "")
+                      const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 25) + (lastMessage.content.length > 25 ? "..." : "") : ""
                       const firstTag = line.tags?.[0]
                       const relativeTime = line.created_at ? getRelativeTime(line.created_at) : ""
 
