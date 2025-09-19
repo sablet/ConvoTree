@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Send, Zap, Tag, Edit3, Plus, X } from "lucide-react"
+import { Send, Zap, Tag, Edit3, Plus, X, Circle, GitBranch } from "lucide-react"
 
 interface Message {
   id: string
@@ -350,8 +350,55 @@ export function BranchingChatUI() {
 
   const currentBranchInfo = getCurrentBranch()
 
+  const renderTimelineMinimap = () => {
+    if (currentBranch.length === 0) return null
+
+    return (
+      <div className="px-4 py-2 border-b border-gray-200 bg-white">
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1 overflow-x-auto pb-1 flex-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {currentBranch.map((messageId, index) => {
+            const message = messages[messageId]
+            const hasBranches = message && message.children.length > 1
+            const isLast = index === currentBranch.length - 1
+
+            return (
+              <div key={messageId} className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  className={`relative flex items-center justify-center transition-all duration-200 ${
+                    hasBranches
+                      ? 'w-6 h-6 bg-emerald-100 hover:bg-emerald-200 border-2 border-emerald-300 rounded-full'
+                      : 'w-4 h-4 bg-gray-200 hover:bg-gray-300 rounded-full'
+                  }`}
+                  onClick={() => {
+                    const element = document.getElementById(`message-${messageId}`)
+                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                  }}
+                >
+                  {hasBranches ? (
+                    <GitBranch className="w-3 h-3 text-emerald-600" />
+                  ) : (
+                    <Circle className="w-2 h-2 text-gray-500 fill-current" />
+                  )}
+                </button>
+                {!isLast && (
+                  <div className="w-3 h-0.5 bg-gray-300"></div>
+                )}
+              </div>
+            )
+          })}
+          </div>
+          <span className="text-xs text-gray-400 ml-3 flex-shrink-0">{currentBranch.length}メッセージ</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col h-screen max-w-md mx-auto bg-white">
+      {/* Timeline Minimap */}
+      {renderTimelineMinimap()}
+
       {/* Current Branch Header */}
       {currentBranchInfo && (
         <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
@@ -462,6 +509,7 @@ export function BranchingChatUI() {
           return (
             <div key={messageId} className="space-y-4">
               <div
+                id={`message-${messageId}`}
                 className={`cursor-pointer transition-all duration-200 ${
                   isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
                 }`}
