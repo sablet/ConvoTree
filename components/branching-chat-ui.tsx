@@ -471,37 +471,22 @@ export function BranchingChatUI({
     if (shouldCreateNewLine) {
       // 新しいラインを作成
       const newLineId = `line-${Date.now()}`
-      const newLineName = `分岐 ${Object.keys(lines).length + 1}`
+      // メッセージ内容をブランチ名に使用（50文字まで）
+      const newLineName = inputValue.slice(0, 50) + (inputValue.length > 50 ? '...' : '')
 
-      const newMessage: Message = {
-        id: newMessageId,
-        content: inputValue,
-        timestamp: new Date(),
-        lineId: newLineId,
-        branchFromMessageId: selectedBaseMessage,
-        author: "User",
-        ...(pendingImages.length > 0 && { images: [...pendingImages] }),
-      }
-
-      // 新しいラインを作成
+      // 新しいラインを作成（空のメッセージリストで開始）
       const newLine: Line = {
         id: newLineId,
         name: newLineName,
-        description: `${inputValue.slice(0, 50)}${inputValue.length > 50 ? '...' : ''}`,
-        messageIds: [newMessageId],
-        startMessageId: newMessageId,
-        endMessageId: newMessageId,
+        description: "",
+        messageIds: [],
+        startMessageId: "",
+        endMessageId: undefined,
         branchFromMessageId: selectedBaseMessage,
         tags: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
-
-      // メッセージを追加
-      setMessages((prev) => ({
-        ...prev,
-        [newMessageId]: newMessage
-      }))
 
       // ラインを追加
       setLines((prev) => ({
