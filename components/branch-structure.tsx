@@ -241,8 +241,15 @@ export function BranchStructure({
 
 
   const handleLineClick = (line: Line, event: React.MouseEvent) => {
-    // 編集ボタンがクリックされた場合は何もしない
-    if ((event.target as HTMLElement).closest('button')) {
+    // 編集中の場合は何もしない
+    if (editingLineId === line.id) {
+      return
+    }
+
+    // 編集ボタンやフォーム要素がクリックされた場合は何もしない
+    if ((event.target as HTMLElement).closest('button') ||
+        (event.target as HTMLElement).closest('input') ||
+        (event.target as HTMLElement).tagName.toLowerCase() === 'input') {
       return
     }
 
