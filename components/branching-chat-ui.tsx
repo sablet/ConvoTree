@@ -54,12 +54,26 @@ const DEV_LOG = {
   }
 }
 
-export function BranchingChatUI() {
-  const [messages, setMessages] = useState<Record<string, Message>>({})
-  const [lines, setLines] = useState<Record<string, Line>>({})
-  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
+interface BranchingChatUIProps {
+  initialMessages?: Record<string, Message>
+  initialLines?: Record<string, Line>
+  initialBranchPoints?: Record<string, BranchPoint>
+  initialCurrentLineId?: string
+  onLineChange?: (lineId: string) => void
+}
 
-  const [currentLineId, setCurrentLineId] = useState<string>('')
+export function BranchingChatUI({
+  initialMessages = {},
+  initialLines = {},
+  initialBranchPoints = {},
+  initialCurrentLineId = '',
+  onLineChange
+}: BranchingChatUIProps) {
+  const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
+  const [lines, setLines] = useState<Record<string, Line>>(initialLines)
+  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>(initialBranchPoints)
+
+  const [currentLineId, setCurrentLineId] = useState<string>(initialCurrentLineId)
 
   // パフォーマンス最適化: パスキャッシュとメモ化
   const [pathCache, setPathCache] = useState<Map<string, { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }>>(new Map())
@@ -147,41 +161,69 @@ export function BranchingChatUI() {
   }
 
 
+  // 初期データの更新を監視
   useEffect(() => {
-    const loadChatData = async () => {
-      try {
-        const response = await fetch('/data/chat-sample.json')
-        const data = await response.json()
-
-        DEV_LOG.data('Chat data loaded successfully', {
-          messagesCount: Object.keys(data.messages || {}).length,
-          linesCount: data.lines?.length || 0,
-          branchPointsCount: Object.keys(data.branchPoints || {}).length
-        })
-
-        // 新しいデータ構造をそのまま使用
-        const loaded = loadNewDataStructure(data)
-        setMessages(loaded.messages)
-        setLines(loaded.lines)
-        setBranchPoints(loaded.branchPoints)
-
-        // キャッシュをクリア
-        setPathCache(new Map())
-        setLineAncestryCache(new Map())
-
-        // デフォルトラインを設定（メインラインまたは最初のライン）
-        const mainLine = loaded.lines['main'] || Object.values(loaded.lines)[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
-          DEV_LOG.data('Default line set', mainLine.id)
-        }
-      } catch (error) {
-        DEV_LOG.error('Failed to load chat data', error)
-      }
+    if (Object.keys(initialMessages).length > 0) {
+      setMessages(initialMessages)
     }
+  }, [initialMessages])
 
-    loadChatData()
-  }, [])
+  useEffect(() => {
+    if (Object.keys(initialLines).length > 0) {
+      setLines(initialLines)
+    }
+  }, [initialLines])
+
+  useEffect(() => {
+    if (Object.keys(initialBranchPoints).length > 0) {
+      setBranchPoints(initialBranchPoints)
+    }
+  }, [initialBranchPoints])
+
+  useEffect(() => {
+    if (initialCurrentLineId) {
+      setCurrentLineId(initialCurrentLineId)
+    }
+  }, [initialCurrentLineId])
+
+  useEffect(() => {
+    // 初期データが空の場合のみローカルファイルから読み込み
+    if (Object.keys(initialMessages).length === 0) {
+      const loadChatData = async () => {
+        try {
+          const response = await fetch('/data/chat-sample.json')
+          const data = await response.json()
+
+          DEV_LOG.data('Chat data loaded successfully', {
+            messagesCount: Object.keys(data.messages || {}).length,
+            linesCount: data.lines?.length || 0,
+            branchPointsCount: Object.keys(data.branchPoints || {}).length
+          })
+
+          // 新しいデータ構造をそのまま使用
+          const loaded = loadNewDataStructure(data)
+          setMessages(loaded.messages)
+          setLines(loaded.lines)
+          setBranchPoints(loaded.branchPoints)
+
+          // キャッシュをクリア
+          setPathCache(new Map())
+          setLineAncestryCache(new Map())
+
+          // デフォルトラインを設定（メインラインまたは最初のライン）
+          const mainLine = loaded.lines['main'] || Object.values(loaded.lines)[0]
+          if (mainLine) {
+            setCurrentLineId(mainLine.id)
+            DEV_LOG.data('Default line set', mainLine.id)
+          }
+        } catch (error) {
+          DEV_LOG.error('Failed to load chat data', error)
+        }
+      }
+
+      loadChatData()
+    }
+  }, [initialMessages])
 
   // ブランチ選択時の自動スクロールを無効化
   // useEffect(() => {
@@ -360,6 +402,10 @@ export function BranchingChatUI() {
   const switchToLine = (lineId: string) => {
     if (lines[lineId]) {
       setCurrentLineId(lineId)
+      // 外部コールバックを呼び出し
+      if (onLineChange) {
+        onLineChange(lineId)
+      }
       // 新しいラインに切り替えたらキャッシュをクリアしない（再利用可能）
     }
   }

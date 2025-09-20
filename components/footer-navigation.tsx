@@ -1,10 +1,10 @@
 "use client"
 
-import { MessageSquare, BarChart3, Tags, Archive } from "lucide-react"
+import { MessageSquare, BarChart3, Tags, Archive, GitBranch } from "lucide-react"
 
 interface FooterNavigationProps {
-  currentView: 'chat' | 'management'
-  onViewChange: (view: 'chat' | 'management') => void
+  currentView: 'chat' | 'management' | 'branches'
+  onViewChange: (view: 'chat' | 'management' | 'branches') => void
 }
 
 export function FooterNavigation({ currentView, onViewChange }: FooterNavigationProps) {
@@ -14,6 +14,12 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
       label: 'チャット',
       icon: MessageSquare,
       description: 'ブランチングチャット'
+    },
+    {
+      id: 'branches' as const,
+      label: 'ブランチ',
+      icon: GitBranch,
+      description: 'ブランチ構造'
     },
     {
       id: 'management' as const,
@@ -41,13 +47,14 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
         {navItems.map((item) => {
           const Icon = item.icon
           const isActive = item.id === currentView ||
-            (item.id === 'management' && currentView === 'management')
+            (item.id === 'management' && currentView === 'management') ||
+            (item.id === 'branches' && currentView === 'branches')
 
           return (
             <button
               key={item.id}
               onClick={() => {
-                if (item.id === 'chat' || item.id === 'management') {
+                if (item.id === 'chat' || item.id === 'management' || item.id === 'branches') {
                   onViewChange(item.id)
                 }
               }}
