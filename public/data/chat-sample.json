@@ -5,9 +5,7 @@
       "content": "プロジェクトキックオフ！\n新しいチャットアプリの仕様について話し合いましょう。まず基本的な機能要件から整理していきたいと思います。",
       "timestamp": "2024-01-15T09:00:00.000Z",
       "lineId": "main",
-      "nextInLine": "msg2",
-      "author": "ProjectManager",
-      "tags": ["キックオフ", "要件定義"]
+      "nextInLine": "msg2"
     },
     "msg2": {
       "id": "msg2",
@@ -16,9 +14,7 @@
       "lineId": "main",
       "prevInLine": "msg1",
       "nextInLine": "msg3",
-      "hasBookmark": true,
-      "author": "ProductOwner",
-      "tags": ["基本機能", "要件"]
+      "hasBookmark": true
     },
     "msg3": {
       "id": "msg3",
@@ -26,9 +22,7 @@
       "timestamp": "2024-01-15T09:10:00.000Z",
       "lineId": "main",
       "prevInLine": "msg2",
-      "nextInLine": "msg6",
-      "author": "TechLead",
-      "tags": ["技術スタック", "アーキテクチャ"]
+      "nextInLine": "msg6"
     },
     "msg4": {
       "id": "msg4",
@@ -36,9 +30,7 @@
       "timestamp": "2024-01-15T09:15:00.000Z",
       "lineId": "design",
       "branchFromMessageId": "msg2",
-      "nextInLine": "msg8",
-      "author": "UIDesigner",
-      "tags": ["デザイン", "UI/UX", "アクセシビリティ"]
+      "nextInLine": "msg8"
     },
     "msg5": {
       "id": "msg5",
@@ -46,9 +38,7 @@
       "timestamp": "2024-01-15T09:20:00.000Z",
       "lineId": "security",
       "branchFromMessageId": "msg2",
-      "nextInLine": "msg10",
-      "author": "SecurityEngineer",
-      "tags": ["セキュリティ", "暗号化", "認証"]
+      "nextInLine": "msg10"
     },
     "msg6": {
       "id": "msg6",
@@ -56,9 +46,7 @@
       "timestamp": "2024-01-15T09:25:00.000Z",
       "lineId": "main",
       "prevInLine": "msg3",
-      "nextInLine": "msg11",
-      "author": "DevOpsEngineer",
-      "tags": ["DevOps", "インフラ", "AWS"]
+      "nextInLine": "msg11"
     },
     "msg7": {
       "id": "msg7",
@@ -66,9 +54,7 @@
       "timestamp": "2024-01-15T09:30:00.000Z",
       "lineId": "database",
       "branchFromMessageId": "msg3",
-      "nextInLine": "msg13",
-      "author": "DatabaseEngineer",
-      "tags": ["データベース", "設計", "ツリー構造"]
+      "nextInLine": "msg13"
     },
     "msg8": {
       "id": "msg8",
@@ -77,9 +63,10 @@
       "lineId": "design",
       "prevInLine": "msg4",
       "nextInLine": "msg15",
-      "author": "UIDesigner",
-      "tags": ["プロトタイプ", "UI", "分岐"],
-      "images": ["mockup_url_1", "mockup_url_2"]
+      "images": [
+        "mockup_url_1",
+        "mockup_url_2"
+      ]
     },
     "msg9": {
       "id": "msg9",
@@ -87,9 +74,7 @@
       "timestamp": "2024-01-15T09:40:00.000Z",
       "lineId": "ux_research",
       "branchFromMessageId": "msg4",
-      "nextInLine": "msg17",
-      "author": "UXResearcher",
-      "tags": ["ユーザビリティテスト", "UX調査"]
+      "nextInLine": "msg17"
     },
     "msg10": {
       "id": "msg10",
@@ -97,9 +82,7 @@
       "timestamp": "2024-01-15T09:45:00.000Z",
       "lineId": "security",
       "prevInLine": "msg5",
-      "nextInLine": "msg18",
-      "author": "SecurityEngineer",
-      "tags": ["セキュリティ監査", "ペンテスト"]
+      "nextInLine": "msg18"
     },
     "msg11": {
       "id": "msg11",
@@ -107,9 +90,7 @@
       "timestamp": "2024-01-15T09:50:00.000Z",
       "lineId": "main",
       "prevInLine": "msg6",
-      "nextInLine": "msg19",
-      "author": "DevOpsEngineer",
-      "tags": ["AWS", "インフラ設計", "コスト"]
+      "nextInLine": "msg19"
     },
     "msg12": {
       "id": "msg12",
@@ -117,9 +98,7 @@
       "timestamp": "2024-01-15T09:55:00.000Z",
       "lineId": "devops",
       "branchFromMessageId": "msg6",
-      "nextInLine": "msg20",
-      "author": "DevOpsEngineer",
-      "tags": ["CI/CD", "デプロイメント"]
+      "nextInLine": "msg20"
     },
     "msg13": {
       "id": "msg13",
@@ -127,18 +106,14 @@
       "timestamp": "2024-01-15T10:00:00.000Z",
       "lineId": "database",
       "prevInLine": "msg7",
-      "nextInLine": "msg21",
-      "author": "DatabaseEngineer",
-      "tags": ["SQL", "実装", "closure table"]
+      "nextInLine": "msg21"
     },
     "msg14": {
       "id": "msg14",
       "content": "パフォーマンス考慮事項:\n\n- メッセージ取得のページネーション\n- インデックス設計の最適化\n- 読み取り専用レプリカの活用\n- 分岐が深い場合の処理時間\n\n大規模になった時の対策も考えておく必要がありますね。",
       "timestamp": "2024-01-15T10:05:00.000Z",
       "lineId": "database_performance",
-      "branchFromMessageId": "msg7",
-      "author": "DatabaseEngineer",
-      "tags": ["パフォーマンス", "スケーラビリティ"]
+      "branchFromMessageId": "msg7"
     },
     "msg15": {
       "id": "msg15",
@@ -146,196 +121,243 @@
       "timestamp": "2024-01-15T10:10:00.000Z",
       "lineId": "design",
       "prevInLine": "msg8",
-      "nextInLine": "msg22",
-      "author": "FrontendDeveloper",
-      "tags": ["フィードバック", "実装"]
+      "nextInLine": "msg22"
     },
     "msg16": {
       "id": "msg16",
       "content": "アニメーションにもこだわりたいです。\n\n分岐の切り替え時にスムーズな遷移があると、ユーザーが迷子になりにくそう。\n\nFramer Motionを使って実装してみましょうか？",
       "timestamp": "2024-01-15T10:15:00.000Z",
       "lineId": "animation",
-      "branchFromMessageId": "msg8",
-      "author": "UIDesigner",
-      "tags": ["アニメーション", "UX", "Framer Motion"]
+      "branchFromMessageId": "msg8"
     },
     "msg17": {
       "id": "msg17",
       "content": "ユーザビリティテストの進め方:\n\n フェーズ1: 社内テスト（来週）\n フェーズ2: 外部モニター（再来週）\n フェーズ3: ベータテスト（来月）\n\n各フェーズで得られた知見を次の開発に反映させていきましょう。",
       "timestamp": "2024-01-15T10:20:00.000Z",
       "lineId": "ux_research",
-      "prevInLine": "msg9",
-      "author": "UXResearcher",
-      "tags": ["テスト計画", "ベータテスト"]
+      "prevInLine": "msg9"
     },
     "msg18": {
       "id": "msg18",
       "content": "セキュリティ観点でのコードレビューも強化しましょう。\n\nチェックリスト作成して、全プルリクエストでセキュリティ要件を確認。\n\nSOQLインジェクション、XSS、CSRF等の基本的な脆弱性は自動検出したいです。",
       "timestamp": "2024-01-15T10:25:00.000Z",
       "lineId": "security",
-      "prevInLine": "msg10",
-      "author": "SecurityEngineer",
-      "tags": ["コードレビュー", "自動検出", "脆弱性"]
+      "prevInLine": "msg10"
     },
     "msg19": {
       "id": "msg19",
       "content": "月間コスト見積もり:\n\n- ECS Fargate: $200\n- RDS: $150\n- ElastiCache: $80\n- S3 + CloudFront: $50\n- その他: $70\n\n合計: 約$550/月\n\nユーザー数に応じてスケールする想定です。",
       "timestamp": "2024-01-15T10:30:00.000Z",
       "lineId": "main",
-      "prevInLine": "msg11",
-      "author": "DevOpsEngineer",
-      "tags": ["コスト見積もり", "予算"]
+      "prevInLine": "msg11"
     },
     "msg20": {
       "id": "msg20",
       "content": "デプロイメント頻度の目標:\n\n- 機能リリース: 週1回\n- バグ修正: 必要に応じて随時\n- セキュリティパッチ: 24時間以内\n\n自動化レベルを高めて、安全で迅速なリリースサイクルを実現したいです。",
       "timestamp": "2024-01-15T10:35:00.000Z",
       "lineId": "devops",
-      "prevInLine": "msg12",
-      "author": "DevOpsEngineer",
-      "tags": ["リリースサイクル", "自動化"]
+      "prevInLine": "msg12"
     },
     "msg21": {
       "id": "msg21",
       "content": "closure tableの利点:\n\n✅ 任意の深度のクエリが高速\n✅ サブツリーの取得が簡単\n✅ パスの検索が効率的\n\n課題:\n❌ ストレージ使用量が多い\n❌ 更新処理が複雑\n\nトレードオフを考慮して採用しましょう。",
       "timestamp": "2024-01-15T10:40:00.000Z",
       "lineId": "database",
-      "prevInLine": "msg13",
-      "author": "DatabaseEngineer",
-      "tags": ["トレードオフ", "設計判断"]
+      "prevInLine": "msg13"
     },
     "msg22": {
       "id": "msg22",
       "content": "実装上の技術的課題:\n\n1. 大量データの仮想化スクロール\n2. 複雑な状態管理\n3. リアルタイム更新の競合\n4. ブラウザパフォーマンス\n\nReact 18のConcurrent Featuresを活用すれば解決できそうです。",
       "timestamp": "2024-01-15T10:45:00.000Z",
       "lineId": "design",
-      "prevInLine": "msg15",
-      "author": "FrontendDeveloper",
-      "tags": ["技術課題", "React 18", "パフォーマンス"]
+      "prevInLine": "msg15"
     }
   },
   "lines": [
     {
       "id": "main",
       "name": "メインの流れ",
-      "messageIds": ["msg1", "msg2", "msg3", "msg6", "msg11", "msg19"],
+      "messageIds": [
+        "msg1",
+        "msg2",
+        "msg3",
+        "msg6",
+        "msg11",
+        "msg19"
+      ],
       "startMessageId": "msg1",
       "endMessageId": "msg19",
-      "tags": ["キックオフ", "要件定義", "技術スタック", "インフラ"],
-      "created_at": "2024-01-15T09:00:00.000Z",
+      "tags": [
+        "キックオフ",
+        "要件定義",
+        "技術スタック",
+        "インフラ"
+      ],
       "updated_at": "2024-01-15T10:30:00.000Z"
     },
     {
       "id": "design",
       "name": "デザイン検討",
-      "messageIds": ["msg4", "msg8", "msg15", "msg22"],
+      "messageIds": [
+        "msg4",
+        "msg8",
+        "msg15",
+        "msg22"
+      ],
       "startMessageId": "msg4",
       "endMessageId": "msg22",
       "branchFromMessageId": "msg2",
-      "tags": ["デザイン", "UI/UX", "プロトタイプ", "アクセシビリティ"],
-      "created_at": "2024-01-15T09:15:00.000Z",
+      "tags": [
+        "デザイン",
+        "UI/UX",
+        "プロトタイプ",
+        "アクセシビリティ"
+      ],
       "updated_at": "2024-01-15T10:45:00.000Z"
     },
     {
       "id": "security",
       "name": "セキュリティ要件",
-      "messageIds": ["msg5", "msg10", "msg18"],
+      "messageIds": [
+        "msg5",
+        "msg10",
+        "msg18"
+      ],
       "startMessageId": "msg5",
       "endMessageId": "msg18",
       "branchFromMessageId": "msg2",
-      "tags": ["セキュリティ", "暗号化", "認証", "監査"],
-      "created_at": "2024-01-15T09:20:00.000Z",
+      "tags": [
+        "セキュリティ",
+        "暗号化",
+        "認証",
+        "監査"
+      ],
       "updated_at": "2024-01-15T10:25:00.000Z"
     },
     {
       "id": "database",
       "name": "データベース設計",
-      "messageIds": ["msg7", "msg13", "msg21"],
+      "messageIds": [
+        "msg7",
+        "msg13",
+        "msg21"
+      ],
       "startMessageId": "msg7",
       "endMessageId": "msg21",
       "branchFromMessageId": "msg3",
-      "tags": ["データベース", "設計", "パフォーマンス", "ツリー構造"],
-      "created_at": "2024-01-15T09:30:00.000Z",
+      "tags": [
+        "データベース",
+        "設計",
+        "パフォーマンス",
+        "ツリー構造"
+      ],
       "updated_at": "2024-01-15T10:40:00.000Z"
     },
     {
       "id": "devops",
       "name": "DevOps・インフラ",
-      "messageIds": ["msg12", "msg20"],
+      "messageIds": [
+        "msg12",
+        "msg20"
+      ],
       "startMessageId": "msg12",
       "endMessageId": "msg20",
       "branchFromMessageId": "msg6",
-      "tags": ["DevOps", "インフラ", "CI/CD", "AWS", "自動化"],
-      "created_at": "2024-01-15T09:25:00.000Z",
+      "tags": [
+        "DevOps",
+        "インフラ",
+        "CI/CD",
+        "AWS",
+        "自動化"
+      ],
       "updated_at": "2024-01-15T10:35:00.000Z"
     },
     {
       "id": "ux_research",
       "name": "UX調査",
-      "messageIds": ["msg9", "msg17"],
+      "messageIds": [
+        "msg9",
+        "msg17"
+      ],
       "startMessageId": "msg9",
       "endMessageId": "msg17",
       "branchFromMessageId": "msg4",
-      "tags": ["UX調査", "ユーザビリティテスト", "ベータテスト"],
-      "created_at": "2024-01-15T09:40:00.000Z",
+      "tags": [
+        "UX調査",
+        "ユーザビリティテスト",
+        "ベータテスト"
+      ],
       "updated_at": "2024-01-15T10:20:00.000Z"
     },
     {
       "id": "database_performance",
       "name": "DB性能検討",
-      "messageIds": ["msg14"],
+      "messageIds": [
+        "msg14"
+      ],
       "startMessageId": "msg14",
       "endMessageId": "msg14",
       "branchFromMessageId": "msg7",
-      "tags": ["パフォーマンス", "スケーラビリティ"],
-      "created_at": "2024-01-15T10:05:00.000Z",
+      "tags": [
+        "パフォーマンス",
+        "スケーラビリティ"
+      ],
       "updated_at": "2024-01-15T10:05:00.000Z"
     },
     {
       "id": "animation",
       "name": "アニメーション",
-      "messageIds": ["msg16"],
+      "messageIds": [
+        "msg16"
+      ],
       "startMessageId": "msg16",
       "endMessageId": "msg16",
       "branchFromMessageId": "msg8",
-      "tags": ["アニメーション", "UX", "Framer Motion"],
-      "created_at": "2024-01-15T10:15:00.000Z",
+      "tags": [
+        "アニメーション",
+        "UX",
+        "Framer Motion"
+      ],
       "updated_at": "2024-01-15T10:15:00.000Z"
     }
   ],
   "branchPoints": {
     "msg2": {
       "messageId": "msg2",
-      "lines": ["design", "security"]
+      "lines": [
+        "design",
+        "security"
+      ]
     },
     "msg3": {
       "messageId": "msg3",
-      "lines": ["database"]
+      "lines": [
+        "database"
+      ]
     },
     "msg4": {
       "messageId": "msg4",
-      "lines": ["ux_research"]
+      "lines": [
+        "ux_research"
+      ]
     },
     "msg6": {
       "messageId": "msg6",
-      "lines": ["devops"]
+      "lines": [
+        "devops"
+      ]
     },
     "msg7": {
       "messageId": "msg7",
-      "lines": ["database_performance"]
+      "lines": [
+        "database_performance"
+      ]
     },
     "msg8": {
       "messageId": "msg8",
-      "lines": ["animation"]
+      "lines": [
+        "animation"
+      ]
     }
-  },
-  "metadata": {
-    "version": "3.0",
-    "dataStructure": "line-exclusive",
-    "createdAt": "2024-01-15T09:00:00.000Z",
-    "lastUpdated": "2024-01-15T10:45:00.000Z",
-    "totalMessages": 22,
-    "totalLines": 8,
-    "maxLineLength": 6
   }
 }
