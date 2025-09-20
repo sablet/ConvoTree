@@ -35,6 +35,15 @@ interface Line {
 interface Tag {
   id: string
   name: string
+  color?: string
+  groupId?: string
+}
+
+interface TagGroup {
+  id: string
+  name: string
+  color: string
+  order: number
 }
 
 interface BranchPoint {
@@ -49,6 +58,7 @@ export default function BranchListPage() {
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
+  const [tagGroups, setTagGroups] = useState<Record<string, TagGroup>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
@@ -64,6 +74,7 @@ export default function BranchListPage() {
         const newLines: Record<string, Line> = {}
         const newBranchPoints: Record<string, BranchPoint> = {}
         const newTags: Record<string, Tag> = {}
+        const newTagGroups: Record<string, TagGroup> = {}
 
         // メッセージデータ変換
         if (data.messages) {
@@ -96,10 +107,18 @@ export default function BranchListPage() {
           })
         }
 
+        // タググループデータ
+        if (data.tagGroups) {
+          Object.entries(data.tagGroups as Record<string, TagGroup>).forEach(([id, tagGroup]) => {
+            newTagGroups[id] = tagGroup
+          })
+        }
+
         setMessages(newMessages)
         setLines(newLines)
         setBranchPoints(newBranchPoints)
         setTags(newTags)
+        setTagGroups(newTagGroups)
 
         // デフォルトライン設定
         const mainLine = newLines['main'] || Object.values(newLines)[0]
@@ -181,10 +200,11 @@ export default function BranchListPage() {
           lines={lines}
           branchPoints={branchPoints}
           tags={tags}
+          tagGroups={tagGroups}
           currentLineId={currentLineId}
           onLineSwitch={handleLineSwitch}
           onLineEdit={handleLineEdit}
-          onViewChange={setCurrentView}
+          onViewChange={handleViewChange}
         />
       </div>
       <FooterNavigation

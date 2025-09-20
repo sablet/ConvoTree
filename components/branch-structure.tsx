@@ -46,6 +46,8 @@ interface Line {
 interface Tag {
   id: string
   name: string
+  color?: string
+  groupId?: string
 }
 
 interface BranchPoint {
@@ -53,11 +55,19 @@ interface BranchPoint {
   lines: string[]
 }
 
+interface TagGroup {
+  id: string
+  name: string
+  color: string
+  order: number
+}
+
 interface BranchStructureProps {
   messages: Record<string, Message>
   lines: Record<string, Line>
   branchPoints: Record<string, BranchPoint>
   tags: Record<string, Tag>
+  tagGroups: Record<string, TagGroup>
   currentLineId: string
   onLineSwitch: (lineId: string) => void
   onLineEdit: (lineId: string, updates: Partial<Line>) => void
@@ -76,6 +86,7 @@ export function BranchStructure({
   lines,
   branchPoints,
   tags,
+  tagGroups,
   currentLineId,
   onLineSwitch,
   onLineEdit,
@@ -85,11 +96,35 @@ export function BranchStructure({
   const [editData, setEditData] = useState<{
     name: string
     tagIds: string[]
-    newTag: string
     availableTags: string[]
-  }>({ name: "", tagIds: [], newTag: "", availableTags: [] })
-  // 全ブランチを常に展開
+  }>({
+    name: "",
+    tagIds: [],
+    availableTags: []
+  })
   const [showStatistics, setShowStatistics] = useState(false)
+  const [sortByTag, setSortByTag] = useState<string | null>(null)
+
+  // タググループごとのタグ一覧を生成
+  const tagsByGroup = useMemo(() => {
+    const grouped: Record<string, string[]> = {}
+
+    Object.values(tagGroups).forEach(group => {
+      grouped[group.name] = []
+    })
+
+    Object.values(tags).forEach(tag => {
+      if (tag.groupId && tagGroups[tag.groupId]) {
+        const groupName = tagGroups[tag.groupId].name
+        if (!grouped[groupName]) {
+          grouped[groupName] = []
+        }
+        grouped[groupName].push(tag.name)
+      }
+    })
+
+    return grouped
+  }, [tags, tagGroups])
 
   // ツリー構造を構築し、深さ優先でフラットリストに変換
   const allBranches = useMemo(() => {
@@ -151,8 +186,20 @@ export function BranchStructure({
 
     roots.forEach(root => traverse(root, 0));
 
+    // タグによるソート機能
+    if (sortByTag) {
+      return flattened.filter(node => {
+        const line = node.line;
+        if (!line.tagIds || line.tagIds.length === 0) return false;
+        return line.tagIds.some(tagId => {
+          const tag = tags[tagId];
+          return tag && tag.name === sortByTag;
+        });
+      });
+    }
+
     return flattened;
-  }, [lines, messages]);
+  }, [lines, messages, sortByTag, tags]);
 
   // 統計データを計算
   const statistics = useMemo(() => {
@@ -214,7 +261,6 @@ export function BranchStructure({
     setEditData({
       name: line.name,
       tagIds: [...currentTagIds],
-      newTag: "",
       availableTags: availableTags
     })
     setEditingLineId(line.id)
@@ -231,18 +277,6 @@ export function BranchStructure({
     }
   }
 
-  const handleAddNewTag = () => {
-    if (editData.newTag.trim()) {
-      // 新しいタグを作成して追加する必要があるが、ここでは簡単に表示用にそのまま使用
-      const newTagId = `tag_${Date.now()}`
-      // TODO: グローバルのtagsステートに追加する必要がある
-      setEditData(prev => ({
-        ...prev,
-        tagIds: [...prev.tagIds, newTagId],
-        newTag: ""
-      }))
-    }
-  }
 
   const handleAddExistingTag = (tagId: string) => {
     setEditData(prev => ({
@@ -409,51 +443,58 @@ export function BranchStructure({
                   </div>
                 )}
 
-                {/* 既存タグの選択 */}
+                {/* 既存タグの選択（グループ別） */}
                 {editData.availableTags.length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs text-gray-600">既存タグから追加:</div>
-                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                      {editData.availableTags.map((tagId) => {
-                        const tag = tags[tagId]
-                        if (!tag) return null
-                        return (
-                          <Button
-                            key={tagId}
-                            onClick={() => handleAddExistingTag(tagId)}
-                            size="sm"
-                            variant="outline"
-                            className="text-xs h-6 px-2 border-gray-300 hover:border-emerald-400 hover:bg-emerald-50"
-                          >
-                            <Plus className="h-3 w-3 mr-1" />
-                            {tag.name}
-                          </Button>
-                        )
-                      })}
+                    <div className="space-y-3">
+                      {Object.values(tagGroups)
+                        .sort((a, b) => a.order - b.order)
+                        .map(group => {
+                          const groupTags = editData.availableTags.filter(tagId => {
+                            const tag = tags[tagId]
+                            return tag?.groupId === group.id
+                          })
+
+                          if (groupTags.length === 0) return null
+
+                          return (
+                            <div key={group.id} className="space-y-1">
+                              <div className="text-xs font-medium text-gray-500">{group.name}</div>
+                              <div className="flex flex-wrap gap-1">
+                                {groupTags.map((tagId) => {
+                                  const tag = tags[tagId]
+                                  if (!tag) return null
+                                  return (
+                                    <Button
+                                      key={tagId}
+                                      onClick={() => handleAddExistingTag(tagId)}
+                                      size="sm"
+                                      variant="outline"
+                                      className="text-xs h-6 px-2 border-gray-300 hover:border-emerald-400 hover:bg-emerald-50"
+                                    >
+                                      <Plus className="h-3 w-3 mr-1" />
+                                      {tag.name}
+                                    </Button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )
+                        })}
                     </div>
                   </div>
                 )}
 
-                {/* 新しいタグの作成 */}
+                {/* タグ管理画面への案内 */}
                 <div className="space-y-2">
-                  <div className="text-xs text-gray-600">新しいタグを作成:</div>
-                  <div className="flex gap-2">
-                    <Input
-                      value={editData.newTag}
-                      onChange={(e) => setEditData(prev => ({ ...prev, newTag: e.target.value }))}
-                      placeholder="新しいタグ名"
-                      className="text-xs flex-1"
-                      onKeyPress={(e) => e.key === "Enter" && handleAddNewTag()}
-                    />
-                    <Button
-                      onClick={handleAddNewTag}
-                      size="sm"
-                      variant="outline"
-                      className="px-2"
-                    >
-                      <Plus className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  <div className="text-xs text-gray-600">新しいタグを作成する場合は</div>
+                  <button
+                    onClick={() => onViewChange?.('management')}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                  >
+                    タグ管理画面 (/management) をご利用ください
+                  </button>
                 </div>
               </div>
             )}
@@ -579,14 +620,33 @@ export function BranchStructure({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-gray-900">ブランチ構造</h2>
-        <Button
-          onClick={() => setShowStatistics(true)}
-          variant="outline"
-          size="sm"
-        >
-          <BarChart3 className="w-4 h-4 mr-1" />
-          統計
-        </Button>
+        <div className="flex gap-2">
+          {/* タグフィルター */}
+          <select
+            value={sortByTag || ""}
+            onChange={(e) => setSortByTag(e.target.value || null)}
+            className="text-xs border border-gray-300 rounded px-2 py-1"
+          >
+            <option value="">全て表示</option>
+            {Object.entries(tagsByGroup).map(([groupName, tagNames]) => (
+              <optgroup key={groupName} label={groupName}>
+                {tagNames.map(tagName => (
+                  <option key={tagName} value={tagName}>
+                    {tagName}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+          <Button
+            onClick={() => setShowStatistics(true)}
+            variant="outline"
+            size="sm"
+          >
+            <BarChart3 className="w-4 h-4 mr-1" />
+            統計
+          </Button>
+        </div>
       </div>
 
       {/* ブランチリスト */}
