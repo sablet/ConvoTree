@@ -934,7 +934,7 @@ export function BranchingChatUI({
 
               {/* Line Branch indicator */}
               {branchingLines.length > 0 && (
-                <div className="ml-10 space-y-2">
+                <div className="ml-4 space-y-2 border-l-2 border-gray-200 pl-3">
                   <div className="flex items-center gap-2 mb-3">
                     <Zap className="h-3 w-3 text-emerald-500" />
                     <span className="text-xs text-gray-500">分岐しました（{branchingLines.length}ライン）</span>
@@ -946,20 +946,26 @@ export function BranchingChatUI({
                       const lastMessage = lastMessageId ? messages[lastMessageId] : null
                       const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 25) + (lastMessage.content.length > 25 ? "..." : "") : ""
                       const firstTag = line.tags?.[0]
-                      const relativeTime = line.created_at ? getRelativeTime(line.created_at) : ""
+                      // 更新日時を優先表示
+                      const relativeTime = line.updated_at ? getRelativeTime(line.updated_at) : (line.created_at ? getRelativeTime(line.created_at) : "")
 
                       return (
-                        <button
+                        <div
                           key={`${message.id}-line-${line.id}`}
-                          onClick={() => switchToLine(line.id)}
-                          className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 ${
+                          className={`w-full text-left rounded-lg transition-all duration-200 cursor-pointer relative group ${
                             isCurrentLine
                               ? 'bg-emerald-100 border-2 border-emerald-300 text-emerald-800'
                               : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent text-gray-700 hover:text-gray-900'
                           }`}
                         >
-                          <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div
+                            onClick={() => switchToLine(line.id)}
+                            className="px-3 py-2 w-full"
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className={`w-1.5 h-1.5 rounded-full border flex-shrink-0 ${
+                                isCurrentLine ? 'bg-emerald-500 border-emerald-500' : 'border-gray-400'
+                              }`}></div>
                               <span className={`font-medium text-sm truncate ${isCurrentLine ? 'text-emerald-700' : 'text-gray-900'}`}>
                                 {line.name}
                               </span>
@@ -971,21 +977,29 @@ export function BranchingChatUI({
                                 </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              <span className="text-xs text-gray-400 truncate max-w-[60px]">
+                            <div className="flex items-center justify-between ml-3">
+                              <span className="text-xs text-gray-500 truncate max-w-[120px]">
                                 {lastMessagePreview}
                               </span>
                               {relativeTime && (
-                                <span className="text-xs text-gray-400">
+                                <span className="text-xs text-gray-400 font-medium">
                                   {relativeTime}
                                 </span>
                               )}
-                              {isCurrentLine && (
-                                <Circle className="w-3 h-3 text-emerald-500 fill-current" />
-                              )}
                             </div>
                           </div>
-                        </button>
+                          {/* 編集ボタン */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              // 編集機能は今後実装
+                              console.log('Edit line:', line.id)
+                            }}
+                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white hover:shadow-sm"
+                          >
+                            <Edit3 className="h-3 w-3 text-gray-400 hover:text-gray-600" />
+                          </button>
+                        </div>
                       )
                     })}
                   </div>

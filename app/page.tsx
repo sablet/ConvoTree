@@ -137,6 +137,7 @@ export default function Home() {
             currentLineId={currentLineId}
             onLineSwitch={handleLineSwitch}
             onLineEdit={handleLineEdit}
+            onViewChange={setCurrentView}
           />
         </div>
       )}

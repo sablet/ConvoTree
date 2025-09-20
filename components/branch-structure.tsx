@@ -12,8 +12,8 @@ import {
   Clock,
   X,
   Plus,
-  ArrowRight,
-  Circle
+  Circle,
+  Dot
 } from "lucide-react"
 
 interface Message {
@@ -55,6 +55,7 @@ interface BranchStructureProps {
   currentLineId: string
   onLineSwitch: (lineId: string) => void
   onLineEdit: (lineId: string, updates: Partial<Line>) => void
+  onViewChange?: (view: 'chat' | 'management' | 'branches') => void
 }
 
 interface BranchNode {
@@ -70,7 +71,8 @@ export function BranchStructure({
   branchPoints,
   currentLineId,
   onLineSwitch,
-  onLineEdit
+  onLineEdit,
+  onViewChange
 }: BranchStructureProps) {
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [editData, setEditData] = useState<{
@@ -79,7 +81,6 @@ export function BranchStructure({
     newTag: string
   }>({ name: "", tags: [], newTag: "" })
   // 全ブランチを常に展開
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   const [showStatistics, setShowStatistics] = useState(false)
 
   // 全ブランチをフラットリストで取得
@@ -144,7 +145,9 @@ export function BranchStructure({
     }
   }, [allBranches, lines, messages, branchPoints])
 
-  const getRelativeTime = (dateString: string): string => {
+  const getRelativeTime = (updatedAt: string, createdAt: string): string => {
+    // 更新日時を優先、なければ作成日時を使用
+    const dateString = updatedAt || createdAt
     if (!dateString) return ""
 
     const now = new Date()
@@ -196,49 +199,58 @@ export function BranchStructure({
     }
   }
 
-  const handleRemoveTag = (tagIndex: number) => {
-    setEditData(prev => ({
-      ...prev,
-      tags: prev.tags.filter((_, index) => index !== tagIndex)
-    }))
-  }
 
-  const toggleExpand = (lineId: string) => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev)
-      if (newSet.has(lineId)) {
-        newSet.delete(lineId)
-      } else {
-        newSet.add(lineId)
-      }
-      return newSet
-    })
+
+  const handleLineClick = (line: Line, event: React.MouseEvent) => {
+    // 編集ボタンがクリックされた場合は何もしない
+    if ((event.target as HTMLElement).closest('button')) {
+      return
+    }
+
+    // ラインを切り替えてチャット画面に遷移
+    onLineSwitch(line.id)
+    onViewChange?.('chat')
   }
 
   const renderBranchItem = (node: BranchNode): React.ReactNode => {
     const { line, depth, messageCount } = node
     const isActive = line.id === currentLineId
-    const relativeTime = getRelativeTime(line.updated_at)
+    const relativeTime = getRelativeTime(line.updated_at, line.created_at)
     const isEditing = editingLineId === line.id
 
     return (
       <div key={line.id} className="w-full">
         {/* ライン表示 - 一行にまとめた表示 */}
         <div
-          className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 ${
+          className={`flex items-center gap-3 p-3 rounded-lg border transition-all duration-200 cursor-pointer ${
             isActive
               ? 'border-blue-500 bg-blue-50 shadow-sm'
               : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
           }`}
-          style={{ marginLeft: `${depth * 12}px` }}
+          style={{
+            marginLeft: depth > 0 ? `${depth * 16}px` : '0px',
+            paddingLeft: depth > 0 ? '12px' : '12px'
+          }}
+          onClick={(e) => handleLineClick(line, e)}
         >
-          {/* ブランチアイコン */}
-          <div className={`p-1 rounded-full flex-shrink-0 ${
-            isActive ? 'bg-blue-100' : 'bg-gray-100'
-          }`}>
-            <GitBranch className={`w-4 h-4 ${
-              isActive ? 'text-blue-600' : 'text-gray-600'
-            }`} />
+          {/* 階層構造のインジケーター */}
+          <div className="flex items-center flex-shrink-0">
+            {depth > 0 && (
+              <div className="flex items-center">
+                {/* 階層線の表示 */}
+                {Array.from({ length: depth }).map((_, i) => (
+                  <Dot key={i} className="w-3 h-3 text-gray-400" />
+                ))}
+              </div>
+            )}
+            {/* ブランチアイコン */}
+            <div className={`p-1 rounded-full flex-shrink-0 ${
+              isActive ? 'bg-blue-100' : 'bg-gray-100'
+            }`}>
+              <GitBranch className={`w-4 h-4 ${
+                isActive ? 'text-blue-600' : 'text-gray-600'
+              }`} />
+            </div>
           </div>
 
           {/* メイン情報 */}
@@ -318,30 +330,24 @@ export function BranchStructure({
           {/* アクションボタン */}
           <div className="flex gap-1 flex-shrink-0">
             {!isEditing ? (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleEditStart(line)}
-                  className="h-8 px-2 text-gray-400 hover:text-gray-600"
-                >
-                  <Edit3 className="h-4 w-4" />
-                </Button>
-                {!isActive && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onLineSwitch(line.id)}
-                    className="h-8 px-2 text-blue-400 hover:text-blue-600"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
-                )}
-              </>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleEditStart(line)
+                }}
+                className="h-8 px-2 text-gray-400 hover:text-gray-600"
+              >
+                <Edit3 className="h-4 w-4" />
+              </Button>
             ) : (
               <div className="flex gap-1">
                 <Button
-                  onClick={() => setEditingLineId(null)}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setEditingLineId(null)
+                  }}
                   size="sm"
                   variant="outline"
                   className="text-xs h-8 px-2"
@@ -349,7 +355,10 @@ export function BranchStructure({
                   キャンセル
                 </Button>
                 <Button
-                  onClick={handleEditSave}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleEditSave()
+                  }}
                   size="sm"
                   className="text-xs h-8 px-2 bg-emerald-500 hover:bg-emerald-600"
                 >
