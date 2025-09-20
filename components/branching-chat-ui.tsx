@@ -676,7 +676,7 @@ export function BranchingChatUI() {
   }
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-white">
+    <div className="flex flex-col h-screen max-w-md mx-auto bg-white pb-20">
       {/* Timeline Minimap */}
       {renderTimelineMinimap()}
 
@@ -784,7 +784,7 @@ export function BranchingChatUI() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8">
+      <div className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
