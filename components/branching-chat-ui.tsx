@@ -78,10 +78,10 @@ export function BranchingChatUI() {
   // 画像URLが有効かどうかをチェックする関数
   const isValidImageUrl = (url: string): boolean => {
     if (!url || typeof url !== 'string') return false
-    
+
     // 空文字列やプレースホルダーをチェック
     if (url.trim() === '' || url.includes('mockup_url') || url.includes('placeholder')) return false
-    
+
     // 絶対URL（http/https）または相対パス（/で始まる）、またはdata URLをチェック
     return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('data:')
   }
@@ -953,7 +953,7 @@ export function BranchingChatUI() {
 
       {/* Composer */}
       <div className="p-4 border-t border-gray-100 bg-white">
-        {selectedBaseMessage && (
+        {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -976,6 +976,17 @@ export function BranchingChatUI() {
               >
                 ✕
               </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-3 p-3 bg-gray-50 rounded-lg text-sm border border-gray-200">
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-700">
+                📝 現在のラインに追加
+              </span>
+              <span className="text-gray-500">
+                {currentLineInfo?.name || "メインライン"}
+              </span>
             </div>
           </div>
         )}
