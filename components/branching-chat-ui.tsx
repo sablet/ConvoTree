@@ -95,6 +95,8 @@ export function BranchingChatUI({
     newTag: string
   }>({ name: "", tagIds: [], newTag: "" })
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
 
   // 画像URLが有効かどうかをチェックする関数
   const isValidImageUrl = (url: string): boolean => {
@@ -415,15 +417,44 @@ export function BranchingChatUI({
     return getCompleteTimeline()
   }, [getCompleteTimeline])
 
-  // ラインの切り替え（キャッシュクリアあり）
+  // スクロール位置を保存する関数
+  const saveScrollPosition = useCallback((lineId: string) => {
+    if (messagesContainerRef.current) {
+      const scrollTop = messagesContainerRef.current.scrollTop
+      setScrollPositions(prev => new Map(prev).set(lineId, scrollTop))
+    }
+  }, [])
+
+  // スクロール位置を復元する関数
+  const restoreScrollPosition = useCallback((lineId: string) => {
+    const savedPosition = scrollPositions.get(lineId)
+    if (savedPosition !== undefined && messagesContainerRef.current) {
+      // 少し遅延させてDOMの更新を待つ
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = savedPosition
+        }
+      }, 50)
+    }
+  }, [scrollPositions])
+
+  // ラインの切り替え（スクロール位置保持機能付き）
   const switchToLine = (lineId: string) => {
     if (lines[lineId]) {
+      // 現在のラインのスクロール位置を保存
+      if (currentLineId) {
+        saveScrollPosition(currentLineId)
+      }
+
       setCurrentLineId(lineId)
+
       // 外部コールバックを呼び出し
       if (onLineChange) {
         onLineChange(lineId)
       }
-      // 新しいラインに切り替えたらキャッシュをクリアしない（再利用可能）
+
+      // 新しいラインのスクロール位置を復元
+      restoreScrollPosition(lineId)
     }
   }
 
@@ -827,7 +858,7 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-8">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id

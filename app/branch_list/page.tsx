@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { BranchingChatUI } from "@/components/branching-chat-ui"
+import { useState, useEffect } from "react"
+import { BranchStructure } from "@/components/branch-structure"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { useRouter } from "next/navigation"
 
@@ -42,19 +42,21 @@ interface BranchPoint {
   lines: string[]
 }
 
-export default function Home() {
+export default function BranchListPage() {
   const router = useRouter()
-  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
+  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('branches')
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
 
   // データローディング
   useEffect(() => {
     const loadChatData = async () => {
       try {
+        setIsLoading(true)
         const response = await fetch('/data/chat-sample.json')
         const data = await response.json()
 
@@ -106,72 +108,85 @@ export default function Home() {
         }
       } catch (error) {
         console.error('Failed to load chat data:', error)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     loadChatData()
   }, [])
 
-  // ブラウザの戻る・進むボタンに対応
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state?.lineId) {
-        // 履歴から戻ってきた場合、そのラインに切り替え
-        setCurrentLineId(event.state.lineId)
-      } else {
-        // stateがない場合は、URLからライン名を取得
-        const path = window.location.pathname
-        const match = path.match(/^\/chat\/(.+)$/)
-        if (match) {
-          const decodedLineName = decodeURIComponent(match[1])
-          const targetLine = Object.values(lines).find(
-            line => line.name === decodedLineName || line.id === decodedLineName
-          )
-          if (targetLine) {
-            setCurrentLineId(targetLine.id)
-          }
-        }
-      }
-    }
-
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [lines])
-
-  // ライン切り替えハンドラー（URL更新、履歴あり）
-  const handleLineChange = useCallback((lineId: string) => {
+  // ライン切り替えハンドラー（URLルーティング付き）
+  const handleLineSwitch = (lineId: string) => {
     const targetLine = lines[lineId]
     if (targetLine) {
       setCurrentLineId(lineId)
-      // URLを履歴ありで更新（ページ遷移せず）
+      // チャットページにリダイレクト
       const encodedLineName = encodeURIComponent(targetLine.name)
-      window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
+      router.push(`/chat/${encodedLineName}`)
     }
-  }, [lines])
+  }
+
+  // ライン編集ハンドラー
+  const handleLineEdit = (lineId: string, updates: Partial<Line>) => {
+    setLines(prev => {
+      const updated = { ...prev }
+      if (updated[lineId]) {
+        updated[lineId] = {
+          ...updated[lineId],
+          ...updates,
+          updated_at: new Date().toISOString()
+        }
+      }
+      return updated
+    })
+  }
 
   // ビューが変更されたときのハンドラー
-  const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
+  const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
     setCurrentView(newView)
 
     // ビューに応じてルーティング
-    if (newView === 'branches') {
-      router.push('/branch_list')
+    if (newView === 'chat') {
+      // 現在のラインのチャットページにリダイレクト
+      const currentLine = lines[currentLineId]
+      if (currentLine) {
+        const encodedLineName = encodeURIComponent(currentLine.name)
+        router.push(`/chat/${encodedLineName}`)
+      } else {
+        router.push('/')
+      }
     } else if (newView === 'management') {
       router.push('/management')
     }
-    // chatの場合は現在のページに留まる
-  }, [router])
+    // branchesの場合は現在のページに留まる
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">ブランチデータを読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-white pb-16">
-      <BranchingChatUI
-        initialMessages={messages}
-        initialLines={lines}
-        initialBranchPoints={branchPoints}
-        initialTags={tags}
-        initialCurrentLineId={currentLineId}
-        onLineChange={handleLineChange}
-      />
+      <div className="p-4">
+        <BranchStructure
+          messages={messages}
+          lines={lines}
+          branchPoints={branchPoints}
+          tags={tags}
+          currentLineId={currentLineId}
+          onLineSwitch={handleLineSwitch}
+          onLineEdit={handleLineEdit}
+          onViewChange={setCurrentView}
+        />
+      </div>
       <FooterNavigation
         currentView={currentView}
         onViewChange={handleViewChange}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { useRouter } from "next/navigation"
@@ -42,19 +42,31 @@ interface BranchPoint {
   lines: string[]
 }
 
-export default function Home() {
+interface PageProps {
+  params: {
+    line_name: string
+  }
+}
+
+export default function ChatLinePage({ params }: PageProps) {
   const router = useRouter()
+  const { line_name } = params
+  const decodedLineName = decodeURIComponent(line_name)
+
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
+  const [lineNotFound, setLineNotFound] = useState(false)
 
   // データローディング
   useEffect(() => {
     const loadChatData = async () => {
       try {
+        setIsLoading(true)
         const response = await fetch('/data/chat-sample.json')
         const data = await response.json()
 
@@ -99,18 +111,31 @@ export default function Home() {
         setBranchPoints(newBranchPoints)
         setTags(newTags)
 
-        // デフォルトライン設定
-        const mainLine = newLines['main'] || Object.values(newLines)[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
+        // 指定されたライン名でラインを検索
+        const targetLine = Object.values(newLines).find(
+          line => line.name === decodedLineName || line.id === decodedLineName
+        )
+
+        if (targetLine) {
+          setCurrentLineId(targetLine.id)
+          setLineNotFound(false)
+        } else {
+          // ラインが見つからない場合、メインラインにフォールバック
+          const mainLine = newLines['main'] || Object.values(newLines)[0]
+          if (mainLine) {
+            setCurrentLineId(mainLine.id)
+          }
+          setLineNotFound(true)
         }
       } catch (error) {
         console.error('Failed to load chat data:', error)
+      } finally {
+        setIsLoading(false)
       }
     }
 
     loadChatData()
-  }, [])
+  }, [decodedLineName])
 
   // ブラウザの戻る・進むボタンに対応
   useEffect(() => {
@@ -123,9 +148,9 @@ export default function Home() {
         const path = window.location.pathname
         const match = path.match(/^\/chat\/(.+)$/)
         if (match) {
-          const decodedLineName = decodeURIComponent(match[1])
+          const currentDecodedLineName = decodeURIComponent(match[1])
           const targetLine = Object.values(lines).find(
-            line => line.name === decodedLineName || line.id === decodedLineName
+            line => line.name === currentDecodedLineName || line.id === currentDecodedLineName
           )
           if (targetLine) {
             setCurrentLineId(targetLine.id)
@@ -139,7 +164,7 @@ export default function Home() {
   }, [lines])
 
   // ライン切り替えハンドラー（URL更新、履歴あり）
-  const handleLineChange = useCallback((lineId: string) => {
+  const handleLineChange = (lineId: string) => {
     const targetLine = lines[lineId]
     if (targetLine) {
       setCurrentLineId(lineId)
@@ -147,10 +172,10 @@ export default function Home() {
       const encodedLineName = encodeURIComponent(targetLine.name)
       window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
     }
-  }, [lines])
+  }
 
   // ビューが変更されたときのハンドラー
-  const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
+  const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
     setCurrentView(newView)
 
     // ビューに応じてルーティング
@@ -160,10 +185,33 @@ export default function Home() {
       router.push('/management')
     }
     // chatの場合は現在のページに留まる
-  }, [router])
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">チャットデータを読み込み中...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-white pb-16">
+      {lineNotFound && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                ライン「{decodedLineName}」が見つかりませんでした。メインラインを表示しています。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <BranchingChatUI
         initialMessages={messages}
         initialLines={lines}
@@ -172,6 +220,7 @@ export default function Home() {
         initialCurrentLineId={currentLineId}
         onLineChange={handleLineChange}
       />
+
       <FooterNavigation
         currentView={currentView}
         onViewChange={handleViewChange}
