@@ -218,7 +218,6 @@
     {
       "id": "main",
       "name": "メインの流れ",
-      "description": "プロジェクト全体の要件と基本方針",
       "messageIds": ["msg1", "msg2", "msg3", "msg6", "msg11", "msg19"],
       "startMessageId": "msg1",
       "endMessageId": "msg19",
@@ -229,7 +228,6 @@
     {
       "id": "design",
       "name": "デザイン検討",
-      "description": "UI/UXとプロトタイプの議論",
       "messageIds": ["msg4", "msg8", "msg15", "msg22"],
       "startMessageId": "msg4",
       "endMessageId": "msg22",
@@ -241,7 +239,6 @@
     {
       "id": "security",
       "name": "セキュリティ要件",
-      "description": "セキュリティとコンプライアンス",
       "messageIds": ["msg5", "msg10", "msg18"],
       "startMessageId": "msg5",
       "endMessageId": "msg18",
@@ -253,7 +250,6 @@
     {
       "id": "database",
       "name": "データベース設計",
-      "description": "データ構造とパフォーマンス",
       "messageIds": ["msg7", "msg13", "msg21"],
       "startMessageId": "msg7",
       "endMessageId": "msg21",
@@ -265,7 +261,6 @@
     {
       "id": "devops",
       "name": "DevOps・インフラ",
-      "description": "インフラとCI/CD整備",
       "messageIds": ["msg12", "msg20"],
       "startMessageId": "msg12",
       "endMessageId": "msg20",
@@ -277,7 +272,6 @@
     {
       "id": "ux_research",
       "name": "UX調査",
-      "description": "ユーザビリティテストと調査",
       "messageIds": ["msg9", "msg17"],
       "startMessageId": "msg9",
       "endMessageId": "msg17",
@@ -289,7 +283,6 @@
     {
       "id": "database_performance",
       "name": "DB性能検討",
-      "description": "データベースパフォーマンス",
       "messageIds": ["msg14"],
       "startMessageId": "msg14",
       "endMessageId": "msg14",
@@ -301,7 +294,6 @@
     {
       "id": "animation",
       "name": "アニメーション",
-      "description": "UIアニメーションの実装",
       "messageIds": ["msg16"],
       "startMessageId": "msg16",
       "endMessageId": "msg16",

@@ -24,7 +24,6 @@ interface Message {
 interface Line {
   id: string
   name: string
-  description: string
   messageIds: string[] // このラインに属するメッセージのIDリスト
   startMessageId: string // ラインの開始メッセージ
   endMessageId?: string // ラインの終了メッセージ（まだ続いている場合はundefined）
@@ -478,7 +477,6 @@ export function BranchingChatUI({
       const newLine: Line = {
         id: newLineId,
         name: newLineName,
-        description: "",
         messageIds: [],
         startMessageId: "",
         endMessageId: undefined,
@@ -719,7 +717,6 @@ export function BranchingChatUI({
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="font-medium text-gray-800">{currentLineInfo.name}</h2>
-                  <p className="text-xs text-gray-500">{currentLineInfo.description}</p>
                   {currentLineInfo.branchFromMessageId && (
                     <p className="text-xs text-blue-500">分岐元: {messages[currentLineInfo.branchFromMessageId]?.content.slice(0, 20)}...</p>
                   )}
@@ -831,9 +828,6 @@ export function BranchingChatUI({
                   <div className="flex-1">
                     <div className="text-sm font-medium text-blue-800">
                       → {messageLineInfo.transitionInfo?.lineName}
-                    </div>
-                    <div className="text-xs text-blue-600">
-                      {messageLineInfo.lineInfo?.description}
                     </div>
                   </div>
                   {messageLineInfo.lineInfo?.tags && messageLineInfo.lineInfo.tags.length > 0 && (
