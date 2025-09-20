@@ -75,6 +75,16 @@ export function BranchingChatUI() {
   }>({ name: "", tags: [], newTag: "" })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
+  // 画像URLが有効かどうかをチェックする関数
+  const isValidImageUrl = (url: string): boolean => {
+    if (!url || typeof url !== 'string') return false
+    
+    // 空文字列やプレースホルダーをチェック
+    if (url.trim() === '' || url.includes('mockup_url') || url.includes('placeholder')) return false
+    
+    // 絶対URL（http/https）または相対パス（/で始まる）、またはdata URLをチェック
+    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('data:')
+  }
 
   const getRelativeTime = (dateString: string): string => {
     if (!dateString) return ""
@@ -842,10 +852,12 @@ export function BranchingChatUI() {
                       </div>
                     </div>
 
-                    {/* 画像表示 */}
+                    {/* 画像表示 - 有効なURLのみレンダリング */}
                     {message.images && message.images.length > 0 && (
                       <div className="mt-2 space-y-2">
-                        {message.images.map((imageUrl, imageIndex) => (
+                        {message.images
+                          .filter(imageUrl => isValidImageUrl(imageUrl))
+                          .map((imageUrl, imageIndex) => (
                           <div key={`${message.id}-image-${imageIndex}`} className="relative">
                             <Image
                               src={imageUrl}
@@ -861,6 +873,12 @@ export function BranchingChatUI() {
                             />
                           </div>
                         ))}
+                        {/* 無効な画像URLがある場合の警告（開発モード時のみ） */}
+                        {DEV_LOG.enabled && message.images.some(url => !isValidImageUrl(url)) && (
+                          <div className="text-xs text-orange-500 bg-orange-50 p-2 rounded border border-orange-200">
+                            一部の画像が無効なURLのため表示されていません
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -978,52 +996,45 @@ export function BranchingChatUI() {
             </div>
             <div className="flex flex-wrap gap-2">
               {pendingImages.map((imageUrl, index) => (
-                <div key={index} className="relative">
+                <div key={index} className="relative group">
                   <Image
                     src={imageUrl}
                     alt={`Preview ${index + 1}`}
-                    width={64}
-                    height={64}
-                    className="w-16 h-16 object-cover rounded border border-blue-300"
+                    width={60}
+                    height={60}
+                    className="w-15 h-15 object-cover rounded border border-blue-300"
                   />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute -top-1 -right-1 w-5 h-5 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                  <button
                     onClick={() => setPendingImages(prev => prev.filter((_, i) => i !== index))}
+                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     ✕
-                  </Button>
+                  </button>
                 </div>
               ))}
             </div>
-            <div className="text-xs text-blue-600 mt-2">
-              Cmd+V でクリップボードから画像をペースト
-            </div>
-          </div>
-        )}
-        {/* メッセージが選択されていない場合の状態表示 */}
-        {!selectedBaseMessage && (
-          <div className="mb-3 p-2 bg-gray-50 rounded-lg text-sm border border-gray-200">
-            <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-600">
-              📝 現在のラインに追加
-            </span>
           </div>
         )}
 
         <div className="flex gap-3">
-          <Input
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            placeholder="メモを追加..."
-            className="flex-1 border-gray-200 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-400 text-sm"
-            onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
-          />
+          <div className="flex-1">
+            <textarea
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="メッセージを入力..."
+              className="min-h-[44px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  handleSendMessage()
+                }
+              }}
+            />
+          </div>
           <Button
             onClick={handleSendMessage}
-            size="sm"
-            className="bg-emerald-500 hover:bg-emerald-600 px-3"
             disabled={!inputValue.trim() && pendingImages.length === 0}
+            className="h-11 px-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
           </Button>
