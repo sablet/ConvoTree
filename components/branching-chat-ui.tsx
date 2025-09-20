@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Zap, Edit3, Plus, X, Circle, GitBranch } from "lucide-react"
+import { Send, Zap, Edit3, Plus, X, GitBranch } from "lucide-react"
 import Image from "next/image"
 
 interface Message {
@@ -671,66 +671,41 @@ export function BranchingChatUI({
   const renderTimelineMinimap = () => {
     if (!completeTimeline.messages.length) return null
 
+    // 現在のラインの祖先チェーンを取得
+    const ancestry = getLineAncestry(currentLineId)
+    const breadcrumbPath = [...ancestry, currentLineId]
+
     return (
       <div className="px-4 py-2 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-1 overflow-x-auto pb-1 flex-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {completeTimeline.messages.map((message, index) => {
-            const hasBranches = branchPoints[message.id]?.lines.length > 0
-            const isLast = index === completeTimeline.messages.length - 1
-            const messageLineInfo = getMessageLineInfo(index, completeTimeline)
-            const isLineTransition = messageLineInfo.isLineStart && index > 0
+        {/* パンくずリスト */}
+        <div className="flex items-center gap-1 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+          {breadcrumbPath.map((lineId, index) => {
+            const line = lines[lineId]
+            if (!line) return null
+
+            const isCurrentLine = lineId === currentLineId
+            const isLast = index === breadcrumbPath.length - 1
 
             return (
-              <div key={`${message.id}-${index}`} className="flex items-center gap-1 flex-shrink-0">
-                {isLineTransition && (
-                  <div className="flex items-center gap-1 mx-1">
-                    <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
-                    <div className="text-xs text-blue-600 font-medium whitespace-nowrap">
-                      {messageLineInfo.transitionInfo?.lineName}
-                    </div>
-                    <div className="w-1 h-1 bg-blue-500 rounded-full"></div>
-                    <div className="w-2 h-0.5 bg-blue-400"></div>
-                  </div>
-                )}
+              <div key={`breadcrumb-${lineId}-${index}`} className="flex items-center gap-1 flex-shrink-0">
                 <button
-                  className={`relative flex items-center justify-center transition-all duration-200 ${
-                    hasBranches
-                      ? 'w-6 h-6 bg-emerald-100 hover:bg-emerald-200 border-2 border-emerald-300 rounded-full'
-                      : messageLineInfo.isCurrentLine
-                      ? 'w-4 h-4 bg-gray-200 hover:bg-gray-300 rounded-full'
-                      : 'w-4 h-4 bg-blue-100 hover:bg-blue-200 border border-blue-200 rounded-full'
+                  className={`px-2 py-1 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                    isCurrentLine
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900'
                   }`}
-                  onClick={() => {
-                    const element = document.getElementById(`message-${message.id}`)
-                    element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                  }}
+                  onClick={() => switchToLine(lineId)}
                 >
-                  {hasBranches ? (
-                    <GitBranch className="w-3 h-3 text-emerald-600" />
-                  ) : (
-                    <Circle className={`w-2 h-2 fill-current ${
-                      messageLineInfo.isCurrentLine ? 'text-gray-500' : 'text-blue-500'
-                    }`} />
-                  )}
+                  {line.name}
                 </button>
                 {!isLast && (
-                  <div className={`w-3 h-0.5 ${
-                    messageLineInfo.isCurrentLine ? 'bg-gray-300' : 'bg-blue-300'
-                  }`}></div>
+                  <div className="text-gray-400 text-xs font-medium px-1">
+                    &gt;
+                  </div>
                 )}
               </div>
             )
           })}
-          </div>
-          <span className="text-xs text-gray-400 ml-3 flex-shrink-0">
-            {completeTimeline.messages.length}メッセージ
-            {completeTimeline.transitions.length > 0 && (
-              <span className="text-blue-600 ml-1">
-                ({completeTimeline.transitions.length}ライン)
-              </span>
-            )}
-          </span>
         </div>
       </div>
     )
