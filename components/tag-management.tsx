@@ -1,81 +1,41 @@
 "use client"
 
 import { useState } from "react"
-import { ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react"
+import { ChevronDown, ChevronRight, Edit, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
-
-interface Tag {
-  id: string
-  name: string
-  color: string
-  count: number
-  subtags?: Tag[]
-}
+import { useTagContext, Tag } from "@/lib/tag-context"
+import { TagEditDialog } from "@/components/tag-edit-dialog"
 
 interface TagManagementProps {
   className?: string
 }
 
 export function TagManagement({ className }: TagManagementProps) {
+  const { state, actions } = useTagContext()
   const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set())
+  const [editingTag, setEditingTag] = useState<Tag | null>(null)
+  const [parentTagForNewSubtag, setParentTagForNewSubtag] = useState<Tag | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
 
-  // サンプルデータ（画像の内容に基づく）
-  const [tags] = useState<Tag[]>([
-    {
-      id: "goal",
-      name: "0_目的管理",
-      color: "#e5e7eb",
-      count: 0,
-      subtags: [
-        { id: "task-planning", name: "タスクプランニング", color: "#e5e7eb", count: 16 },
-        { id: "task-app", name: "タスク管理アプリ", color: "#e5e7eb", count: 95 },
-        { id: "decision-app", name: "意思決定アプリ", color: "#e5e7eb", count: 5 }
-      ]
-    },
-    {
-      id: "salary-work",
-      name: "1_サラリーワーク",
-      color: "#dcfce7",
-      count: 2,
-      subtags: [
-        {
-          id: "jai",
-          name: "JAI",
-          color: "#e5e7eb",
-          count: 4,
-          subtags: [
-            { id: "patent-data", name: "特許データ作成", color: "#e5e7eb", count: 30 },
-            { id: "pk-dtn", name: "PK_DTN", color: "#e5e7eb", count: 206 }
-          ]
-        }
-      ]
-    },
-    {
-      id: "personal",
-      name: "1_個人知見",
-      color: "#fef3c7",
-      count: 0,
-      subtags: [
-        { id: "values", name: "価値観", color: "#e5e7eb", count: 31 },
-        { id: "thoughts", name: "感想・ログ", color: "#dbeafe", count: 5 }
-      ]
-    },
-    {
-      id: "investment",
-      name: "投資",
-      color: "#e5e7eb",
-      count: 0,
-      subtags: [
-        { id: "trade-ideas", name: "トレードアイデア", color: "#e5e7eb", count: 36 }
-      ]
-    },
-    {
-      id: "life",
-      name: "2_生活",
-      color: "#e5e7eb",
-      count: 1
-    }
-  ])
+  if (state.isLoading) {
+    return (
+      <div className={`bg-white ${className || ''}`}>
+        <div className="flex items-center justify-center p-8">
+          <div className="text-gray-500">タグを読み込み中...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (state.error) {
+    return (
+      <div className={`bg-white ${className || ''}`}>
+        <div className="flex items-center justify-center p-8">
+          <div className="text-red-500">エラー: {state.error}</div>
+        </div>
+      </div>
+    )
+  }
 
   const toggleExpanded = (tagId: string) => {
     const newExpanded = new Set(expandedTags)
@@ -85,6 +45,42 @@ export function TagManagement({ className }: TagManagementProps) {
       newExpanded.add(tagId)
     }
     setExpandedTags(newExpanded)
+  }
+
+  const handleEditTag = (tag: Tag) => {
+    setEditingTag(tag)
+    setParentTagForNewSubtag(null)
+    setIsDialogOpen(true)
+  }
+
+  const handleAddSubtag = (parentTag: Tag) => {
+    setEditingTag(null)
+    setParentTagForNewSubtag(parentTag)
+    setIsDialogOpen(true)
+  }
+
+  const handleAddNewTag = () => {
+    setEditingTag(null)
+    setParentTagForNewSubtag(null)
+    setIsDialogOpen(true)
+  }
+
+  const handleSaveTag = async (tag: Tag) => {
+    if (editingTag) {
+      await actions.updateTag(tag)
+    } else if (parentTagForNewSubtag) {
+      await actions.addSubtag(parentTagForNewSubtag.id, tag)
+    } else {
+      await actions.addTag(tag)
+      // 新しいタグを追加した後、データを再読み込み
+      await actions.loadTags()
+    }
+  }
+
+  const handleDeleteTag = async (tagId: string) => {
+    if (confirm("このタグを削除しますか？関連するサブタグも削除されます。")) {
+      await actions.deleteTag(tagId)
+    }
   }
 
   const renderTag = (tag: Tag, level: number = 0) => {
@@ -131,13 +127,37 @@ export function TagManagement({ className }: TagManagementProps) {
 
           <div className="flex items-center space-x-3 flex-shrink-0">
             <span className="text-sm text-gray-600 min-w-[3rem] text-right">
-              {tag.count}
+              {tag.count || 0}
             </span>
             <div className="flex space-x-1">
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+              {/* サブタグ追加ボタン（レベル2まで） */}
+              {level < 2 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0 text-green-600 hover:text-green-700"
+                  onClick={() => handleAddSubtag(tag)}
+                  title="サブタグを追加"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleEditTag(tag)}
+                title="編集"
+              >
                 <Edit className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-600 hover:text-red-700">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                onClick={() => handleDeleteTag(tag.id)}
+                title="削除"
+              >
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
@@ -163,12 +183,29 @@ export function TagManagement({ className }: TagManagementProps) {
           <span className="text-sm font-medium text-gray-700">使用数</span>
           <span className="text-sm font-medium text-gray-700">操作</span>
         </div>
+        <Button
+          onClick={handleAddNewTag}
+          size="sm"
+          className="flex items-center space-x-2"
+        >
+          <Plus className="w-4 h-4" />
+          <span>新しいタグ</span>
+        </Button>
       </div>
 
       {/* タグリスト */}
       <div className="divide-y divide-gray-200">
-        {tags.map(tag => renderTag(tag))}
+        {state.tags.map(tag => renderTag(tag))}
       </div>
+
+      {/* 編集ダイアログ */}
+      <TagEditDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        tag={editingTag}
+        parentTag={parentTagForNewSubtag}
+        onSave={handleSaveTag}
+      />
     </div>
   )
 }

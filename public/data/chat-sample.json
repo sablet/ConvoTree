@@ -371,107 +371,191 @@
   "tags": {
     "tag_kickoff": {
       "id": "tag_kickoff",
-      "name": "キックオフ"
+      "name": "キックオフ",
+      "color": "#e9d5ff",
+      "groupId": "project_management"
     },
     "tag_requirements": {
       "id": "tag_requirements",
-      "name": "要件定義"
+      "name": "要件定義",
+      "color": "#e9d5ff",
+      "groupId": "project_management"
     },
     "tag_tech_stack": {
       "id": "tag_tech_stack",
-      "name": "技術スタック"
+      "name": "技術スタック",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_infrastructure": {
       "id": "tag_infrastructure",
-      "name": "インフラ"
+      "name": "インフラ",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_design": {
       "id": "tag_design",
-      "name": "デザイン"
+      "name": "デザイン",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_ui_ux": {
       "id": "tag_ui_ux",
-      "name": "UI/UX"
+      "name": "UI/UX",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_prototype": {
       "id": "tag_prototype",
-      "name": "プロトタイプ"
+      "name": "プロトタイプ",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_accessibility": {
       "id": "tag_accessibility",
-      "name": "アクセシビリティ"
+      "name": "アクセシビリティ",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_security": {
       "id": "tag_security",
-      "name": "セキュリティ"
+      "name": "セキュリティ",
+      "color": "#fecaca",
+      "groupId": "security"
     },
     "tag_encryption": {
       "id": "tag_encryption",
-      "name": "暗号化"
+      "name": "暗号化",
+      "color": "#fecaca",
+      "groupId": "security"
     },
     "tag_authentication": {
       "id": "tag_authentication",
-      "name": "認証"
+      "name": "認証",
+      "color": "#fecaca",
+      "groupId": "security"
     },
     "tag_audit": {
       "id": "tag_audit",
-      "name": "監査"
+      "name": "監査",
+      "color": "#fecaca",
+      "groupId": "security"
     },
     "tag_database": {
       "id": "tag_database",
-      "name": "データベース"
+      "name": "データベース",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_design_pattern": {
       "id": "tag_design_pattern",
-      "name": "設計"
+      "name": "設計",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_performance": {
       "id": "tag_performance",
-      "name": "パフォーマンス"
+      "name": "パフォーマンス",
+      "color": "#fed7aa",
+      "groupId": "performance"
     },
     "tag_tree_structure": {
       "id": "tag_tree_structure",
-      "name": "ツリー構造"
+      "name": "ツリー構造",
+      "color": "#fed7aa",
+      "groupId": "performance"
     },
     "tag_devops": {
       "id": "tag_devops",
-      "name": "DevOps"
+      "name": "DevOps",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_ci_cd": {
       "id": "tag_ci_cd",
-      "name": "CI/CD"
+      "name": "CI/CD",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_aws": {
       "id": "tag_aws",
-      "name": "AWS"
+      "name": "AWS",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_automation": {
       "id": "tag_automation",
-      "name": "自動化"
+      "name": "自動化",
+      "color": "#dcfce7",
+      "groupId": "development"
     },
     "tag_ux_research": {
       "id": "tag_ux_research",
-      "name": "UX調査"
+      "name": "UX調査",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_usability_test": {
       "id": "tag_usability_test",
-      "name": "ユーザビリティテスト"
+      "name": "ユーザビリティテスト",
+      "color": "#e9d5ff",
+      "groupId": "project_management"
     },
     "tag_beta_test": {
       "id": "tag_beta_test",
-      "name": "ベータテスト"
+      "name": "ベータテスト",
+      "color": "#e9d5ff",
+      "groupId": "project_management"
     },
     "tag_scalability": {
       "id": "tag_scalability",
-      "name": "スケーラビリティ"
+      "name": "スケーラビリティ",
+      "color": "#fed7aa",
+      "groupId": "performance"
     },
     "tag_animation": {
       "id": "tag_animation",
-      "name": "アニメーション"
+      "name": "アニメーション",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
     },
     "tag_framer_motion": {
       "id": "tag_framer_motion",
-      "name": "Framer Motion"
+      "name": "Framer Motion",
+      "color": "#fef3c7",
+      "groupId": "design_ux"
+    }
+  },
+  "tagGroups": {
+    "development": {
+      "id": "development",
+      "name": "開発・技術",
+      "color": "#dcfce7",
+      "order": 1
+    },
+    "design_ux": {
+      "id": "design_ux",
+      "name": "デザイン・UX",
+      "color": "#fef3c7",
+      "order": 2
+    },
+    "security": {
+      "id": "security",
+      "name": "セキュリティ",
+      "color": "#fecaca",
+      "order": 3
+    },
+    "project_management": {
+      "id": "project_management",
+      "name": "プロジェクト管理",
+      "color": "#e9d5ff",
+      "order": 4
+    },
+    "performance": {
+      "id": "performance",
+      "name": "パフォーマンス",
+      "color": "#fed7aa",
+      "order": 5
     }
   }
 }
