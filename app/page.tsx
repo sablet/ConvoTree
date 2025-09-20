@@ -28,9 +28,14 @@ interface Line {
   startMessageId: string
   endMessageId?: string
   branchFromMessageId?: string
-  tags?: string[]
+  tagIds?: string[]
   created_at: string
   updated_at: string
+}
+
+interface Tag {
+  id: string
+  name: string
 }
 
 interface BranchPoint {
@@ -43,6 +48,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
+  const [tags, setTags] = useState<Record<string, Tag>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
 
   // データローディング
@@ -55,6 +61,7 @@ export default function Home() {
         const newMessages: Record<string, Message> = {}
         const newLines: Record<string, Line> = {}
         const newBranchPoints: Record<string, BranchPoint> = {}
+        const newTags: Record<string, Tag> = {}
 
         // メッセージデータ変換
         if (data.messages) {
@@ -80,9 +87,17 @@ export default function Home() {
           })
         }
 
+        // タグデータ
+        if (data.tags) {
+          Object.entries(data.tags as Record<string, Tag>).forEach(([id, tag]) => {
+            newTags[id] = tag
+          })
+        }
+
         setMessages(newMessages)
         setLines(newLines)
         setBranchPoints(newBranchPoints)
+        setTags(newTags)
 
         // デフォルトライン設定
         const mainLine = newLines['main'] || Object.values(newLines)[0]
@@ -124,6 +139,7 @@ export default function Home() {
           initialMessages={messages}
           initialLines={lines}
           initialBranchPoints={branchPoints}
+          initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineSwitch}
         />
@@ -134,6 +150,7 @@ export default function Home() {
             messages={messages}
             lines={lines}
             branchPoints={branchPoints}
+            tags={tags}
             currentLineId={currentLineId}
             onLineSwitch={handleLineSwitch}
             onLineEdit={handleLineEdit}

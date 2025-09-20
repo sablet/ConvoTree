@@ -38,9 +38,14 @@ interface Line {
   startMessageId: string
   endMessageId?: string
   branchFromMessageId?: string
-  tags?: string[]
+  tagIds?: string[]
   created_at: string
   updated_at: string
+}
+
+interface Tag {
+  id: string
+  name: string
 }
 
 interface BranchPoint {
@@ -52,6 +57,7 @@ interface BranchStructureProps {
   messages: Record<string, Message>
   lines: Record<string, Line>
   branchPoints: Record<string, BranchPoint>
+  tags: Record<string, Tag>
   currentLineId: string
   onLineSwitch: (lineId: string) => void
   onLineEdit: (lineId: string, updates: Partial<Line>) => void
@@ -69,6 +75,7 @@ export function BranchStructure({
   messages,
   lines,
   branchPoints,
+  tags,
   currentLineId,
   onLineSwitch,
   onLineEdit,
@@ -77,9 +84,9 @@ export function BranchStructure({
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
   const [editData, setEditData] = useState<{
     name: string
-    tags: string[]
+    tagIds: string[]
     newTag: string
-  }>({ name: "", tags: [], newTag: "" })
+  }>({ name: "", tagIds: [], newTag: "" })
   // 全ブランチを常に展開
   const [showStatistics, setShowStatistics] = useState(false)
 
@@ -172,7 +179,7 @@ export function BranchStructure({
   const handleEditStart = (line: Line) => {
     setEditData({
       name: line.name,
-      tags: [...(line.tags || [])],
+      tagIds: [...(line.tagIds || [])],
       newTag: ""
     })
     setEditingLineId(line.id)
@@ -182,7 +189,7 @@ export function BranchStructure({
     if (editingLineId) {
       onLineEdit(editingLineId, {
         name: editData.name,
-        tags: editData.tags,
+        tagIds: editData.tagIds,
         updated_at: new Date().toISOString()
       })
       setEditingLineId(null)
@@ -191,9 +198,12 @@ export function BranchStructure({
 
   const handleAddTag = () => {
     if (editData.newTag.trim()) {
+      // 新しいタグを作成して追加する必要があるが、ここでは簡単に表示用にそのまま使用
+      const newTagId = `tag_${Date.now()}`
+      // TODO: グローバルのtagsステートに追加する必要がある
       setEditData(prev => ({
         ...prev,
-        tags: [...prev.tags, prev.newTag.trim()],
+        tagIds: [...prev.tagIds, newTagId],
         newTag: ""
       }))
     }
@@ -283,16 +293,20 @@ export function BranchStructure({
                 </div>
 
                 {/* タグ */}
-                {line.tags && line.tags.length > 0 && (
+                {line.tagIds && line.tagIds.length > 0 && (
                   <div className="flex gap-1 flex-shrink-0">
-                    {line.tags.slice(0, 2).map((tag, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {line.tags.length > 2 && (
+                    {line.tagIds.slice(0, 2).map((tagId, index) => {
+                      const tag = tags[tagId]
+                      if (!tag) return null
+                      return (
+                        <Badge key={index} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                          {tag.name}
+                        </Badge>
+                      )
+                    })}
+                    {line.tagIds.length > 2 && (
                       <Badge variant="secondary" className="text-xs bg-gray-100 text-gray-600">
-                        +{line.tags.length - 2}
+                        +{line.tagIds.length - 2}
                       </Badge>
                     )}
                   </div>

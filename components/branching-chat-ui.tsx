@@ -28,9 +28,14 @@ interface Line {
   startMessageId: string // ラインの開始メッセージ
   endMessageId?: string // ラインの終了メッセージ（まだ続いている場合はundefined）
   branchFromMessageId?: string // 分岐元のメッセージID（メインライン以外）
-  tags?: string[]
+  tagIds?: string[] // タグIDの配列
   created_at: string
   updated_at: string
+}
+
+interface Tag {
+  id: string
+  name: string
 }
 
 interface BranchPoint {
@@ -57,6 +62,7 @@ interface BranchingChatUIProps {
   initialMessages?: Record<string, Message>
   initialLines?: Record<string, Line>
   initialBranchPoints?: Record<string, BranchPoint>
+  initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
 }
@@ -65,12 +71,14 @@ export function BranchingChatUI({
   initialMessages = {},
   initialLines = {},
   initialBranchPoints = {},
+  initialTags = {},
   initialCurrentLineId = '',
   onLineChange
 }: BranchingChatUIProps) {
   const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
   const [lines, setLines] = useState<Record<string, Line>>(initialLines)
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>(initialBranchPoints)
+  const [tags, setTags] = useState<Record<string, Tag>>(initialTags)
 
   const [currentLineId, setCurrentLineId] = useState<string>(initialCurrentLineId)
 
@@ -83,9 +91,9 @@ export function BranchingChatUI({
   const [isEditingBranch, setIsEditingBranch] = useState(false)
   const [editingBranchData, setEditingBranchData] = useState<{
     name: string
-    tags: string[]
+    tagIds: string[]
     newTag: string
-  }>({ name: "", tags: [], newTag: "" })
+  }>({ name: "", tagIds: [], newTag: "" })
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // 画像URLが有効かどうかをチェックする関数
@@ -127,10 +135,12 @@ export function BranchingChatUI({
     messages?: Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>;
     lines?: Line[];
     branchPoints?: Record<string, BranchPoint>;
+    tags?: Record<string, Tag>;
   }) => {
     const newMessages: Record<string, Message> = {}
     const newLines: Record<string, Line> = {}
     const newBranchPoints: Record<string, BranchPoint> = {}
+    const newTags: Record<string, Tag> = {}
 
     // メッセージデータをそのまま使用
     if (data.messages) {
@@ -156,7 +166,14 @@ export function BranchingChatUI({
       })
     }
 
-    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints }
+    // タグデータをそのまま使用
+    if (data.tags) {
+      Object.entries(data.tags).forEach(([id, tag]) => {
+        newTags[id] = tag
+      })
+    }
+
+    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints, tags: newTags }
   }
 
 
@@ -204,6 +221,7 @@ export function BranchingChatUI({
           setMessages(loaded.messages)
           setLines(loaded.lines)
           setBranchPoints(loaded.branchPoints)
+          setTags(loaded.tags)
 
           // キャッシュをクリア
           setPathCache(new Map())
@@ -481,7 +499,7 @@ export function BranchingChatUI({
         startMessageId: "",
         endMessageId: undefined,
         branchFromMessageId: selectedBaseMessage,
-        tags: [],
+        tagIds: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
@@ -581,7 +599,7 @@ export function BranchingChatUI({
     if (currentLineInfo) {
       setEditingBranchData({
         name: currentLineInfo.name,
-        tags: [...(currentLineInfo.tags || [])],
+        tagIds: [...(currentLineInfo.tagIds || [])],
         newTag: ""
       })
       setIsEditingBranch(true)
@@ -597,7 +615,7 @@ export function BranchingChatUI({
           updated[currentLineId] = {
             ...updated[currentLineId],
             name: editingBranchData.name,
-            tags: editingBranchData.tags,
+            tagIds: editingBranchData.tagIds,
             updated_at: new Date().toISOString()
           }
         }
@@ -609,9 +627,23 @@ export function BranchingChatUI({
 
   const handleAddTag = () => {
     if (editingBranchData.newTag.trim()) {
+      // 新しいタグを作成
+      const newTagId = `tag_${Date.now()}`
+      const newTag: Tag = {
+        id: newTagId,
+        name: editingBranchData.newTag.trim()
+      }
+
+      // タグを追加
+      setTags(prev => ({
+        ...prev,
+        [newTagId]: newTag
+      }))
+
+      // 編集データを更新
       setEditingBranchData(prev => ({
         ...prev,
-        tags: [...prev.tags, prev.newTag.trim()],
+        tagIds: [...prev.tagIds, newTagId],
         newTag: ""
       }))
     }
@@ -620,7 +652,7 @@ export function BranchingChatUI({
   const handleRemoveTag = (tagIndex: number) => {
     setEditingBranchData(prev => ({
       ...prev,
-      tags: prev.tags.filter((_, index) => index !== tagIndex)
+      tagIds: prev.tagIds.filter((_, index) => index !== tagIndex)
     }))
   }
 
@@ -730,13 +762,17 @@ export function BranchingChatUI({
                   <Edit3 className="h-4 w-4" />
                 </Button>
               </div>
-              {currentLineInfo.tags && currentLineInfo.tags.length > 0 && (
+              {currentLineInfo.tagIds && currentLineInfo.tagIds.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {currentLineInfo.tags.map((tag, tagIndex) => (
-                    <Badge key={`current-line-tag-${tagIndex}`} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
-                      {tag}
-                    </Badge>
-                  ))}
+                  {currentLineInfo.tagIds.map((tagId, tagIndex) => {
+                    const tag = tags[tagId]
+                    if (!tag) return null
+                    return (
+                      <Badge key={`current-line-tag-${tagIndex}`} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                        {tag.name}
+                      </Badge>
+                    )
+                  })}
                 </div>
               )}
             </>
@@ -755,19 +791,23 @@ export function BranchingChatUI({
               {/* タグ編集 */}
               <div>
                 <div className="flex flex-wrap gap-1 mb-2">
-                  {editingBranchData.tags.map((tag, tagIndex) => (
-                    <div key={tagIndex} className="flex items-center">
-                      <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-700 pr-1">
-                        {tag}
-                        <button
-                          onClick={() => handleRemoveTag(tagIndex)}
-                          className="ml-1 text-emerald-500 hover:text-emerald-700"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    </div>
-                  ))}
+                  {editingBranchData.tagIds.map((tagId, tagIndex) => {
+                    const tag = tags[tagId]
+                    if (!tag) return null
+                    return (
+                      <div key={tagIndex} className="flex items-center">
+                        <Badge variant="secondary" className="text-xs bg-emerald-100 text-emerald-700 pr-1">
+                          {tag.name}
+                          <button
+                            onClick={() => handleRemoveTag(tagIndex)}
+                            className="ml-1 text-emerald-500 hover:text-emerald-700"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      </div>
+                    )
+                  })}
                 </div>
                 <div className="flex gap-2">
                   <Input
@@ -830,13 +870,17 @@ export function BranchingChatUI({
                       → {messageLineInfo.transitionInfo?.lineName}
                     </div>
                   </div>
-                  {messageLineInfo.lineInfo?.tags && messageLineInfo.lineInfo.tags.length > 0 && (
+                  {messageLineInfo.lineInfo?.tagIds && messageLineInfo.lineInfo.tagIds.length > 0 && (
                     <div className="flex gap-1">
-                      {messageLineInfo.lineInfo.tags.slice(0, 2).map((tag, tagIndex) => (
-                        <Badge key={tagIndex} variant="secondary" className="text-xs bg-blue-100 text-blue-700">
-                          {tag}
-                        </Badge>
-                      ))}
+                      {messageLineInfo.lineInfo.tagIds.slice(0, 2).map((tagId, tagIndex) => {
+                        const tag = tags[tagId]
+                        if (!tag) return null
+                        return (
+                          <Badge key={tagIndex} variant="secondary" className="text-xs bg-blue-100 text-blue-700">
+                            {tag.name}
+                          </Badge>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
@@ -924,7 +968,8 @@ export function BranchingChatUI({
                       const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
                       const lastMessage = lastMessageId ? messages[lastMessageId] : null
                       const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 25) + (lastMessage.content.length > 25 ? "..." : "") : ""
-                      const firstTag = line.tags?.[0]
+                      const firstTagId = line.tagIds?.[0]
+                      const firstTag = firstTagId ? tags[firstTagId] : null
                       // 更新日時を優先表示
                       const relativeTime = line.updated_at ? getRelativeTime(line.updated_at) : (line.created_at ? getRelativeTime(line.created_at) : "")
 
@@ -952,7 +997,7 @@ export function BranchingChatUI({
                                 <span className={`text-xs px-1.5 py-0.5 rounded ${
                                   isCurrentLine ? 'bg-emerald-200 text-emerald-600' : 'bg-gray-200 text-gray-500'
                                 }`}>
-                                  {firstTag}
+                                  {firstTag.name}
                                 </span>
                               )}
                             </div>

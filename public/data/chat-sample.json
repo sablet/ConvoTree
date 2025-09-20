@@ -187,11 +187,11 @@
       ],
       "startMessageId": "msg1",
       "endMessageId": "msg19",
-      "tags": [
-        "キックオフ",
-        "要件定義",
-        "技術スタック",
-        "インフラ"
+      "tagIds": [
+        "tag_kickoff",
+        "tag_requirements",
+        "tag_tech_stack",
+        "tag_infrastructure"
       ],
       "updated_at": "2024-01-15T10:30:00.000Z"
     },
@@ -207,11 +207,11 @@
       "startMessageId": "msg4",
       "endMessageId": "msg22",
       "branchFromMessageId": "msg2",
-      "tags": [
-        "デザイン",
-        "UI/UX",
-        "プロトタイプ",
-        "アクセシビリティ"
+      "tagIds": [
+        "tag_design",
+        "tag_ui_ux",
+        "tag_prototype",
+        "tag_accessibility"
       ],
       "updated_at": "2024-01-15T10:45:00.000Z"
     },
@@ -226,11 +226,11 @@
       "startMessageId": "msg5",
       "endMessageId": "msg18",
       "branchFromMessageId": "msg2",
-      "tags": [
-        "セキュリティ",
-        "暗号化",
-        "認証",
-        "監査"
+      "tagIds": [
+        "tag_security",
+        "tag_encryption",
+        "tag_authentication",
+        "tag_audit"
       ],
       "updated_at": "2024-01-15T10:25:00.000Z"
     },
@@ -245,11 +245,11 @@
       "startMessageId": "msg7",
       "endMessageId": "msg21",
       "branchFromMessageId": "msg3",
-      "tags": [
-        "データベース",
-        "設計",
-        "パフォーマンス",
-        "ツリー構造"
+      "tagIds": [
+        "tag_database",
+        "tag_design_pattern",
+        "tag_performance",
+        "tag_tree_structure"
       ],
       "updated_at": "2024-01-15T10:40:00.000Z"
     },
@@ -263,12 +263,12 @@
       "startMessageId": "msg12",
       "endMessageId": "msg20",
       "branchFromMessageId": "msg6",
-      "tags": [
-        "DevOps",
-        "インフラ",
-        "CI/CD",
-        "AWS",
-        "自動化"
+      "tagIds": [
+        "tag_devops",
+        "tag_infrastructure",
+        "tag_ci_cd",
+        "tag_aws",
+        "tag_automation"
       ],
       "updated_at": "2024-01-15T10:35:00.000Z"
     },
@@ -282,10 +282,10 @@
       "startMessageId": "msg9",
       "endMessageId": "msg17",
       "branchFromMessageId": "msg4",
-      "tags": [
-        "UX調査",
-        "ユーザビリティテスト",
-        "ベータテスト"
+      "tagIds": [
+        "tag_ux_research",
+        "tag_usability_test",
+        "tag_beta_test"
       ],
       "updated_at": "2024-01-15T10:20:00.000Z"
     },
@@ -298,9 +298,9 @@
       "startMessageId": "msg14",
       "endMessageId": "msg14",
       "branchFromMessageId": "msg7",
-      "tags": [
-        "パフォーマンス",
-        "スケーラビリティ"
+      "tagIds": [
+        "tag_performance",
+        "tag_scalability"
       ],
       "updated_at": "2024-01-15T10:05:00.000Z"
     },
@@ -313,10 +313,10 @@
       "startMessageId": "msg16",
       "endMessageId": "msg16",
       "branchFromMessageId": "msg8",
-      "tags": [
-        "アニメーション",
-        "UX",
-        "Framer Motion"
+      "tagIds": [
+        "tag_animation",
+        "tag_ui_ux",
+        "tag_framer_motion"
       ],
       "updated_at": "2024-01-15T10:15:00.000Z"
     }
@@ -358,6 +358,112 @@
       "lines": [
         "animation"
       ]
+    }
+  },
+  "tags": {
+    "tag_kickoff": {
+      "id": "tag_kickoff",
+      "name": "キックオフ"
+    },
+    "tag_requirements": {
+      "id": "tag_requirements",
+      "name": "要件定義"
+    },
+    "tag_tech_stack": {
+      "id": "tag_tech_stack",
+      "name": "技術スタック"
+    },
+    "tag_infrastructure": {
+      "id": "tag_infrastructure",
+      "name": "インフラ"
+    },
+    "tag_design": {
+      "id": "tag_design",
+      "name": "デザイン"
+    },
+    "tag_ui_ux": {
+      "id": "tag_ui_ux",
+      "name": "UI/UX"
+    },
+    "tag_prototype": {
+      "id": "tag_prototype",
+      "name": "プロトタイプ"
+    },
+    "tag_accessibility": {
+      "id": "tag_accessibility",
+      "name": "アクセシビリティ"
+    },
+    "tag_security": {
+      "id": "tag_security",
+      "name": "セキュリティ"
+    },
+    "tag_encryption": {
+      "id": "tag_encryption",
+      "name": "暗号化"
+    },
+    "tag_authentication": {
+      "id": "tag_authentication",
+      "name": "認証"
+    },
+    "tag_audit": {
+      "id": "tag_audit",
+      "name": "監査"
+    },
+    "tag_database": {
+      "id": "tag_database",
+      "name": "データベース"
+    },
+    "tag_design_pattern": {
+      "id": "tag_design_pattern",
+      "name": "設計"
+    },
+    "tag_performance": {
+      "id": "tag_performance",
+      "name": "パフォーマンス"
+    },
+    "tag_tree_structure": {
+      "id": "tag_tree_structure",
+      "name": "ツリー構造"
+    },
+    "tag_devops": {
+      "id": "tag_devops",
+      "name": "DevOps"
+    },
+    "tag_ci_cd": {
+      "id": "tag_ci_cd",
+      "name": "CI/CD"
+    },
+    "tag_aws": {
+      "id": "tag_aws",
+      "name": "AWS"
+    },
+    "tag_automation": {
+      "id": "tag_automation",
+      "name": "自動化"
+    },
+    "tag_ux_research": {
+      "id": "tag_ux_research",
+      "name": "UX調査"
+    },
+    "tag_usability_test": {
+      "id": "tag_usability_test",
+      "name": "ユーザビリティテスト"
+    },
+    "tag_beta_test": {
+      "id": "tag_beta_test",
+      "name": "ベータテスト"
+    },
+    "tag_scalability": {
+      "id": "tag_scalability",
+      "name": "スケーラビリティ"
+    },
+    "tag_animation": {
+      "id": "tag_animation",
+      "name": "アニメーション"
+    },
+    "tag_framer_motion": {
+      "id": "tag_framer_motion",
+      "name": "Framer Motion"
     }
   }
 }
