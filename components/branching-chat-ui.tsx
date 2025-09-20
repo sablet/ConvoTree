@@ -1061,7 +1061,7 @@ export function BranchingChatUI({
                 📝 現在のラインに追加
               </span>
               <span className="text-gray-500">
-                {currentLineInfo?.name || "メインライン"}
+                {currentLineInfo?.name || "メインの流れ"}
               </span>
             </div>
           </div>
