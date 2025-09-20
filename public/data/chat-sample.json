@@ -177,6 +177,7 @@
     {
       "id": "main",
       "name": "メインの流れ",
+      "parentLineId": null,
       "messageIds": [
         "msg1",
         "msg2",
@@ -198,6 +199,7 @@
     {
       "id": "design",
       "name": "デザイン検討",
+      "parentLineId": "main",
       "messageIds": [
         "msg4",
         "msg8",
@@ -218,6 +220,7 @@
     {
       "id": "security",
       "name": "セキュリティ要件",
+      "parentLineId": "main",
       "messageIds": [
         "msg5",
         "msg10",
@@ -237,6 +240,7 @@
     {
       "id": "database",
       "name": "データベース設計",
+      "parentLineId": "main",
       "messageIds": [
         "msg7",
         "msg13",
@@ -256,6 +260,7 @@
     {
       "id": "devops",
       "name": "DevOps・インフラ",
+      "parentLineId": "main",
       "messageIds": [
         "msg12",
         "msg20"
@@ -275,6 +280,7 @@
     {
       "id": "ux_research",
       "name": "UX調査",
+      "parentLineId": "design",
       "messageIds": [
         "msg9",
         "msg17"
@@ -292,6 +298,7 @@
     {
       "id": "database_performance",
       "name": "DB性能検討",
+      "parentLineId": "database",
       "messageIds": [
         "msg14"
       ],
@@ -307,6 +314,7 @@
     {
       "id": "animation",
       "name": "アニメーション",
+      "parentLineId": "design",
       "messageIds": [
         "msg16"
       ],

@@ -90,39 +90,68 @@ export function BranchStructure({
   // 全ブランチを常に展開
   const [showStatistics, setShowStatistics] = useState(false)
 
-  // 全ブランチをフラットリストで取得
+  // ツリー構造を構築し、深さ優先でフラットリストに変換
   const allBranches = useMemo(() => {
-    return Object.values(lines).map(line => {
-      const messageCount = line.messageIds.length
-      let depth = 0
+    const nodes: Record<string, BranchNode> = {};
+    const roots: BranchNode[] = [];
 
-      // 深度を計算
-      if (line.branchFromMessageId) {
-        const branchFromMessage = messages[line.branchFromMessageId]
-        if (branchFromMessage) {
-          // 分岐元のメッセージが属するラインを見つけて深度を設定
-          const parentLine = lines[branchFromMessage.lineId]
-          if (parentLine) {
-            // 親の深度 + 1
-            const parentDepth = parentLine.branchFromMessageId ? 1 : 0
-            depth = parentDepth + 1
-          }
-        }
-      }
-
-      return {
+    // 1. すべてのラインをノードとして初期化
+    Object.values(lines).forEach(line => {
+      nodes[line.id] = {
         line,
         children: [],
-        depth,
-        messageCount
-      } as BranchNode
-    }).sort((a, b) => {
-      // メインライン（main）を最初に、その後は作成日時順
-      if (a.line.id === 'main') return -1
-      if (b.line.id === 'main') return 1
-      return new Date(a.line.created_at).getTime() - new Date(b.line.created_at).getTime()
-    })
-  }, [lines, messages])
+        depth: 0, // 走査中に深度を計算
+        messageCount: line.messageIds.length,
+      };
+    });
+
+    // 2. 親子関係を構築してツリーを形成
+    Object.values(lines).forEach(line => {
+      const node = nodes[line.id];
+      // 分岐元のメッセージIDがない場合はルートノードとする
+      if (!line.branchFromMessageId) {
+        roots.push(node);
+        return;
+      }
+      
+      const branchFromMessage = messages[line.branchFromMessageId];
+      if (branchFromMessage) {
+        const parentLineId = branchFromMessage.lineId;
+        const parentNode = nodes[parentLineId];
+        if (parentNode) {
+          // 親ノードの子として追加
+          parentNode.children.push(node);
+        }
+      } else {
+        // 親メッセージが見つからない場合もルートとして扱う
+        roots.push(node);
+      }
+    });
+
+    // 'main'ラインを常に最初に表示
+    roots.sort((a, b) => {
+      if (a.line.id === 'main') return -1;
+      if (b.line.id === 'main') return 1;
+      return new Date(a.line.created_at).getTime() - new Date(b.line.created_at).getTime();
+    });
+
+    // 兄弟ノード間を作成日時でソートして表示順を安定させる
+    Object.values(nodes).forEach(node => {
+      node.children.sort((a, b) => new Date(a.line.created_at).getTime() - new Date(b.line.created_at).getTime());
+    });
+
+    // 3. 深さ優先探索でツリーをフラットなリストに変換
+    const flattened: BranchNode[] = [];
+    const traverse = (node: BranchNode, depth: number) => {
+      node.depth = depth;
+      flattened.push(node);
+      node.children.forEach(child => traverse(child, depth + 1));
+    };
+
+    roots.forEach(root => traverse(root, 0));
+
+    return flattened;
+  }, [lines, messages]);
 
   // 統計データを計算
   const statistics = useMemo(() => {
