@@ -86,7 +86,8 @@ export function BranchStructure({
     name: string
     tagIds: string[]
     newTag: string
-  }>({ name: "", tagIds: [], newTag: "" })
+    availableTags: string[]
+  }>({ name: "", tagIds: [], newTag: "", availableTags: [] })
   // 全ブランチを常に展開
   const [showStatistics, setShowStatistics] = useState(false)
 
@@ -206,10 +207,15 @@ export function BranchStructure({
   }
 
   const handleEditStart = (line: Line) => {
+    // 利用可能なタグ = 全てのタグ - 現在のラインに既に割り当てられているタグ
+    const currentTagIds = line.tagIds || []
+    const availableTags = Object.keys(tags).filter(tagId => !currentTagIds.includes(tagId))
+
     setEditData({
       name: line.name,
-      tagIds: [...(line.tagIds || [])],
-      newTag: ""
+      tagIds: [...currentTagIds],
+      newTag: "",
+      availableTags: availableTags
     })
     setEditingLineId(line.id)
   }
@@ -225,7 +231,7 @@ export function BranchStructure({
     }
   }
 
-  const handleAddTag = () => {
+  const handleAddNewTag = () => {
     if (editData.newTag.trim()) {
       // 新しいタグを作成して追加する必要があるが、ここでは簡単に表示用にそのまま使用
       const newTagId = `tag_${Date.now()}`
@@ -236,6 +242,22 @@ export function BranchStructure({
         newTag: ""
       }))
     }
+  }
+
+  const handleAddExistingTag = (tagId: string) => {
+    setEditData(prev => ({
+      ...prev,
+      tagIds: [...prev.tagIds, tagId],
+      availableTags: prev.availableTags.filter(id => id !== tagId)
+    }))
+  }
+
+  const handleRemoveTag = (tagId: string) => {
+    setEditData(prev => ({
+      ...prev,
+      tagIds: prev.tagIds.filter(id => id !== tagId),
+      availableTags: [...prev.availableTags, tagId]
+    }))
   }
 
 
@@ -349,29 +371,89 @@ export function BranchStructure({
                 )}
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Input
                   value={editData.name}
                   onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="ライン名"
                   className="text-sm"
                 />
-                <div className="flex gap-2">
-                  <Input
-                    value={editData.newTag}
-                    onChange={(e) => setEditData(prev => ({ ...prev, newTag: e.target.value }))}
-                    placeholder="新しいタグ"
-                    className="text-xs flex-1"
-                    onKeyPress={(e) => e.key === "Enter" && handleAddTag()}
-                  />
-                  <Button
-                    onClick={handleAddTag}
-                    size="sm"
-                    variant="outline"
-                    className="px-2"
-                  >
-                    <Plus className="h-3 w-3" />
-                  </Button>
+
+                {/* 現在割り当てられているタグ */}
+                {editData.tagIds.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-600">現在のタグ:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {editData.tagIds.map((tagId) => {
+                        const tag = tags[tagId]
+                        if (!tag) return null
+                        return (
+                          <Badge
+                            key={tagId}
+                            variant="secondary"
+                            className="text-xs bg-emerald-100 text-emerald-700 flex items-center gap-1"
+                          >
+                            {tag.name}
+                            <Button
+                              onClick={() => handleRemoveTag(tagId)}
+                              size="sm"
+                              variant="ghost"
+                              className="h-3 w-3 p-0 hover:bg-emerald-200"
+                            >
+                              <X className="h-2 w-2" />
+                            </Button>
+                          </Badge>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 既存タグの選択 */}
+                {editData.availableTags.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-600">既存タグから追加:</div>
+                    <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                      {editData.availableTags.map((tagId) => {
+                        const tag = tags[tagId]
+                        if (!tag) return null
+                        return (
+                          <Button
+                            key={tagId}
+                            onClick={() => handleAddExistingTag(tagId)}
+                            size="sm"
+                            variant="outline"
+                            className="text-xs h-6 px-2 border-gray-300 hover:border-emerald-400 hover:bg-emerald-50"
+                          >
+                            <Plus className="h-3 w-3 mr-1" />
+                            {tag.name}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 新しいタグの作成 */}
+                <div className="space-y-2">
+                  <div className="text-xs text-gray-600">新しいタグを作成:</div>
+                  <div className="flex gap-2">
+                    <Input
+                      value={editData.newTag}
+                      onChange={(e) => setEditData(prev => ({ ...prev, newTag: e.target.value }))}
+                      placeholder="新しいタグ名"
+                      className="text-xs flex-1"
+                      onKeyPress={(e) => e.key === "Enter" && handleAddNewTag()}
+                    />
+                    <Button
+                      onClick={handleAddNewTag}
+                      size="sm"
+                      variant="outline"
+                      className="px-2"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
