@@ -1018,17 +1018,6 @@ export function BranchingChatUI({
                               )}
                             </div>
                           </div>
-                          {/* 編集ボタン */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              // 編集機能は今後実装
-                              console.log('Edit line:', line.id)
-                            }}
-                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white hover:shadow-sm"
-                          >
-                            <Edit3 className="h-3 w-3 text-gray-400 hover:text-gray-600" />
-                          </button>
                         </div>
                       )
                     })}
@@ -1045,23 +1034,20 @@ export function BranchingChatUI({
       <div className="p-4 border-t border-gray-100 bg-white">
         {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <span className="text-gray-500">分岐基点: </span>
-                <span className="font-medium text-gray-800">
-                  {messages[selectedBaseMessage]?.content.slice(0, 30)}
-                  {messages[selectedBaseMessage]?.content.length > 30 ? "..." : ""}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex-shrink-0">
+                  🌿 新しい分岐を作成
                 </span>
-                <div className="mt-1">
-                  <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
-                    🌿 新しい分岐を作成
-                  </span>
-                </div>
+                <span className="font-medium text-gray-800 truncate">
+                  {messages[selectedBaseMessage]?.content.slice(0, 25)}
+                  {messages[selectedBaseMessage]?.content.length > 25 ? "..." : ""}
+                </span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100"
+                className="h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100 flex-shrink-0"
                 onClick={() => setSelectedBaseMessage(null)}
               >
                 ✕
