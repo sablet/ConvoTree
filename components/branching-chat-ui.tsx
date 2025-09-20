@@ -1077,7 +1077,7 @@ export function BranchingChatUI({
             <textarea
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="メッセージを入力..."
+              placeholder={selectedBaseMessage ? "新規ブランチ名を入力" : "新規メッセージを入力"}
               className="min-h-[44px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
