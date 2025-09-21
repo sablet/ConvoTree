@@ -252,7 +252,6 @@ export default function ChatLinePage({ params }: PageProps) {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
-          onDataChange={handleDataReload}
         />
 
         <FooterNavigation

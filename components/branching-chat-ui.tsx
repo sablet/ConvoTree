@@ -66,7 +66,6 @@ interface BranchingChatUIProps {
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
-  onDataChange?: () => void // データ変更時に親にリロードを促すコールバック
 }
 
 interface DeleteConfirmationState {
@@ -81,8 +80,7 @@ export function BranchingChatUI({
   initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
-  onLineChange,
-  onDataChange
+  onLineChange
 }: BranchingChatUIProps) {
   const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
   const [lines, setLines] = useState<Record<string, Line>>(initialLines)
@@ -597,10 +595,8 @@ export function BranchingChatUI({
 
       DEV_LOG.data('Message sent successfully')
 
-      // 親コンポーネントにデータ変更を通知
-      if (onDataChange) {
-        onDataChange()
-      }
+      // メッセージ投稿時はローカル状態が既に更新されているため、
+      // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
       DEV_LOG.error('Failed to send message', error)
       alert('メッセージの送信に失敗しました')
@@ -642,10 +638,8 @@ export function BranchingChatUI({
 
       DEV_LOG.data('Message updated successfully', { messageId: editingMessageId })
 
-      // 親コンポーネントにデータ変更を通知
-      if (onDataChange) {
-        onDataChange()
-      }
+      // メッセージ編集時はローカル状態が既に更新されているため、
+      // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
       DEV_LOG.error('Failed to update message', error)
       alert('メッセージの更新に失敗しました')
@@ -724,10 +718,8 @@ export function BranchingChatUI({
       setDeleteConfirmation(null)
       DEV_LOG.data('Message deleted successfully', { messageId })
 
-      // 親コンポーネントにデータ変更を通知
-      if (onDataChange) {
-        onDataChange()
-      }
+      // メッセージ削除時はローカル状態が既に更新されているため、
+      // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
       DEV_LOG.error('Failed to delete message', error)
       alert('メッセージの削除に失敗しました')
