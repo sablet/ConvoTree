@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface Message {
@@ -15,6 +15,8 @@ interface Message {
   hasBookmark?: boolean;
   author?: string;
   images?: string[];
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
 interface Line {
@@ -213,6 +215,158 @@ export class DataSourceManager {
     } catch (error) {
       console.error('❌ Failed to load sample data:', error);
       throw error;
+    }
+  }
+
+  // Message CRUD Operations
+  async createMessage(message: Omit<Message, 'id'>): Promise<string> {
+    try {
+      // バリデーション
+      this.validateMessage(message);
+
+      console.log('📝 Creating new message in Firestore...');
+
+      const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
+
+      const messageData = {
+        ...message,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(messagesRef, messageData);
+
+      console.log(`✅ Message created with ID: ${docRef.id}`);
+      return docRef.id;
+
+    } catch (error) {
+      console.error('❌ Failed to create message:', error);
+      this.handleFirestoreError(error, 'create');
+      throw error;
+    }
+  }
+
+  async updateMessage(id: string, updates: Partial<Message>): Promise<void> {
+    try {
+      // バリデーション
+      this.validateMessageId(id);
+      this.validateMessageUpdates(updates);
+
+      console.log(`📝 Updating message ${id} in Firestore...`);
+
+      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+
+      // メッセージ存在確認
+      const messageDoc = await getDoc(messageRef);
+      if (!messageDoc.exists()) {
+        throw new Error(`Message with ID ${id} not found`);
+      }
+
+      const updateData = {
+        ...updates,
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(messageRef, updateData);
+
+      console.log(`✅ Message ${id} updated successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to update message ${id}:`, error);
+      this.handleFirestoreError(error, 'update');
+      throw error;
+    }
+  }
+
+  async deleteMessage(id: string): Promise<void> {
+    try {
+      // バリデーション
+      this.validateMessageId(id);
+
+      console.log(`🗑️ Deleting message ${id} from Firestore...`);
+
+      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+
+      // メッセージ存在確認
+      const messageDoc = await getDoc(messageRef);
+      if (!messageDoc.exists()) {
+        throw new Error(`Message with ID ${id} not found`);
+      }
+
+      await deleteDoc(messageRef);
+
+      console.log(`✅ Message ${id} deleted successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to delete message ${id}:`, error);
+      this.handleFirestoreError(error, 'delete');
+      throw error;
+    }
+  }
+
+  // バリデーション関数
+  private validateMessage(message: Omit<Message, 'id'>): void {
+    if (!message.content || message.content.trim() === '') {
+      throw new Error('Message content is required');
+    }
+
+    if (!message.lineId || message.lineId.trim() === '') {
+      throw new Error('LineId is required');
+    }
+
+    if (!message.timestamp) {
+      throw new Error('Timestamp is required');
+    }
+
+    // タイムスタンプ形式チェック
+    if (isNaN(Date.parse(message.timestamp))) {
+      throw new Error('Invalid timestamp format');
+    }
+  }
+
+  private validateMessageId(id: string): void {
+    if (!id || id.trim() === '') {
+      throw new Error('Message ID is required');
+    }
+  }
+
+  private validateMessageUpdates(updates: Partial<Message>): void {
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No updates provided');
+    }
+
+    // contentが空文字列でないことをチェック
+    if (updates.content !== undefined && updates.content.trim() === '') {
+      throw new Error('Message content cannot be empty');
+    }
+
+    // lineIdが空文字列でないことをチェック
+    if (updates.lineId !== undefined && updates.lineId.trim() === '') {
+      throw new Error('LineId cannot be empty');
+    }
+
+    // timestampの形式チェック
+    if (updates.timestamp !== undefined && isNaN(Date.parse(updates.timestamp))) {
+      throw new Error('Invalid timestamp format');
+    }
+  }
+
+  // エラーハンドリング
+  private handleFirestoreError(error: unknown, operation: string): void {
+    if (error instanceof Error) {
+      if (error.message.includes('permission-denied')) {
+        console.error(`❌ Permission denied for ${operation} operation. Check Firestore security rules.`);
+      } else if (error.message.includes('not-found')) {
+        console.error(`❌ Document not found for ${operation} operation.`);
+      } else if (error.message.includes('already-exists')) {
+        console.error(`❌ Document already exists for ${operation} operation.`);
+      } else if (error.message.includes('network')) {
+        console.error(`❌ Network error during ${operation} operation. Please check your connection.`);
+      } else {
+        console.error(`❌ Unexpected error during ${operation} operation:`, error.message);
+      }
+    } else {
+      console.error(`❌ Unknown error during ${operation} operation:`, error);
     }
   }
 }

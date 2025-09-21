@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { TagManagement } from "@/components/tag-management"
+import { MessageCrudTest } from "@/components/message-crud-test"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { useRouter } from "next/navigation"
 
@@ -24,7 +25,8 @@ export default function ManagementPage() {
 
   return (
     <div className="min-h-screen bg-white pb-16">
-      <div className="p-4">
+      <div className="p-4 space-y-6">
+        <MessageCrudTest />
         <TagManagement />
       </div>
       <FooterNavigation
