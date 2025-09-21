@@ -1,8 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
+import { DataSourceToggle } from "@/components/data-source-toggle"
+import { FirestoreDebug } from "@/components/firestore-debug"
+import TagCrudTest from "@/components/tag-crud-test"
+import { TagProvider } from "@/lib/tag-context"
+import { dataSourceManager, DataSource } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
 interface Message {
@@ -22,7 +27,6 @@ interface Message {
 interface Line {
   id: string
   name: string
-  description: string
   messageIds: string[]
   startMessageId: string
   endMessageId?: string
@@ -62,80 +66,86 @@ export default function ChatLinePage({ params }: PageProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [lineNotFound, setLineNotFound] = useState(false)
 
-  // データローディング
-  useEffect(() => {
-    const loadChatData = async () => {
-      try {
-        setIsLoading(true)
-        const response = await fetch('/data/chat-sample.json')
-        const data = await response.json()
+  // データローディング関数
+  const loadChatData = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const data = await dataSourceManager.loadChatData()
 
-        const newMessages: Record<string, Message> = {}
-        const newLines: Record<string, Line> = {}
-        const newBranchPoints: Record<string, BranchPoint> = {}
-        const newTags: Record<string, Tag> = {}
+      const newMessages: Record<string, Message> = {}
+      const newLines: Record<string, Line> = {}
+      const newBranchPoints: Record<string, BranchPoint> = {}
+      const newTags: Record<string, Tag> = {}
 
-        // メッセージデータ変換
-        if (data.messages) {
-          Object.entries(data.messages as Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>).forEach(([id, msg]) => {
-            newMessages[id] = {
-              ...msg,
-              timestamp: new Date(msg.timestamp)
-            }
-          })
-        }
-
-        // ラインデータ変換
-        if (data.lines && Array.isArray(data.lines)) {
-          data.lines.forEach((line: Line) => {
-            newLines[line.id] = line
-          })
-        }
-
-        // 分岐点データ
-        if (data.branchPoints) {
-          Object.entries(data.branchPoints as Record<string, BranchPoint>).forEach(([id, branchPoint]) => {
-            newBranchPoints[id] = branchPoint
-          })
-        }
-
-        // タグデータ
-        if (data.tags) {
-          Object.entries(data.tags as Record<string, Tag>).forEach(([id, tag]) => {
-            newTags[id] = tag
-          })
-        }
-
-        setMessages(newMessages)
-        setLines(newLines)
-        setBranchPoints(newBranchPoints)
-        setTags(newTags)
-
-        // 指定されたライン名でラインを検索
-        const targetLine = Object.values(newLines).find(
-          line => line.name === decodedLineName || line.id === decodedLineName
-        )
-
-        if (targetLine) {
-          setCurrentLineId(targetLine.id)
-          setLineNotFound(false)
-        } else {
-          // ラインが見つからない場合、メインラインにフォールバック
-          const mainLine = newLines['main'] || Object.values(newLines)[0]
-          if (mainLine) {
-            setCurrentLineId(mainLine.id)
+      // メッセージデータ変換
+      if (data.messages) {
+        Object.entries(data.messages).forEach(([id, msg]) => {
+          newMessages[id] = {
+            ...msg,
+            timestamp: new Date(msg.timestamp)
           }
-          setLineNotFound(true)
-        }
-      } catch (error) {
-        console.error('Failed to load chat data:', error)
-      } finally {
-        setIsLoading(false)
+        })
       }
-    }
 
-    loadChatData()
+      // ラインデータ変換
+      if (data.lines && Array.isArray(data.lines)) {
+        data.lines.forEach((line: Line) => {
+          newLines[line.id] = line
+        })
+      }
+
+      // 分岐点データ
+      if (data.branchPoints) {
+        Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
+          newBranchPoints[id] = branchPoint
+        })
+      }
+
+      // タグデータ
+      if (data.tags) {
+        Object.entries(data.tags).forEach(([id, tag]) => {
+          newTags[id] = tag
+        })
+      }
+
+      setMessages(newMessages)
+      setLines(newLines)
+      setBranchPoints(newBranchPoints)
+      setTags(newTags)
+
+      // 指定されたライン名でラインを検索
+      const targetLine = Object.values(newLines).find(
+        line => line.name === decodedLineName || line.id === decodedLineName
+      )
+
+      if (targetLine) {
+        setCurrentLineId(targetLine.id)
+        setLineNotFound(false)
+      } else {
+        // ラインが見つからない場合、メインラインにフォールバック
+        const mainLine = newLines['main'] || Object.values(newLines)[0]
+        if (mainLine) {
+          setCurrentLineId(mainLine.id)
+        }
+        setLineNotFound(true)
+      }
+    } catch (error) {
+      console.error('Failed to load chat data:', error)
+      // Firestoreエラー時は空の状態を維持（自動フォールバックしない）
+      setMessages({})
+      setLines({})
+      setBranchPoints({})
+      setTags({})
+      setCurrentLineId('')
+    } finally {
+      setIsLoading(false)
+    }
   }, [decodedLineName])
+
+  // 初期データローディング
+  useEffect(() => {
+    loadChatData()
+  }, [loadChatData])
 
   // ブラウザの戻る・進むボタンに対応
   useEffect(() => {
@@ -164,7 +174,7 @@ export default function ChatLinePage({ params }: PageProps) {
   }, [lines])
 
   // ライン切り替えハンドラー（URL更新、履歴あり）
-  const handleLineChange = (lineId: string) => {
+  const handleLineChange = useCallback((lineId: string) => {
     const targetLine = lines[lineId]
     if (targetLine) {
       setCurrentLineId(lineId)
@@ -172,7 +182,17 @@ export default function ChatLinePage({ params }: PageProps) {
       const encodedLineName = encodeURIComponent(targetLine.name)
       window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
     }
-  }
+  }, [lines])
+
+  // データソース変更ハンドラー
+  const handleDataSourceChange = useCallback((source: DataSource) => {
+    console.log(`Data source changed to: ${source}`)
+  }, [])
+
+  // データ再読み込みハンドラー
+  const handleDataReload = useCallback(() => {
+    loadChatData()
+  }, [loadChatData])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
@@ -199,32 +219,47 @@ export default function ChatLinePage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-16">
-      {lineNotFound && (
-        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
-          <div className="flex">
-            <div className="ml-3">
-              <p className="text-sm text-yellow-700">
-                ライン「{decodedLineName}」が見つかりませんでした。メインラインを表示しています。
-              </p>
+    <TagProvider>
+      <div className="min-h-screen bg-white pb-16">
+        {/* データソース切り替えコントロール */}
+        <DataSourceToggle
+          onDataSourceChange={handleDataSourceChange}
+          onDataReload={handleDataReload}
+        />
+
+        {/* Firestore デバッグツール */}
+        <div className="p-4 space-y-4">
+          <FirestoreDebug />
+          <TagCrudTest />
+        </div>
+
+        {lineNotFound && (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
+            <div className="flex">
+              <div className="ml-3">
+                <p className="text-sm text-yellow-700">
+                  ライン「{decodedLineName}」が見つかりませんでした。メインラインを表示しています。
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <BranchingChatUI
-        initialMessages={messages}
-        initialLines={lines}
-        initialBranchPoints={branchPoints}
-        initialTags={tags}
-        initialCurrentLineId={currentLineId}
-        onLineChange={handleLineChange}
-      />
+        <BranchingChatUI
+          initialMessages={messages}
+          initialLines={lines}
+          initialBranchPoints={branchPoints}
+          initialTags={tags}
+          initialCurrentLineId={currentLineId}
+          onLineChange={handleLineChange}
+          onDataChange={handleDataReload}
+        />
 
-      <FooterNavigation
-        currentView={currentView}
-        onViewChange={handleViewChange}
-      />
-    </div>
+        <FooterNavigation
+          currentView={currentView}
+          onViewChange={handleViewChange}
+        />
+      </div>
+    </TagProvider>
   )
 }
