@@ -3,11 +3,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
-import { DataSourceToggle } from "@/components/data-source-toggle"
-import { FirestoreDebug } from "@/components/firestore-debug"
-import TagCrudTest from "@/components/tag-crud-test"
 import { TagProvider } from "@/lib/tag-context"
-import { dataSourceManager, DataSource } from "@/lib/data-source"
+import { dataSourceManager } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
 interface Message {
@@ -199,15 +196,6 @@ export default function ChatLinePage({ params }: PageProps) {
     window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
   }, [])
 
-  // データソース変更ハンドラー
-  const handleDataSourceChange = useCallback((source: DataSource) => {
-    console.log(`Data source changed to: ${source}`)
-  }, [])
-
-  // データ再読み込みハンドラー
-  const handleDataReload = useCallback(() => {
-    loadChatData()
-  }, [loadChatData])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
@@ -236,18 +224,6 @@ export default function ChatLinePage({ params }: PageProps) {
   return (
     <TagProvider>
       <div className="min-h-screen bg-white pb-16">
-        {/* データソース切り替えコントロール */}
-        <DataSourceToggle
-          onDataSourceChange={handleDataSourceChange}
-          onDataReload={handleDataReload}
-        />
-
-        {/* Firestore デバッグツール */}
-        <div className="p-4 space-y-4">
-          <FirestoreDebug />
-          <TagCrudTest />
-        </div>
-
         {lineNotFound && (
           <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
             <div className="flex">

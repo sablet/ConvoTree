@@ -3,11 +3,8 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
-import { DataSourceToggle } from "@/components/data-source-toggle"
-import { FirestoreDebug } from "@/components/firestore-debug"
-import TagCrudTest from "@/components/tag-crud-test"
 import { TagProvider } from "@/lib/tag-context"
-import { dataSourceManager, DataSource } from "@/lib/data-source"
+import { dataSourceManager } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
 interface Message {
@@ -159,15 +156,6 @@ export default function Home() {
     }
   }, [lines])
 
-  // データソース変更ハンドラー
-  const handleDataSourceChange = useCallback((source: DataSource) => {
-    console.log(`Data source changed to: ${source}`)
-  }, [])
-
-  // データ再読み込みハンドラー
-  const handleDataReload = useCallback(() => {
-    loadChatData()
-  }, [loadChatData])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
@@ -185,18 +173,6 @@ export default function Home() {
   return (
     <TagProvider>
       <div className="min-h-screen bg-white pb-16">
-        {/* データソース切り替えコントロール */}
-        <DataSourceToggle
-          onDataSourceChange={handleDataSourceChange}
-          onDataReload={handleDataReload}
-        />
-
-        {/* Firestore デバッグツール */}
-        <div className="p-4 space-y-4">
-          <FirestoreDebug />
-          <TagCrudTest />
-        </div>
-
         <BranchingChatUI
           initialMessages={messages}
           initialLines={lines}

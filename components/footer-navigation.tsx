@@ -1,6 +1,7 @@
 "use client"
 
-import { MessageSquare, BarChart3, Tags, Archive, GitBranch } from "lucide-react"
+import { MessageSquare, Tags, GitBranch, Bug } from "lucide-react"
+import { useRouter, usePathname } from "next/navigation"
 
 interface FooterNavigationProps {
   currentView: 'chat' | 'management' | 'branches'
@@ -8,6 +9,10 @@ interface FooterNavigationProps {
 }
 
 export function FooterNavigation({ currentView, onViewChange }: FooterNavigationProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const isDevelopment = process.env.NODE_ENV === 'development'
+
   const navItems = [
     {
       id: 'chat' as const,
@@ -27,18 +32,12 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
       icon: Tags,
       description: 'タグ管理'
     },
-    {
-      id: 'stats' as const,
-      label: '統計',
-      icon: BarChart3,
-      description: '使用統計'
-    },
-    {
-      id: 'projects' as const,
-      label: 'プロジェクト',
-      icon: Archive,
-      description: 'プロジェクト管理'
-    }
+    ...(isDevelopment ? [{
+      id: 'debug' as const,
+      label: 'デバッグ',
+      icon: Bug,
+      description: 'デバッグツール'
+    }] : [])
   ]
 
   return (
@@ -46,9 +45,11 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
       <div className="flex">
         {navItems.map((item) => {
           const Icon = item.icon
-          const isActive = item.id === currentView ||
-            (item.id === 'management' && currentView === 'management') ||
-            (item.id === 'branches' && currentView === 'branches')
+          const isActive = pathname === '/debug'
+            ? item.id === 'debug'
+            : item.id === currentView ||
+              (item.id === 'management' && currentView === 'management') ||
+              (item.id === 'branches' && currentView === 'branches')
 
           return (
             <button
@@ -56,6 +57,8 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
               onClick={() => {
                 if (item.id === 'chat' || item.id === 'management' || item.id === 'branches') {
                   onViewChange(item.id)
+                } else if (item.id === 'debug') {
+                  router.push('/debug')
                 }
               }}
               className={`
