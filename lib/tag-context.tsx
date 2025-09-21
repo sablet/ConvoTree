@@ -1,6 +1,9 @@
 "use client"
 
 import { createContext, useContext, useReducer, useEffect, ReactNode } from "react"
+import { dataSourceManager } from "@/lib/data-source"
+import { collection, onSnapshot } from "firebase/firestore"
+import { db } from "@/lib/firebase"
 
 export interface Tag {
   id: string
@@ -148,37 +151,34 @@ export function TagProvider({ children }: TagProviderProps) {
   const loadTags = async () => {
     dispatch({ type: "SET_LOADING", payload: true })
     try {
-      // 既存のサンプルデータを使用して実際のタグデータを生成
-      const response = await fetch("/data/chat-sample.json")
-      const data = await response.json()
+      // DataSourceManagerからFirestoreデータを取得
+      const chatData = await dataSourceManager.loadChatData()
 
       // 実際のタグデータとグループデータを取得
-      const actualTags = data.tags || {}
-      const actualTagGroups = data.tagGroups || {}
+      const actualTags = chatData.tags || {}
+      const actualTagGroups = chatData.tagGroups || {}
       const tagCountMap = new Map<string, number>()
 
       // 各ラインのtagIdsからタグの使用回数を計算
-      data.lines?.forEach((line: { tagIds?: string[] }) => {
+      chatData.lines?.forEach((line) => {
         line.tagIds?.forEach((tagId: string) => {
           tagCountMap.set(tagId, (tagCountMap.get(tagId) || 0) + 1)
         })
       })
 
-      // JSONから実際のタグデータを読み込み
+      // Firestoreから実際のタグデータを読み込み
       const tagsArray: Tag[] = Object.values(actualTags).map((tag) => {
-        const typedTag = tag as { id: string; name: string; color: string; groupId?: string }
         return {
-          id: typedTag.id,
-          name: typedTag.name,
-          color: typedTag.color,
-          groupId: typedTag.groupId,
-          count: tagCountMap.get(typedTag.id) || 0,
+          id: tag.id,
+          name: tag.name,
+          color: tag.color || "#e5e7eb",
+          groupId: tag.groupId,
+          count: tagCountMap.get(tag.id) || 0,
         }
       })
 
-      // JSONからタググループデータを読み込み
+      // Firestoreからタググループデータを読み込み
       const tagGroupsArray: TagGroup[] = Object.values(actualTagGroups)
-        .map((group) => group as TagGroup)
         .sort((a, b) => a.order - b.order)
 
       // グループ別にタグを整理して階層構造を作成
@@ -217,13 +217,19 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const addTag = async (tagData: Omit<Tag, "id">) => {
     try {
+      // Firestoreに保存
+      const tagId = await dataSourceManager.createTag({
+        name: tagData.name,
+        color: tagData.color,
+        groupId: tagData.groupId
+      })
+
       const newTag: Tag = {
         ...tagData,
-        id: `tag_${Date.now()}`,
+        id: tagId,
         count: 0,
       }
       dispatch({ type: "ADD_TAG", payload: newTag })
-      // TODO: 実際のAPIに保存
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの追加に失敗しました" })
     }
@@ -231,8 +237,14 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const updateTag = async (tag: Tag) => {
     try {
+      // Firestoreを更新
+      await dataSourceManager.updateTag(tag.id, {
+        name: tag.name,
+        color: tag.color,
+        groupId: tag.groupId
+      })
+
       dispatch({ type: "UPDATE_TAG", payload: tag })
-      // TODO: 実際のAPIに保存
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの更新に失敗しました" })
     }
@@ -240,8 +252,10 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const deleteTag = async (tagId: string) => {
     try {
+      // Firestoreから削除
+      await dataSourceManager.deleteTag(tagId)
+
       dispatch({ type: "DELETE_TAG", payload: tagId })
-      // TODO: 実際のAPIから削除
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの削除に失敗しました" })
     }
@@ -249,20 +263,75 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const addSubtag = async (parentId: string, subtagData: Omit<Tag, "id">) => {
     try {
+      // Firestoreに保存（サブタグは親IDをgroupIdとして設定）
+      const tagId = await dataSourceManager.createTag({
+        name: subtagData.name,
+        color: subtagData.color,
+        groupId: parentId
+      })
+
       const newSubtag: Tag = {
         ...subtagData,
-        id: `tag_${Date.now()}`,
+        id: tagId,
         count: 0,
       }
       dispatch({ type: "ADD_SUBTAG", payload: { parentId, subtag: newSubtag } })
-      // TODO: 実際のAPIに保存
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "サブタグの追加に失敗しました" })
     }
   }
 
   useEffect(() => {
+    // 初回ロード
     loadTags()
+
+    // リアルタイムリスナーの設定
+    const conversationId = 'sample-conversation-1'
+
+    // Tagsのリアルタイムリスナー
+    const tagsRef = collection(db, 'conversations', conversationId, 'tags')
+    const unsubscribeTags = onSnapshot(tagsRef, (snapshot) => {
+      console.log('🔄 Tags updated in real-time')
+      // 変更があった場合のみリロード
+      if (!snapshot.metadata.fromCache) {
+        loadTags()
+      }
+    }, (error) => {
+      console.error('❌ Tags listener error:', error)
+      dispatch({ type: "SET_ERROR", payload: "リアルタイム更新でエラーが発生しました" })
+    })
+
+    // TagGroupsのリアルタイムリスナー
+    const tagGroupsRef = collection(db, 'conversations', conversationId, 'tagGroups')
+    const unsubscribeTagGroups = onSnapshot(tagGroupsRef, (snapshot) => {
+      console.log('🔄 TagGroups updated in real-time')
+      // 変更があった場合のみリロード
+      if (!snapshot.metadata.fromCache) {
+        loadTags()
+      }
+    }, (error) => {
+      console.error('❌ TagGroups listener error:', error)
+      dispatch({ type: "SET_ERROR", payload: "リアルタイム更新でエラーが発生しました" })
+    })
+
+    // Linesのリアルタイムリスナー（タグカウント更新用）
+    const linesRef = collection(db, 'conversations', conversationId, 'lines')
+    const unsubscribeLines = onSnapshot(linesRef, (snapshot) => {
+      console.log('🔄 Lines updated in real-time (for tag counts)')
+      // 変更があった場合のみリロード
+      if (!snapshot.metadata.fromCache) {
+        loadTags()
+      }
+    }, (error) => {
+      console.error('❌ Lines listener error:', error)
+    })
+
+    // クリーンアップ関数
+    return () => {
+      unsubscribeTags()
+      unsubscribeTagGroups()
+      unsubscribeLines()
+    }
   }, [])
 
   const actions = {

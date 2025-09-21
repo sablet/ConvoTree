@@ -5,6 +5,8 @@ import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { DataSourceToggle } from "@/components/data-source-toggle"
 import { FirestoreDebug } from "@/components/firestore-debug"
+import TagCrudTest from "@/components/tag-crud-test"
+import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager, DataSource } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
@@ -181,30 +183,33 @@ export default function Home() {
   }, [router])
 
   return (
-    <div className="min-h-screen bg-white pb-16">
-      {/* データソース切り替えコントロール */}
-      <DataSourceToggle
-        onDataSourceChange={handleDataSourceChange}
-        onDataReload={handleDataReload}
-      />
+    <TagProvider>
+      <div className="min-h-screen bg-white pb-16">
+        {/* データソース切り替えコントロール */}
+        <DataSourceToggle
+          onDataSourceChange={handleDataSourceChange}
+          onDataReload={handleDataReload}
+        />
 
-      {/* Firestore デバッグツール */}
-      <div className="p-4">
-        <FirestoreDebug />
+        {/* Firestore デバッグツール */}
+        <div className="p-4 space-y-4">
+          <FirestoreDebug />
+          <TagCrudTest />
+        </div>
+
+        <BranchingChatUI
+          initialMessages={messages}
+          initialLines={lines}
+          initialBranchPoints={branchPoints}
+          initialTags={tags}
+          initialCurrentLineId={currentLineId}
+          onLineChange={handleLineChange}
+        />
+        <FooterNavigation
+          currentView={currentView}
+          onViewChange={handleViewChange}
+        />
       </div>
-
-      <BranchingChatUI
-        initialMessages={messages}
-        initialLines={lines}
-        initialBranchPoints={branchPoints}
-        initialTags={tags}
-        initialCurrentLineId={currentLineId}
-        onLineChange={handleLineChange}
-      />
-      <FooterNavigation
-        currentView={currentView}
-        onViewChange={handleViewChange}
-      />
-    </div>
+    </TagProvider>
   )
 }
