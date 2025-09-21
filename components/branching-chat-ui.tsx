@@ -132,51 +132,6 @@ export function BranchingChatUI({
     return `${diffMonths}ヶ月前`
   }
 
-  // 新しいデータ構造をそのまま使用（変換不要）
-  const loadNewDataStructure = (data: {
-    messages?: Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>;
-    lines?: Line[];
-    branchPoints?: Record<string, BranchPoint>;
-    tags?: Record<string, Tag>;
-  }) => {
-    const newMessages: Record<string, Message> = {}
-    const newLines: Record<string, Line> = {}
-    const newBranchPoints: Record<string, BranchPoint> = {}
-    const newTags: Record<string, Tag> = {}
-
-    // メッセージデータをそのまま使用
-    if (data.messages) {
-      Object.entries(data.messages).forEach(([id, msg]) => {
-        newMessages[id] = {
-          ...msg,
-          timestamp: new Date(msg.timestamp)
-        }
-      })
-    }
-
-    // ラインデータをRecord形式に変換
-    if (data.lines && Array.isArray(data.lines)) {
-      data.lines.forEach((line) => {
-        newLines[line.id] = line
-      })
-    }
-
-    // 分岐点データをそのまま使用
-    if (data.branchPoints) {
-      Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
-        newBranchPoints[id] = branchPoint
-      })
-    }
-
-    // タグデータをそのまま使用
-    if (data.tags) {
-      Object.entries(data.tags).forEach(([id, tag]) => {
-        newTags[id] = tag
-      })
-    }
-
-    return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints, tags: newTags }
-  }
 
 
   // 初期データの更新を監視
@@ -204,45 +159,6 @@ export function BranchingChatUI({
     }
   }, [initialCurrentLineId])
 
-  useEffect(() => {
-    // 初期データが空の場合のみローカルファイルから読み込み
-    if (Object.keys(initialMessages).length === 0) {
-      const loadChatData = async () => {
-        try {
-          const response = await fetch('/data/chat-sample.json')
-          const data = await response.json()
-
-          DEV_LOG.data('Chat data loaded successfully', {
-            messagesCount: Object.keys(data.messages || {}).length,
-            linesCount: data.lines?.length || 0,
-            branchPointsCount: Object.keys(data.branchPoints || {}).length
-          })
-
-          // 新しいデータ構造をそのまま使用
-          const loaded = loadNewDataStructure(data)
-          setMessages(loaded.messages)
-          setLines(loaded.lines)
-          setBranchPoints(loaded.branchPoints)
-          setTags(loaded.tags)
-
-          // キャッシュをクリア
-          setPathCache(new Map())
-          setLineAncestryCache(new Map())
-
-          // デフォルトラインを設定（メインラインまたは最初のライン）
-          const mainLine = loaded.lines['main'] || Object.values(loaded.lines)[0]
-          if (mainLine) {
-            setCurrentLineId(mainLine.id)
-            DEV_LOG.data('Default line set', mainLine.id)
-          }
-        } catch (error) {
-          DEV_LOG.error('Failed to load chat data', error)
-        }
-      }
-
-      loadChatData()
-    }
-  }, [initialMessages])
 
   // ブランチ選択時の自動スクロールを無効化
   // useEffect(() => {

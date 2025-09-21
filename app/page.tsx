@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
-import FirestoreTest from "@/components/firestore-test"
+import { DataSourceToggle } from "@/components/data-source-toggle"
+import { FirestoreDebug } from "@/components/firestore-debug"
+import { dataSourceManager, DataSource } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
 interface Message {
@@ -23,7 +25,6 @@ interface Message {
 interface Line {
   id: string
   name: string
-  description: string
   messageIds: string[]
   startMessageId: string
   endMessageId?: string
@@ -52,66 +53,72 @@ export default function Home() {
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
 
-  // データローディング
-  useEffect(() => {
-    const loadChatData = async () => {
-      try {
-        const response = await fetch('/data/chat-sample.json')
-        const data = await response.json()
+  // データローディング関数
+  const loadChatData = useCallback(async () => {
+    try {
+      const data = await dataSourceManager.loadChatData()
 
-        const newMessages: Record<string, Message> = {}
-        const newLines: Record<string, Line> = {}
-        const newBranchPoints: Record<string, BranchPoint> = {}
-        const newTags: Record<string, Tag> = {}
+      const newMessages: Record<string, Message> = {}
+      const newLines: Record<string, Line> = {}
+      const newBranchPoints: Record<string, BranchPoint> = {}
+      const newTags: Record<string, Tag> = {}
 
-        // メッセージデータ変換
-        if (data.messages) {
-          Object.entries(data.messages as Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>).forEach(([id, msg]) => {
-            newMessages[id] = {
-              ...msg,
-              timestamp: new Date(msg.timestamp)
-            }
-          })
-        }
-
-        // ラインデータ変換
-        if (data.lines && Array.isArray(data.lines)) {
-          data.lines.forEach((line: Line) => {
-            newLines[line.id] = line
-          })
-        }
-
-        // 分岐点データ
-        if (data.branchPoints) {
-          Object.entries(data.branchPoints as Record<string, BranchPoint>).forEach(([id, branchPoint]) => {
-            newBranchPoints[id] = branchPoint
-          })
-        }
-
-        // タグデータ
-        if (data.tags) {
-          Object.entries(data.tags as Record<string, Tag>).forEach(([id, tag]) => {
-            newTags[id] = tag
-          })
-        }
-
-        setMessages(newMessages)
-        setLines(newLines)
-        setBranchPoints(newBranchPoints)
-        setTags(newTags)
-
-        // デフォルトライン設定
-        const mainLine = newLines['main'] || Object.values(newLines)[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
-        }
-      } catch (error) {
-        console.error('Failed to load chat data:', error)
+      // メッセージデータ変換
+      if (data.messages) {
+        Object.entries(data.messages).forEach(([id, msg]) => {
+          newMessages[id] = {
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }
+        })
       }
-    }
 
-    loadChatData()
+      // ラインデータ変換
+      if (data.lines && Array.isArray(data.lines)) {
+        data.lines.forEach((line: Line) => {
+          newLines[line.id] = line
+        })
+      }
+
+      // 分岐点データ
+      if (data.branchPoints) {
+        Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
+          newBranchPoints[id] = branchPoint
+        })
+      }
+
+      // タグデータ
+      if (data.tags) {
+        Object.entries(data.tags).forEach(([id, tag]) => {
+          newTags[id] = tag
+        })
+      }
+
+      setMessages(newMessages)
+      setLines(newLines)
+      setBranchPoints(newBranchPoints)
+      setTags(newTags)
+
+      // デフォルトライン設定
+      const mainLine = newLines['main'] || Object.values(newLines)[0]
+      if (mainLine) {
+        setCurrentLineId(mainLine.id)
+      }
+    } catch (error) {
+      console.error('Failed to load chat data:', error)
+      // Firestoreエラー時は空の状態を維持（自動フォールバックしない）
+      setMessages({})
+      setLines({})
+      setBranchPoints({})
+      setTags({})
+      setCurrentLineId('')
+    }
   }, [])
+
+  // 初期データローディング
+  useEffect(() => {
+    loadChatData()
+  }, [loadChatData])
 
   // ブラウザの戻る・進むボタンに対応
   useEffect(() => {
@@ -150,6 +157,16 @@ export default function Home() {
     }
   }, [lines])
 
+  // データソース変更ハンドラー
+  const handleDataSourceChange = useCallback((source: DataSource) => {
+    console.log(`Data source changed to: ${source}`)
+  }, [])
+
+  // データ再読み込みハンドラー
+  const handleDataReload = useCallback(() => {
+    loadChatData()
+  }, [loadChatData])
+
   // ビューが変更されたときのハンドラー
   const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
     setCurrentView(newView)
@@ -165,9 +182,15 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white pb-16">
-      {/* Firestore 接続テスト */}
+      {/* データソース切り替えコントロール */}
+      <DataSourceToggle
+        onDataSourceChange={handleDataSourceChange}
+        onDataReload={handleDataReload}
+      />
+
+      {/* Firestore デバッグツール */}
       <div className="p-4">
-        <FirestoreTest />
+        <FirestoreDebug />
       </div>
 
       <BranchingChatUI
