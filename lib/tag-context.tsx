@@ -4,6 +4,7 @@ import { createContext, useContext, useReducer, useEffect, ReactNode } from "rea
 import { dataSourceManager } from "@/lib/data-source"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
+import { config } from "@/lib/config"
 
 export interface Tag {
   id: string
@@ -286,7 +287,12 @@ export function TagProvider({ children }: TagProviderProps) {
     loadTags()
 
     // リアルタイムリスナーの設定
-    const conversationId = 'sample-conversation-1'
+    const conversationId = config.conversationId
+
+    if (!conversationId) {
+      dispatch({ type: "SET_ERROR", payload: "NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません" })
+      return
+    }
 
     // Tagsのリアルタイムリスナー
     const tagsRef = collection(db, 'conversations', conversationId, 'tags')

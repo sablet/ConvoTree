@@ -2,6 +2,7 @@
 
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { config } from '@/lib/config';
 
 interface Message {
   id: string;
@@ -65,7 +66,7 @@ export type DataSource = 'firestore' | 'sample';
 export class DataSourceManager {
   private static instance: DataSourceManager;
   private currentSource: DataSource = 'firestore';
-  private conversationId = process.env.NEXT_PUBLIC_CONVERSATION_ID || 'sample-conversation-1';
+  private conversationId = config.conversationId;
 
   static getInstance(): DataSourceManager {
     if (!DataSourceManager.instance) {
@@ -93,6 +94,10 @@ export class DataSourceManager {
 
   private async loadFromFirestore(): Promise<ChatData> {
     try {
+      if (!this.conversationId) {
+        throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
+      }
+
       console.log('🔍 Loading data from Firestore...');
 
       const conversationRef = doc(db, 'conversations', this.conversationId);

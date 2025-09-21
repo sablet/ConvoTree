@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { config } from '@/lib/config';
 
 interface Message {
   id: string;
@@ -19,10 +20,14 @@ export default function FirestoreTest() {
   useEffect(() => {
     async function fetchMessages() {
       try {
+        if (!config.conversationId) {
+          throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
+        }
+
         console.log('🔍 Firestore からデータを取得中...');
 
         // conversations/sample-conversation-1/messages コレクションからデータ取得
-        const messagesRef = collection(db, 'conversations', 'sample-conversation-1', 'messages');
+        const messagesRef = collection(db, 'conversations', config.conversationId, 'messages');
         const querySnapshot = await getDocs(messagesRef);
 
         const fetchedMessages: Message[] = [];

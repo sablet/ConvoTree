@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { config } from '@/lib/config';
 
 export function FirestoreDebug() {
   const [result, setResult] = useState<string>('');
@@ -53,8 +54,14 @@ export function FirestoreDebug() {
       }
 
       // sample-conversation-1 の詳細チェック
-      debugInfo += '\n📋 sample-conversation-1 詳細チェック:\n';
-      const conversationId = 'sample-conversation-1';
+      debugInfo += `\n📋 ${config.conversationId || 'conversation'} 詳細チェック:\n`;
+      const conversationId = config.conversationId;
+
+      if (!conversationId) {
+        debugInfo += '❌ NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません\n';
+        setResult(debugInfo);
+        return;
+      }
 
       try {
         // messages サブコレクション
