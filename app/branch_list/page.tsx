@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { BranchStructure } from "@/components/branch-structure"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { useRouter } from "next/navigation"
+import { dataSourceManager } from "@/lib/data-source"
 
 interface Message {
   id: string
@@ -22,7 +23,6 @@ interface Message {
 interface Line {
   id: string
   name: string
-  description: string
   messageIds: string[]
   startMessageId: string
   endMessageId?: string
@@ -55,7 +55,7 @@ export default function BranchListPage() {
   const router = useRouter()
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('branches')
   const [messages, setMessages] = useState<Record<string, Message>>({})
-  const [lines, setLines] = useState<Record<string, Line>>({})
+  const [lines, setLines] = useState<Line[]>([])
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [tagGroups, setTagGroups] = useState<Record<string, TagGroup>>({})
@@ -67,61 +67,25 @@ export default function BranchListPage() {
     const loadChatData = async () => {
       try {
         setIsLoading(true)
-        const response = await fetch('/data/chat-sample.json')
-        const data = await response.json()
+        const data = await dataSourceManager.loadChatData()
 
+        // メッセージデータ変換（timestampをDateオブジェクトに変換）
         const newMessages: Record<string, Message> = {}
-        const newLines: Record<string, Line> = {}
-        const newBranchPoints: Record<string, BranchPoint> = {}
-        const newTags: Record<string, Tag> = {}
-        const newTagGroups: Record<string, TagGroup> = {}
-
-        // メッセージデータ変換
-        if (data.messages) {
-          Object.entries(data.messages as Record<string, Omit<Message, 'timestamp'> & { timestamp: string }>).forEach(([id, msg]) => {
-            newMessages[id] = {
-              ...msg,
-              timestamp: new Date(msg.timestamp)
-            }
-          })
-        }
-
-        // ラインデータ変換
-        if (data.lines && Array.isArray(data.lines)) {
-          data.lines.forEach((line: Line) => {
-            newLines[line.id] = line
-          })
-        }
-
-        // 分岐点データ
-        if (data.branchPoints) {
-          Object.entries(data.branchPoints as Record<string, BranchPoint>).forEach(([id, branchPoint]) => {
-            newBranchPoints[id] = branchPoint
-          })
-        }
-
-        // タグデータ
-        if (data.tags) {
-          Object.entries(data.tags as Record<string, Tag>).forEach(([id, tag]) => {
-            newTags[id] = tag
-          })
-        }
-
-        // タググループデータ
-        if (data.tagGroups) {
-          Object.entries(data.tagGroups as Record<string, TagGroup>).forEach(([id, tagGroup]) => {
-            newTagGroups[id] = tagGroup
-          })
-        }
+        Object.entries(data.messages).forEach(([id, msg]) => {
+          newMessages[id] = {
+            ...msg,
+            timestamp: new Date(msg.timestamp)
+          }
+        })
 
         setMessages(newMessages)
-        setLines(newLines)
-        setBranchPoints(newBranchPoints)
-        setTags(newTags)
-        setTagGroups(newTagGroups)
+        setLines(data.lines)
+        setBranchPoints(data.branchPoints)
+        setTags(data.tags)
+        setTagGroups(data.tagGroups)
 
         // デフォルトライン設定
-        const mainLine = newLines['main'] || Object.values(newLines)[0]
+        const mainLine = data.lines.find(line => line.id === 'main') || data.lines[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
         }
@@ -137,7 +101,7 @@ export default function BranchListPage() {
 
   // ライン切り替えハンドラー（URLルーティング付き）
   const handleLineSwitch = (lineId: string) => {
-    const targetLine = lines[lineId]
+    const targetLine = lines.find(line => line.id === lineId)
     if (targetLine) {
       setCurrentLineId(lineId)
       // チャットページにリダイレクト
@@ -147,18 +111,29 @@ export default function BranchListPage() {
   }
 
   // ライン編集ハンドラー
-  const handleLineEdit = (lineId: string, updates: Partial<Line>) => {
-    setLines(prev => {
-      const updated = { ...prev }
-      if (updated[lineId]) {
-        updated[lineId] = {
-          ...updated[lineId],
-          ...updates,
-          updated_at: new Date().toISOString()
-        }
+  const handleLineEdit = async (lineId: string, updates: Partial<Line>) => {
+    try {
+      // DataSourceManagerを使用してライン更新
+      if (dataSourceManager.getCurrentSource() === 'firestore') {
+        await dataSourceManager.updateLine(lineId, updates)
       }
-      return updated
-    })
+
+      // ローカル状態も更新
+      setLines(prev => {
+        return prev.map(line => {
+          if (line.id === lineId) {
+            return {
+              ...line,
+              ...updates,
+              updated_at: new Date().toISOString()
+            }
+          }
+          return line
+        })
+      })
+    } catch (error) {
+      console.error('Failed to update line:', error)
+    }
   }
 
   // ビューが変更されたときのハンドラー
@@ -168,7 +143,7 @@ export default function BranchListPage() {
     // ビューに応じてルーティング
     if (newView === 'chat') {
       // 現在のラインのチャットページにリダイレクト
-      const currentLine = lines[currentLineId]
+      const currentLine = lines.find(line => line.id === currentLineId)
       if (currentLine) {
         const encodedLineName = encodeURIComponent(currentLine.name)
         router.push(`/chat/${encodedLineName}`)

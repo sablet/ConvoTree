@@ -33,7 +33,6 @@ interface Message {
 interface Line {
   id: string
   name: string
-  description: string
   messageIds: string[]
   startMessageId: string
   endMessageId?: string
@@ -64,7 +63,7 @@ interface TagGroup {
 
 interface BranchStructureProps {
   messages: Record<string, Message>
-  lines: Record<string, Line>
+  lines: Line[]
   branchPoints: Record<string, BranchPoint>
   tags: Record<string, Tag>
   tagGroups: Record<string, TagGroup>
@@ -132,7 +131,7 @@ export function BranchStructure({
     const roots: BranchNode[] = [];
 
     // 1. すべてのラインをノードとして初期化
-    Object.values(lines).forEach(line => {
+    lines.forEach(line => {
       nodes[line.id] = {
         line,
         children: [],
@@ -142,7 +141,7 @@ export function BranchStructure({
     });
 
     // 2. 親子関係を構築してツリーを形成
-    Object.values(lines).forEach(line => {
+    lines.forEach(line => {
       const node = nodes[line.id];
       // 分岐元のメッセージIDがない場合はルートノードとする
       if (!line.branchFromMessageId) {
@@ -203,7 +202,7 @@ export function BranchStructure({
 
   // 統計データを計算
   const statistics = useMemo(() => {
-    const totalLines = Object.keys(lines).length
+    const totalLines = lines.length
     const totalMessages = Object.keys(messages).length
     const totalBranches = Object.keys(branchPoints).length
 
