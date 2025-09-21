@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 next build",
     "start": "next start",
     "lint": "next lint",
     "serve": "firebase serve --only hosting",

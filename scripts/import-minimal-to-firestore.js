@@ -13,18 +13,17 @@ admin.initializeApp({
 
 const db = admin.firestore();
 
-async function importChatData() {
+async function importMinimalChatData() {
   try {
-    // コマンドライン引数から使用するデータファイルを決定
-    const dataFile = process.argv[2] || 'chat-sample.json';
-    const dataPath = path.join(__dirname, '../public/data/', dataFile);
+    // chat-minimal.json を読み込み
+    const dataPath = path.join(__dirname, '../public/data/chat-minimal.json');
     const rawData = fs.readFileSync(dataPath, 'utf8');
     const chatData = JSON.parse(rawData);
 
-    console.log(`🚀 Firestore へのデータインポートを開始... (データファイル: ${dataFile})`);
+    console.log('🚀 Firestore へのミニマルデータインポートを開始...');
 
-    // 会話ID（データファイルに基づいて生成）
-    const conversationId = dataFile.replace('.json', '') + '-conversation-1';
+    // 会話ID（ミニマル用）
+    const conversationId = 'minimal-conversation-1';
     const conversationRef = db.collection('conversations').doc(conversationId);
 
     // 1. Messages サブコレクションにインポート
@@ -51,7 +50,7 @@ async function importChatData() {
       });
     }
 
-    // 3. Branch Points サブコレクションにインポート
+    // 3. Branch Points サブコレクションにインポート (空の場合もあり)
     console.log('🌿 Branch Points をインポート中...');
     const branchPointsCollection = conversationRef.collection('branchPoints');
 
@@ -90,19 +89,16 @@ async function importChatData() {
 
     // 6. 会話メタデータを保存
     console.log('💬 Conversation メタデータを保存中...');
-    const conversationTitle = dataFile === 'chat-minimal.json' ? 'ミニマル会話テスト' : 'チャットアプリ開発プロジェクト議論';
-    const conversationDescription = dataFile === 'chat-minimal.json' ? '最小構成のテストデータ' : 'プロジェクトキックオフから技術検討まで';
-
     await conversationRef.set({
-      title: conversationTitle,
-      description: conversationDescription,
+      title: 'ミニマル会話テスト',
+      description: '最小構成のテストデータ',
       messagesCount: Object.keys(chatData.messages).length,
       linesCount: chatData.lines.length,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     });
 
-    console.log('✅ データインポート完了！');
+    console.log('✅ ミニマルデータインポート完了！');
     console.log(`   会話ID: ${conversationId}`);
     console.log(`   メッセージ数: ${Object.keys(chatData.messages).length}`);
     console.log(`   ライン数: ${chatData.lines.length}`);
@@ -115,4 +111,4 @@ async function importChatData() {
   }
 }
 
-importChatData();
+importMinimalChatData();

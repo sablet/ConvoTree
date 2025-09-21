@@ -65,7 +65,7 @@ export type DataSource = 'firestore' | 'sample';
 export class DataSourceManager {
   private static instance: DataSourceManager;
   private currentSource: DataSource = 'firestore';
-  private conversationId = 'sample-conversation-1';
+  private conversationId = process.env.NEXT_PUBLIC_CONVERSATION_ID || 'sample-conversation-1';
 
   static getInstance(): DataSourceManager {
     if (!DataSourceManager.instance) {

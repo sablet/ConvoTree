@@ -1,0 +1,43 @@
+{
+  "messages": {
+    "msg1": {
+      "id": "msg1",
+      "content": "こんにちは！新しいプロジェクトについて話し合いましょう。",
+      "timestamp": "2024-01-15T09:00:00.000Z",
+      "lineId": "main"
+    }
+  },
+  "lines": [
+    {
+      "id": "main",
+      "name": "メインの流れ",
+      "parentLineId": null,
+      "messageIds": [
+        "msg1"
+      ],
+      "startMessageId": "msg1",
+      "endMessageId": "msg1",
+      "tagIds": [
+        "tag_discussion"
+      ],
+      "updated_at": "2024-01-15T09:00:00.000Z"
+    }
+  ],
+  "branchPoints": {},
+  "tags": {
+    "tag_discussion": {
+      "id": "tag_discussion",
+      "name": "議論",
+      "color": "#e9d5ff",
+      "groupId": "general"
+    }
+  },
+  "tagGroups": {
+    "general": {
+      "id": "general",
+      "name": "一般",
+      "color": "#e9d5ff",
+      "order": 1
+    }
+  }
+}
