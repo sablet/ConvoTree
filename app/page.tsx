@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
+import FirestoreTest from "@/components/firestore-test"
 import { useRouter } from "next/navigation"
 
 interface Message {
@@ -164,6 +165,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white pb-16">
+      {/* Firestore 接続テスト */}
+      <div className="p-4">
+        <FirestoreTest />
+      </div>
+
       <BranchingChatUI
         initialMessages={messages}
         initialLines={lines}

@@ -57,3 +57,14 @@ tmp/
 
 # output directory
 output/
+
+# Firebase 機密情報
+firebase-service-account.json
+firebase-debug.log
+.firebase/
+firebase-adminsdk-*.json
+
+# プロジェクト固有の機密情報
+doc/firebase-secrets-template.md
+doc/*-secrets.md
+*-secrets.*
