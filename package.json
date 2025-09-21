@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "serve": "firebase serve --only hosting",
-    "build:serve": "npm run build && npm run serve"
+    "build:serve": "rm -rf out && npm run build && npm run serve"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

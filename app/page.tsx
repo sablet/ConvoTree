@@ -119,43 +119,25 @@ export default function Home() {
     loadChatData()
   }, [loadChatData])
 
-  // ブラウザの戻る・進むボタンに対応
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state?.lineId) {
-        // 履歴から戻ってきた場合、そのラインに切り替え
-        setCurrentLineId(event.state.lineId)
-      } else {
-        // stateがない場合は、URLからライン名を取得
-        const path = window.location.pathname
-        const match = path.match(/^\/chat\/(.+)$/)
-        if (match) {
-          const decodedLineName = decodeURIComponent(match[1])
-          const targetLine = Object.values(lines).find(
-            line => line.name === decodedLineName || line.id === decodedLineName
-          )
-          if (targetLine) {
-            setCurrentLineId(targetLine.id)
-          }
-        }
-      }
-    }
 
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [lines])
-
-  // ライン切り替えハンドラー（URL更新、履歴あり）
+  // ライン切り替えハンドラー（URL更新、履歴なし、リロードなし）
   const handleLineChange = useCallback((lineId: string) => {
     const targetLine = lines[lineId]
     if (targetLine) {
       setCurrentLineId(lineId)
-      // URLを履歴ありで更新（ページ遷移せず）
+      // URLクエリパラメータを更新（リロードを防ぐためreplaceを使用）
       const encodedLineName = encodeURIComponent(targetLine.name)
-      window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
+      router.replace(`/?line=${encodedLineName}`)
     }
-  }, [lines])
+  }, [lines, router])
 
+  // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
+  const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
+    setCurrentLineId(lineId)
+    // URLクエリパラメータを更新（リロードを防ぐためreplaceを使用）
+    const encodedLineName = encodeURIComponent(lineName)
+    router.replace(`/?line=${encodedLineName}`)
+  }, [router])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
@@ -180,6 +162,7 @@ export default function Home() {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
+          onNewLineCreated={handleNewLineCreated}
         />
         <FooterNavigation
           currentView={currentView}
