@@ -148,6 +148,38 @@ export function BranchingChatUI({
     return `${diffMonths}ヶ月前`
   }
 
+  // 日付フォーマット関数
+  const formatDateForSeparator = (date: Date): string => {
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(today.getDate() - 1)
+
+    const messageDate = new Date(date)
+
+    // 今日の場合
+    if (messageDate.toDateString() === today.toDateString()) {
+      return "今日"
+    }
+
+    // 昨日の場合
+    if (messageDate.toDateString() === yesterday.toDateString()) {
+      return "昨日"
+    }
+
+    // その他の場合は "M/D(曜日)" 形式
+    const month = messageDate.getMonth() + 1
+    const day = messageDate.getDate()
+    const weekdays = ["日", "月", "火", "水", "木", "金", "土"]
+    const weekday = weekdays[messageDate.getDay()]
+
+    return `${month}/${day}(${weekday})`
+  }
+
+  // 日付が変わったかどうかをチェック
+  const isSameDay = (date1: Date, date2: Date): boolean => {
+    return date1.toDateString() === date2.toDateString()
+  }
+
 
 
   // 初期データの更新を監視（propsが変更されたら常に更新）
@@ -977,8 +1009,22 @@ export function BranchingChatUI({
           const messageLineInfo = getMessageLineInfo(index, completeTimeline)
           const isLineTransition = messageLineInfo.isLineStart && index > 0
 
+          // 日付が変わったかどうかをチェック
+          const previousMessage = index > 0 ? completeTimeline.messages[index - 1] : null
+          const shouldShowDateSeparator =
+            index === 0 || // 最初のメッセージの場合は必ず表示
+            (previousMessage && !isSameDay(previousMessage.timestamp, message.timestamp))
+
           return (
             <div key={`${message.id}-${index}`} className="space-y-4">
+              {/* 日付セパレーター */}
+              {shouldShowDateSeparator && (
+                <div className="flex items-center justify-center py-4">
+                  <div className="bg-gray-100 text-gray-600 px-4 py-2 rounded-full text-sm font-medium border">
+                    {formatDateForSeparator(message.timestamp)}
+                  </div>
+                </div>
+              )}
               {/* ライン切り替わりインジケーター */}
               {isLineTransition && (
                 <div className="flex items-center gap-3 py-3 -mx-4 px-4 bg-gradient-to-r from-blue-50 to-transparent border-l-4 border-blue-400">
