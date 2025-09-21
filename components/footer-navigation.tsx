@@ -11,7 +11,6 @@ interface FooterNavigationProps {
 export function FooterNavigation({ currentView, onViewChange }: FooterNavigationProps) {
   const router = useRouter()
   const pathname = usePathname()
-  const isDevelopment = process.env.NODE_ENV === 'development'
 
   const navItems = [
     {
@@ -32,12 +31,12 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
       icon: Tags,
       description: 'タグ管理'
     },
-    ...(isDevelopment ? [{
+    {
       id: 'debug' as const,
       label: 'デバッグ',
       icon: Bug,
       description: 'デバッグツール'
-    }] : [])
+    }
   ]
 
   return (

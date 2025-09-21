@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager } from "@/lib/data-source"
-import { useRouter } from "next/navigation"
 
 interface Message {
   id: string
@@ -43,16 +43,11 @@ interface BranchPoint {
   lines: string[]
 }
 
-interface PageProps {
-  params: {
-    line_name: string
-  }
-}
-
-export default function ChatLinePage({ params }: PageProps) {
+function ChatPageContent() {
   const router = useRouter()
-  const { line_name } = params
-  const decodedLineName = decodeURIComponent(line_name)
+  const searchParams = useSearchParams()
+  const lineName = searchParams.get('line') || 'main'
+  const decodedLineName = decodeURIComponent(lineName)
 
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
   const [messages, setMessages] = useState<Record<string, Message>>({})
@@ -144,32 +139,6 @@ export default function ChatLinePage({ params }: PageProps) {
     loadChatData()
   }, [loadChatData])
 
-  // ブラウザの戻る・進むボタンに対応
-  useEffect(() => {
-    const handlePopState = (event: PopStateEvent) => {
-      if (event.state?.lineId) {
-        // 履歴から戻ってきた場合、そのラインに切り替え
-        setCurrentLineId(event.state.lineId)
-      } else {
-        // stateがない場合は、URLからライン名を取得
-        const path = window.location.pathname
-        const match = path.match(/^\/chat\/(.+)$/)
-        if (match) {
-          const currentDecodedLineName = decodeURIComponent(match[1])
-          const targetLine = Object.values(lines).find(
-            line => line.name === currentDecodedLineName || line.id === currentDecodedLineName
-          )
-          if (targetLine) {
-            setCurrentLineId(targetLine.id)
-          }
-        }
-      }
-    }
-
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
-  }, [lines])
-
   // ライン切り替えハンドラー（URL更新、履歴あり）
   const handleLineChange = useCallback((lineId: string) => {
     console.log('handleLineChange called with:', lineId)
@@ -177,25 +146,24 @@ export default function ChatLinePage({ params }: PageProps) {
     console.log('targetLine found:', targetLine)
     if (targetLine) {
       setCurrentLineId(lineId)
-      // URLを履歴ありで更新（ページ遷移せず）
+      // URLクエリパラメータを更新
       const encodedLineName = encodeURIComponent(targetLine.name)
-      console.log('Updating URL to:', `/chat/${encodedLineName}`)
-      window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
+      console.log('Updating URL to:', `/chat?line=${encodedLineName}`)
+      router.push(`/chat?line=${encodedLineName}`)
     } else {
       console.log('targetLine not found, available lines:', Object.keys(lines))
     }
-  }, [lines])
+  }, [lines, router])
 
   // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
   const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
     console.log('handleNewLineCreated called with:', lineId, lineName)
     setCurrentLineId(lineId)
-    // URLを履歴ありで更新（ページ遷移せず）
+    // URLクエリパラメータを更新
     const encodedLineName = encodeURIComponent(lineName)
-    console.log('Updating URL to:', `/chat/${encodedLineName}`)
-    window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
-  }, [])
-
+    console.log('Updating URL to:', `/chat?line=${encodedLineName}`)
+    router.push(`/chat?line=${encodedLineName}`)
+  }, [router])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
@@ -252,5 +220,20 @@ export default function ChatLinePage({ params }: PageProps) {
         />
       </div>
     </TagProvider>
+  )
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">読み込み中...</p>
+        </div>
+      </div>
+    }>
+      <ChatPageContent />
+    </Suspense>
   )
 }

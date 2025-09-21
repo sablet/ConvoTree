@@ -27,7 +27,7 @@ export function FirestoreDebug() {
       let debugInfo = '🔧 Firebase 設定確認:\n';
       debugInfo += `API Key: ${envCheck.apiKey}\n`;
       debugInfo += `Auth Domain: ${envCheck.authDomain}\n`;
-      debugInfo += `Project ID: ${envCheck.projectId} (${process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID})\n`;
+      debugInfo += `Project ID: ${envCheck.projectId}\n`;
       debugInfo += `Storage Bucket: ${envCheck.storageBucket}\n`;
       debugInfo += `Messaging Sender ID: ${envCheck.messagingSenderId}\n`;
       debugInfo += `App ID: ${envCheck.appId}\n\n`;

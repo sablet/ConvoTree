@@ -106,7 +106,7 @@ export default function BranchListPage() {
       setCurrentLineId(lineId)
       // チャットページにリダイレクト
       const encodedLineName = encodeURIComponent(targetLine.name)
-      router.push(`/chat/${encodedLineName}`)
+      router.push(`/chat?line=${encodedLineName}`)
     }
   }
 
@@ -146,7 +146,7 @@ export default function BranchListPage() {
       const currentLine = lines.find(line => line.id === currentLineId)
       if (currentLine) {
         const encodedLineName = encodeURIComponent(currentLine.name)
-        router.push(`/chat/${encodedLineName}`)
+        router.push(`/chat?line=${encodedLineName}`)
       } else {
         router.push('/')
       }
