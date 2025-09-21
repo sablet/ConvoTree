@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface Message {
@@ -349,6 +349,245 @@ export class DataSourceManager {
     if (updates.timestamp !== undefined && isNaN(Date.parse(updates.timestamp))) {
       throw new Error('Invalid timestamp format');
     }
+  }
+
+  // TagGroup CRUD Operations
+  async createTagGroup(tagGroup: Omit<TagGroup, 'id'>): Promise<string> {
+    try {
+      // バリデーション
+      this.validateTagGroup(tagGroup);
+
+      // 名前の重複チェック
+      await this.checkTagGroupNameDuplicate(tagGroup.name);
+
+      // order の重複チェック
+      await this.checkTagGroupOrderDuplicate(tagGroup.order);
+
+      console.log('📝 Creating new tag group in Firestore...');
+
+      const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
+
+      const tagGroupData = {
+        ...tagGroup,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(tagGroupsRef, tagGroupData);
+
+      console.log(`✅ TagGroup created with ID: ${docRef.id}`);
+      return docRef.id;
+
+    } catch (error) {
+      console.error('❌ Failed to create tag group:', error);
+      this.handleFirestoreError(error, 'createTagGroup');
+      throw error;
+    }
+  }
+
+  async updateTagGroup(id: string, updates: Partial<TagGroup>): Promise<void> {
+    try {
+      // バリデーション
+      this.validateTagGroupId(id);
+      this.validateTagGroupUpdates(updates);
+
+      console.log(`📝 Updating tag group ${id} in Firestore...`);
+
+      const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
+
+      // タググループ存在確認
+      const tagGroupDoc = await getDoc(tagGroupRef);
+      if (!tagGroupDoc.exists()) {
+        throw new Error(`TagGroup with ID ${id} not found`);
+      }
+
+      // 名前の重複チェック（変更される場合）
+      if (updates.name) {
+        await this.checkTagGroupNameDuplicate(updates.name, id);
+      }
+
+      // order の重複チェック（変更される場合）
+      if (updates.order !== undefined) {
+        await this.checkTagGroupOrderDuplicate(updates.order, id);
+      }
+
+      const updateData = {
+        ...updates,
+        updatedAt: serverTimestamp()
+      };
+
+      await updateDoc(tagGroupRef, updateData);
+
+      console.log(`✅ TagGroup ${id} updated successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to update tag group ${id}:`, error);
+      this.handleFirestoreError(error, 'updateTagGroup');
+      throw error;
+    }
+  }
+
+  async deleteTagGroup(id: string, tagHandlingOption: 'delete' | 'unlink' = 'unlink'): Promise<void> {
+    try {
+      // バリデーション
+      this.validateTagGroupId(id);
+
+      console.log(`🗑️ Deleting tag group ${id} from Firestore...`);
+
+      const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
+
+      // タググループ存在確認
+      const tagGroupDoc = await getDoc(tagGroupRef);
+      if (!tagGroupDoc.exists()) {
+        throw new Error(`TagGroup with ID ${id} not found`);
+      }
+
+      // 関連Tagの処理
+      await this.handleRelatedTagsForDeletion(id, tagHandlingOption);
+
+      // タググループ削除
+      await deleteDoc(tagGroupRef);
+
+      console.log(`✅ TagGroup ${id} deleted successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to delete tag group ${id}:`, error);
+      this.handleFirestoreError(error, 'deleteTagGroup');
+      throw error;
+    }
+  }
+
+  async reorderTagGroups(orderedIds: string[]): Promise<void> {
+    try {
+      console.log('📝 Reordering tag groups in Firestore...');
+
+      if (orderedIds.length === 0) {
+        throw new Error('Ordered IDs array cannot be empty');
+      }
+
+      // バッチ処理で順序を更新
+      const batch = writeBatch(db);
+
+      for (let i = 0; i < orderedIds.length; i++) {
+        const tagGroupId = orderedIds[i];
+        const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', tagGroupId);
+
+        // 存在確認
+        const tagGroupDoc = await getDoc(tagGroupRef);
+        if (!tagGroupDoc.exists()) {
+          throw new Error(`TagGroup with ID ${tagGroupId} not found`);
+        }
+
+        batch.update(tagGroupRef, {
+          order: i,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await batch.commit();
+
+      console.log(`✅ TagGroups reordered successfully`);
+
+    } catch (error) {
+      console.error('❌ Failed to reorder tag groups:', error);
+      this.handleFirestoreError(error, 'reorderTagGroups');
+      throw error;
+    }
+  }
+
+  // バリデーション関数（TagGroup）
+  private validateTagGroup(tagGroup: Omit<TagGroup, 'id'>): void {
+    if (!tagGroup.name || tagGroup.name.trim() === '') {
+      throw new Error('TagGroup name is required');
+    }
+
+    if (!tagGroup.color || tagGroup.color.trim() === '') {
+      throw new Error('TagGroup color is required');
+    }
+
+    if (tagGroup.order < 0) {
+      throw new Error('TagGroup order must be non-negative');
+    }
+  }
+
+  private validateTagGroupId(id: string): void {
+    if (!id || id.trim() === '') {
+      throw new Error('TagGroup ID is required');
+    }
+  }
+
+  private validateTagGroupUpdates(updates: Partial<TagGroup>): void {
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No updates provided');
+    }
+
+    if (updates.name !== undefined && updates.name.trim() === '') {
+      throw new Error('TagGroup name cannot be empty');
+    }
+
+    if (updates.color !== undefined && updates.color.trim() === '') {
+      throw new Error('TagGroup color cannot be empty');
+    }
+
+    if (updates.order !== undefined && updates.order < 0) {
+      throw new Error('TagGroup order must be non-negative');
+    }
+  }
+
+  // 制約チェック関数
+  private async checkTagGroupNameDuplicate(name: string, excludeId?: string): Promise<void> {
+    const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
+    const q = query(tagGroupsRef, where('name', '==', name));
+    const querySnapshot = await getDocs(q);
+
+    const duplicates = querySnapshot.docs.filter(doc => doc.id !== excludeId);
+
+    if (duplicates.length > 0) {
+      throw new Error(`TagGroup with name "${name}" already exists`);
+    }
+  }
+
+  private async checkTagGroupOrderDuplicate(order: number, excludeId?: string): Promise<void> {
+    const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
+    const q = query(tagGroupsRef, where('order', '==', order));
+    const querySnapshot = await getDocs(q);
+
+    const duplicates = querySnapshot.docs.filter(doc => doc.id !== excludeId);
+
+    if (duplicates.length > 0) {
+      throw new Error(`TagGroup with order ${order} already exists`);
+    }
+  }
+
+  // 関連Tag処理
+  private async handleRelatedTagsForDeletion(tagGroupId: string, option: 'delete' | 'unlink'): Promise<void> {
+    const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
+    const q = query(tagsRef, where('groupId', '==', tagGroupId));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      console.log('No related tags found');
+      return;
+    }
+
+    const batch = writeBatch(db);
+
+    querySnapshot.forEach((tagDoc) => {
+      if (option === 'delete') {
+        // 関連Tagも削除
+        batch.delete(tagDoc.ref);
+      } else {
+        // 関連TagのgroupIdをnullに設定
+        batch.update(tagDoc.ref, {
+          groupId: null,
+          updatedAt: serverTimestamp()
+        });
+      }
+    });
+
+    await batch.commit();
+
+    console.log(`✅ Related tags ${option === 'delete' ? 'deleted' : 'unlinked'} successfully`);
   }
 
   // エラーハンドリング

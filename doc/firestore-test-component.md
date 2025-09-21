@@ -201,3 +201,218 @@ Permission denied (missing or insufficient permissions)
 2. **パフォーマンス**: 大量データの場合はページネーション実装
 3. **エラーハンドリング**: ユーザーフレンドリーなエラー表示
 4. **テストコンポーネント削除**: 本番では非表示またはdev環境のみ表示
+
+---
+
+# Message CRUD Backend 実装詳細
+
+## 📊 Firestore データ構造
+
+### コレクション階層
+```
+conversations/
+└── {conversationId}/
+    ├── (ドキュメントメタデータ)
+    ├── messages/
+    │   └── {messageId} (ドキュメント)
+    ├── lines/
+    │   └── {lineId} (ドキュメント)
+    ├── branchPoints/
+    │   └── {branchPointId} (ドキュメント)
+    ├── tags/
+    │   └── {tagId} (ドキュメント)
+    └── tagGroups/
+        └── {tagGroupId} (ドキュメント)
+```
+
+### Message ドキュメント構造
+```typescript
+interface Message {
+  id: string;                     // ドキュメントID
+  content: string;                // メッセージ内容（必須）
+  timestamp: string;              // ISO文字列（必須）
+  lineId: string;                 // 所属ライン（必須）
+  prevInLine?: string;            // 前のメッセージID
+  nextInLine?: string;            // 次のメッセージID
+  branchFromMessageId?: string;   // 分岐元メッセージID
+  tags?: string[];                // タグIDの配列
+  hasBookmark?: boolean;          // ブックマーク状態
+  author?: string;                // 作成者
+  images?: string[];              // 画像URL配列
+  createdAt?: Timestamp;          // Firestore作成日時
+  updatedAt?: Timestamp;          // Firestore更新日時
+}
+```
+
+## 🔧 DataSourceManager拡張実装
+
+### lib/data-source.ts の CRUD 機能追加
+
+#### 1. Firebase インポート拡張
+```typescript
+import {
+  collection, getDocs, doc, getDoc,
+  addDoc, updateDoc, deleteDoc,
+  serverTimestamp, Timestamp
+} from 'firebase/firestore';
+```
+
+#### 2. createMessage 実装
+```typescript
+async createMessage(message: Omit<Message, 'id'>): Promise<string> {
+  // バリデーション
+  this.validateMessage(message);
+
+  const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
+  const messageData = {
+    ...message,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  };
+
+  const docRef = await addDoc(messagesRef, messageData);
+  return docRef.id;
+}
+```
+
+#### 3. updateMessage 実装
+```typescript
+async updateMessage(id: string, updates: Partial<Message>): Promise<void> {
+  // バリデーションと存在確認
+  this.validateMessageId(id);
+  this.validateMessageUpdates(updates);
+
+  const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+
+  // 存在確認
+  const messageDoc = await getDoc(messageRef);
+  if (!messageDoc.exists()) {
+    throw new Error(`Message with ID ${id} not found`);
+  }
+
+  const updateData = {
+    ...updates,
+    updatedAt: serverTimestamp()
+  };
+
+  await updateDoc(messageRef, updateData);
+}
+```
+
+#### 4. deleteMessage 実装
+```typescript
+async deleteMessage(id: string): Promise<void> {
+  this.validateMessageId(id);
+
+  const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+
+  // 存在確認
+  const messageDoc = await getDoc(messageRef);
+  if (!messageDoc.exists()) {
+    throw new Error(`Message with ID ${id} not found`);
+  }
+
+  await deleteDoc(messageRef);
+}
+```
+
+## 🛡️ バリデーション機能
+
+### 入力データ検証
+```typescript
+private validateMessage(message: Omit<Message, 'id'>): void {
+  // 必須フィールドチェック
+  if (!message.content?.trim()) throw new Error('Message content is required');
+  if (!message.lineId?.trim()) throw new Error('LineId is required');
+  if (!message.timestamp) throw new Error('Timestamp is required');
+
+  // 形式チェック
+  if (isNaN(Date.parse(message.timestamp))) {
+    throw new Error('Invalid timestamp format');
+  }
+}
+```
+
+### 更新データ検証
+```typescript
+private validateMessageUpdates(updates: Partial<Message>): void {
+  if (Object.keys(updates).length === 0) {
+    throw new Error('No updates provided');
+  }
+
+  // 各フィールドの個別チェック
+  if (updates.content !== undefined && !updates.content.trim()) {
+    throw new Error('Message content cannot be empty');
+  }
+  // ...その他のフィールド検証
+}
+```
+
+## 🚨 エラーハンドリング
+
+### Firestore固有エラーの分類処理
+```typescript
+private handleFirestoreError(error: unknown, operation: string): void {
+  if (error instanceof Error) {
+    if (error.message.includes('permission-denied')) {
+      console.error(`❌ Permission denied for ${operation} operation`);
+    } else if (error.message.includes('not-found')) {
+      console.error(`❌ Document not found for ${operation} operation`);
+    } else if (error.message.includes('already-exists')) {
+      console.error(`❌ Document already exists for ${operation} operation`);
+    } else if (error.message.includes('network')) {
+      console.error(`❌ Network error during ${operation} operation`);
+    }
+  }
+}
+```
+
+### エラータイプ別対処法
+- **permission-denied**: Firestoreセキュリティルール確認
+- **not-found**: ドキュメント存在確認
+- **already-exists**: 重複チェック実装
+- **network**: 接続状態確認
+
+## 🧪 テストコンポーネント実装
+
+### components/message-crud-test.tsx
+```typescript
+export function MessageCrudTest() {
+  const [messageContent, setMessageContent] = useState('テストメッセージです');
+  const [messageId, setMessageId] = useState('');
+  const [result, setResult] = useState<string>('');
+
+  // CRUD操作のテスト関数
+  const handleCreateMessage = async () => { /* ... */ };
+  const handleUpdateMessage = async () => { /* ... */ };
+  const handleDeleteMessage = async () => { /* ... */ };
+}
+```
+
+### 管理画面への統合
+- `app/management/page.tsx` にテストUI追加
+- リアルタイムでCRUD操作の動作確認が可能
+- エラーハンドリングの動作確認
+
+## 📈 パフォーマンス考慮事項
+
+### 最適化ポイント
+1. **バッチ操作**: 複数メッセージの一括処理時はbatch操作を検討
+2. **インデックス**: よく使われるクエリに対するFirestoreインデックス設定
+3. **キャッシュ**: 頻繁にアクセスするデータのローカルキャッシュ
+4. **リアルタイム**: onSnapshot使用時のリスナー管理
+
+### セキュリティ考慮事項
+1. **Firestoreルール**: 適切な読み書き権限設定
+2. **入力サニタイズ**: XSS対策のための入力データ検証
+3. **レート制限**: 大量リクエスト対策
+4. **ログ管理**: 機密情報のログ出力回避
+
+## 🔄 今後の拡張予定
+
+### 追加機能候補
+1. **バッチ操作**: 複数メッセージの一括更新・削除
+2. **検索機能**: 内容・タグ・日時での検索
+3. **履歴管理**: メッセージ編集履歴の保存
+4. **リアルタイム更新**: onSnapshotによるリアルタイム同期
+5. **画像アップロード**: Firebase Storageとの連携
