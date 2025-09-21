@@ -855,7 +855,7 @@ export function BranchingChatUI({
   }
 
   return (
-    <div className="flex flex-col h-screen max-w-md mx-auto bg-white pb-20">
+    <div className="flex flex-col h-screen bg-white pb-20">
       {/* Timeline Minimap */}
       {renderTimelineMinimap()}
 
@@ -1165,7 +1165,7 @@ export function BranchingChatUI({
                       const isCurrentLine = line.id === currentLineId
                       const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
                       const lastMessage = lastMessageId ? messages[lastMessageId] : null
-                      const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 25) + (lastMessage.content.length > 25 ? "..." : "") : ""
+                      const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 18) + (lastMessage.content.length > 18 ? "..." : "") : ""
                       const firstTagId = line.tagIds?.[0]
                       const firstTag = firstTagId ? tags[firstTagId] : null
                       // 更新日時を優先表示
@@ -1200,14 +1200,12 @@ export function BranchingChatUI({
                               )}
                             </div>
                             <div className="flex items-center justify-between ml-3">
-                              <span className="text-xs text-gray-500 truncate max-w-[120px]">
-                                {lastMessagePreview}
+                              <span className="text-xs text-gray-500 truncate flex-1 pr-2">
+                                {lastMessagePreview && relativeTime
+                                  ? `${lastMessage?.content.slice(0, 18)}... • ${relativeTime}`
+                                  : lastMessagePreview || relativeTime
+                                }
                               </span>
-                              {relativeTime && (
-                                <span className="text-xs text-gray-400 font-medium">
-                                  {relativeTime}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -1231,9 +1229,20 @@ export function BranchingChatUI({
                 <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex-shrink-0">
                   🌿 新しい分岐を作成
                 </span>
+                <span className="text-xs text-gray-400">
+                  {(() => {
+                    const message = messages[selectedBaseMessage]
+                    if (!message) return ""
+                    return getRelativeTime(message.timestamp.toISOString())
+                  })()}
+                </span>
                 <span className="font-medium text-gray-800 truncate">
-                  {messages[selectedBaseMessage]?.content.slice(0, 25)}
-                  {messages[selectedBaseMessage]?.content.length > 25 ? "..." : ""}
+                  {(() => {
+                    const message = messages[selectedBaseMessage]
+                    if (!message) return ""
+                    const content = message.content.slice(0, 18)
+                    return `${content}${message.content.length > 18 ? "..." : ""}`
+                  })()}
                 </span>
               </div>
               <Button
