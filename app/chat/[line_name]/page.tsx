@@ -175,14 +175,29 @@ export default function ChatLinePage({ params }: PageProps) {
 
   // ライン切り替えハンドラー（URL更新、履歴あり）
   const handleLineChange = useCallback((lineId: string) => {
+    console.log('handleLineChange called with:', lineId)
     const targetLine = lines[lineId]
+    console.log('targetLine found:', targetLine)
     if (targetLine) {
       setCurrentLineId(lineId)
       // URLを履歴ありで更新（ページ遷移せず）
       const encodedLineName = encodeURIComponent(targetLine.name)
+      console.log('Updating URL to:', `/chat/${encodedLineName}`)
       window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
+    } else {
+      console.log('targetLine not found, available lines:', Object.keys(lines))
     }
   }, [lines])
+
+  // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
+  const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
+    console.log('handleNewLineCreated called with:', lineId, lineName)
+    setCurrentLineId(lineId)
+    // URLを履歴ありで更新（ページ遷移せず）
+    const encodedLineName = encodeURIComponent(lineName)
+    console.log('Updating URL to:', `/chat/${encodedLineName}`)
+    window.history.pushState({ lineId }, '', `/chat/${encodedLineName}`)
+  }, [])
 
   // データソース変更ハンドラー
   const handleDataSourceChange = useCallback((source: DataSource) => {
@@ -252,6 +267,7 @@ export default function ChatLinePage({ params }: PageProps) {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
+          onNewLineCreated={handleNewLineCreated}
         />
 
         <FooterNavigation

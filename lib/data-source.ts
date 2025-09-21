@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
 interface Message {
@@ -34,6 +34,8 @@ interface Line {
 interface BranchPoint {
   messageId: string;
   lines: string[];
+  createdAt?: Timestamp | FieldValue;
+  updatedAt?: Timestamp | FieldValue;
 }
 
 interface Tag {
@@ -892,14 +894,25 @@ export class DataSourceManager {
           throw new Error(`Line with ID ${lineId} not found`);
         }
 
-        // BranchPoint存在確認
+        // BranchPoint存在確認と作成
         const branchPointRef = doc(db, 'conversations', this.conversationId, 'branchPoints', messageId);
         const branchPointDoc = await transaction.get(branchPointRef);
-        if (!branchPointDoc.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} not found`);
-        }
 
-        const branchPointData = branchPointDoc.data() as BranchPoint;
+        let branchPointData: BranchPoint;
+
+        if (!branchPointDoc.exists()) {
+          // BranchPointが存在しない場合は作成
+          console.log(`📝 Creating branch point for message ${messageId} during line addition...`);
+          branchPointData = {
+            messageId: messageId,
+            lines: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          };
+          transaction.set(branchPointRef, branchPointData);
+        } else {
+          branchPointData = branchPointDoc.data() as BranchPoint;
+        }
 
         // 既にLineが追加されているかチェック
         if (branchPointData.lines.includes(lineId)) {

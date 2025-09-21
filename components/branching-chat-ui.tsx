@@ -66,6 +66,7 @@ interface BranchingChatUIProps {
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
+  onNewLineCreated?: (lineId: string, lineName: string) => void
 }
 
 interface DeleteConfirmationState {
@@ -80,7 +81,8 @@ export function BranchingChatUI({
   initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
-  onLineChange
+  onLineChange,
+  onNewLineCreated
 }: BranchingChatUIProps) {
   const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
   const [lines, setLines] = useState<Record<string, Line>>(initialLines)
@@ -464,19 +466,8 @@ export function BranchingChatUI({
           updated_at: new Date().toISOString()
         })
 
-        // 2. 分岐点をFirestoreに作成/更新
-        try {
-          // 既存の分岐点に新しいラインを追加を試す
-          await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
-        } catch (error) {
-          // 分岐点が存在しない場合は新規作成してから追加
-          if (error instanceof Error && error.message.includes('not found')) {
-            await dataSourceManager.createBranchPoint(selectedBaseMessage!)
-            await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
-          } else {
-            throw error
-          }
-        }
+        // 2. 分岐点をFirestoreに作成/更新（自動で分岐点作成も含む）
+        await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
 
         // 3. ローカル状態を更新（空のライン）
         const newLine: Line = {
@@ -514,6 +505,14 @@ export function BranchingChatUI({
 
         // 新しいラインに切り替え
         setCurrentLineId(newLineId)
+
+        // 新しいライン作成時専用のコールバックを呼び出し（URL更新のため）
+        if (onNewLineCreated) {
+          DEV_LOG.data('Calling onNewLineCreated', { newLineId, newLineName })
+          onNewLineCreated(newLineId, newLineName)
+        } else {
+          DEV_LOG.error('onNewLineCreated callback not provided')
+        }
 
       } else {
         // 既存のライン継続 - Firestoreにメッセージを作成
