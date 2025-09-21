@@ -4,8 +4,9 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Zap, Edit3, Plus, X, GitBranch } from "lucide-react"
+import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check } from "lucide-react"
 import Image from "next/image"
+import { dataSourceManager } from "@/lib/data-source"
 
 interface Message {
   id: string
@@ -65,6 +66,13 @@ interface BranchingChatUIProps {
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
+  onDataChange?: () => void // データ変更時に親にリロードを促すコールバック
+}
+
+interface DeleteConfirmationState {
+  messageId: string
+  message: Message
+  isOpen: boolean
 }
 
 export function BranchingChatUI({
@@ -73,7 +81,8 @@ export function BranchingChatUI({
   initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
-  onLineChange
+  onLineChange,
+  onDataChange
 }: BranchingChatUIProps) {
   const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
   const [lines, setLines] = useState<Record<string, Line>>(initialLines)
@@ -94,6 +103,13 @@ export function BranchingChatUI({
     tagIds: string[]
     newTag: string
   }>({ name: "", tagIds: [], newTag: "" })
+
+  // メッセージ編集・削除関連の状態
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
+  const [editingContent, setEditingContent] = useState("")
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null)
+  const [isUpdating, setIsUpdating] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
@@ -134,24 +150,26 @@ export function BranchingChatUI({
 
 
 
-  // 初期データの更新を監視
+  // 初期データの更新を監視（propsが変更されたら常に更新）
   useEffect(() => {
-    if (Object.keys(initialMessages).length > 0) {
-      setMessages(initialMessages)
-    }
+    setMessages(initialMessages)
+    DEV_LOG.data('Messages updated from props', { count: Object.keys(initialMessages).length })
   }, [initialMessages])
 
   useEffect(() => {
-    if (Object.keys(initialLines).length > 0) {
-      setLines(initialLines)
-    }
+    setLines(initialLines)
+    DEV_LOG.data('Lines updated from props', { count: Object.keys(initialLines).length })
   }, [initialLines])
 
   useEffect(() => {
-    if (Object.keys(initialBranchPoints).length > 0) {
-      setBranchPoints(initialBranchPoints)
-    }
+    setBranchPoints(initialBranchPoints)
+    DEV_LOG.data('BranchPoints updated from props', { count: Object.keys(initialBranchPoints).length })
   }, [initialBranchPoints])
+
+  useEffect(() => {
+    setTags(initialTags)
+    DEV_LOG.data('Tags updated from props', { count: Object.keys(initialTags).length })
+  }, [initialTags])
 
   useEffect(() => {
     if (initialCurrentLineId) {
@@ -408,10 +426,9 @@ export function BranchingChatUI({
     return lines[currentLineId] || null
   }
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputValue.trim() && pendingImages.length === 0) return
 
-    const newMessageId = `msg${Date.now()}`
     const currentLine = lines[currentLineId]
     if (!currentLine) {
       DEV_LOG.error('No current line found for message sending', { currentLineId })
@@ -432,103 +449,291 @@ export function BranchingChatUI({
     // ベースメッセージが選択されている場合は常に新しいラインを作成
     const shouldCreateNewLine = selectedBaseMessage !== null
 
-    if (shouldCreateNewLine) {
-      // 新しいラインを作成
-      const newLineId = `line-${Date.now()}`
-      // メッセージ内容をブランチ名に使用（50文字まで）
-      const newLineName = inputValue.slice(0, 50) + (inputValue.length > 50 ? '...' : '')
+    setIsUpdating(true)
+    try {
+      if (shouldCreateNewLine) {
+        // 新しい分岐を作成（テキストは分岐名として使用、メッセージは作成しない）
+        const newLineName = inputValue.trim() || 'New Branch'
 
-      // 新しいラインを作成（空のメッセージリストで開始）
-      const newLine: Line = {
-        id: newLineId,
-        name: newLineName,
-        messageIds: [],
-        startMessageId: "",
-        endMessageId: undefined,
-        branchFromMessageId: selectedBaseMessage,
-        tagIds: [],
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        // 1. 新しいラインをFirestoreに作成（空の状態）
+        const newLineId = await dataSourceManager.createLine({
+          name: newLineName,
+          messageIds: [],
+          startMessageId: "",
+          branchFromMessageId: selectedBaseMessage,
+          tagIds: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+
+        // 2. 分岐点をFirestoreに作成/更新
+        try {
+          // 既存の分岐点に新しいラインを追加を試す
+          await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
+        } catch (error) {
+          // 分岐点が存在しない場合は新規作成してから追加
+          if (error instanceof Error && error.message.includes('not found')) {
+            await dataSourceManager.createBranchPoint(selectedBaseMessage!)
+            await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
+          } else {
+            throw error
+          }
+        }
+
+        // 3. ローカル状態を更新（空のライン）
+        const newLine: Line = {
+          id: newLineId,
+          name: newLineName,
+          messageIds: [],
+          startMessageId: "",
+          endMessageId: undefined,
+          branchFromMessageId: selectedBaseMessage,
+          tagIds: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }
+
+        setLines((prev) => ({
+          ...prev,
+          [newLineId]: newLine
+        }))
+
+        setBranchPoints((prev) => {
+          const updated = { ...prev }
+          if (updated[selectedBaseMessage!]) {
+            updated[selectedBaseMessage!] = {
+              ...updated[selectedBaseMessage!],
+              lines: [...updated[selectedBaseMessage!].lines, newLineId]
+            }
+          } else {
+            updated[selectedBaseMessage!] = {
+              messageId: selectedBaseMessage!,
+              lines: [newLineId]
+            }
+          }
+          return updated
+        })
+
+        // 新しいラインに切り替え
+        setCurrentLineId(newLineId)
+
+      } else {
+        // 既存のライン継続 - Firestoreにメッセージを作成
+        const newMessageId = await dataSourceManager.createMessage({
+          content: inputValue,
+          timestamp: new Date().toISOString(),
+          lineId: currentLineId,
+          prevInLine: baseMessageId,
+          author: "User",
+          ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+        })
+
+        // 前のメッセージのnextInLineを更新（Firestore）
+        if (baseMessageId) {
+          await dataSourceManager.updateMessage(baseMessageId, {
+            nextInLine: newMessageId
+          })
+        }
+
+        // ラインのメッセージリストを更新（Firestore）
+        const updatedMessageIds = [...currentLine.messageIds, newMessageId]
+        const isFirstMessage = currentLine.messageIds.length === 0
+
+        await dataSourceManager.updateLine(currentLineId, {
+          messageIds: updatedMessageIds,
+          endMessageId: newMessageId,
+          ...(isFirstMessage && { startMessageId: newMessageId }), // 最初のメッセージの場合はstartMessageIdも設定
+          updated_at: new Date().toISOString()
+        })
+
+        // ローカル状態を更新
+        const newMessage: Message = {
+          id: newMessageId,
+          content: inputValue,
+          timestamp: new Date(),
+          lineId: currentLineId,
+          prevInLine: baseMessageId,
+          author: "User",
+          ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+        }
+
+        setMessages((prev) => {
+          const updated = { ...prev }
+          updated[newMessageId] = newMessage
+
+          // 前のメッセージのnextInLineを更新
+          if (updated[baseMessageId]) {
+            updated[baseMessageId] = {
+              ...updated[baseMessageId],
+              nextInLine: newMessageId,
+            }
+          }
+
+          return updated
+        })
+
+        setLines((prev) => {
+          const updated = { ...prev }
+          if (updated[currentLineId]) {
+            updated[currentLineId] = {
+              ...updated[currentLineId],
+              messageIds: updatedMessageIds,
+              endMessageId: newMessageId,
+              ...(isFirstMessage && { startMessageId: newMessageId }), // 最初のメッセージの場合はstartMessageIdも設定
+              updated_at: new Date().toISOString()
+            }
+          }
+          return updated
+        })
       }
 
-      // ラインを追加
-      setLines((prev) => ({
+      // キャッシュをクリア（構造が変わった可能性があるため）
+      setPathCache(new Map())
+      setLineAncestryCache(new Map())
+
+      setInputValue("")
+      setPendingImages([])
+      setSelectedBaseMessage(null)
+
+      DEV_LOG.data('Message sent successfully')
+
+      // 親コンポーネントにデータ変更を通知
+      if (onDataChange) {
+        onDataChange()
+      }
+    } catch (error) {
+      DEV_LOG.error('Failed to send message', error)
+      alert('メッセージの送信に失敗しました')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  // メッセージ編集開始
+  const handleStartEdit = (messageId: string) => {
+    const message = messages[messageId]
+    if (message) {
+      setEditingMessageId(messageId)
+      setEditingContent(message.content)
+    }
+  }
+
+  // メッセージ編集保存
+  const handleSaveEdit = async () => {
+    if (!editingMessageId || !editingContent.trim()) return
+
+    setIsUpdating(true)
+    try {
+      await dataSourceManager.updateMessage(editingMessageId, {
+        content: editingContent.trim()
+      })
+
+      // ローカル状態を更新
+      setMessages(prev => ({
         ...prev,
-        [newLineId]: newLine
+        [editingMessageId]: {
+          ...prev[editingMessageId],
+          content: editingContent.trim()
+        }
       }))
 
-      // 分岐点を更新
-      setBranchPoints((prev) => {
-        const updated = { ...prev }
-        if (updated[selectedBaseMessage!]) {
-          // 既存の分岐点に新しいラインを追加
-          updated[selectedBaseMessage!] = {
-            ...updated[selectedBaseMessage!],
-            lines: [...updated[selectedBaseMessage!].lines, newLineId]
-          }
-        } else {
-          // 新しい分岐点を作成
-          updated[selectedBaseMessage!] = {
-            messageId: selectedBaseMessage!,
-            lines: [newLineId]
-          }
-        }
-        return updated
+      setEditingMessageId(null)
+      setEditingContent("")
+
+      DEV_LOG.data('Message updated successfully', { messageId: editingMessageId })
+
+      // 親コンポーネントにデータ変更を通知
+      if (onDataChange) {
+        onDataChange()
+      }
+    } catch (error) {
+      DEV_LOG.error('Failed to update message', error)
+      alert('メッセージの更新に失敗しました')
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  // メッセージ編集キャンセル
+  const handleCancelEdit = () => {
+    setEditingMessageId(null)
+    setEditingContent("")
+  }
+
+  // メッセージ削除確認ダイアログを開く
+  const handleDeleteMessage = (messageId: string) => {
+    const message = messages[messageId]
+    if (message) {
+      setDeleteConfirmation({
+        messageId,
+        message,
+        isOpen: true
       })
+    }
+  }
 
-      // 新しいラインに切り替え
-      setCurrentLineId(newLineId)
+  // メッセージ削除確認
+  const handleConfirmDelete = async () => {
+    if (!deleteConfirmation) return
 
-    } else {
-      // 既存のライン継続
-      const newMessage: Message = {
-        id: newMessageId,
-        content: inputValue,
-        timestamp: new Date(),
-        lineId: currentLineId,
-        prevInLine: baseMessageId,
-        author: "User",
-        ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+    const { messageId, message } = deleteConfirmation
+    setIsUpdating(true)
+
+    try {
+      // 分岐の起点メッセージかどうかをチェック
+      const isBranchPoint = branchPoints[messageId] && branchPoints[messageId].lines.length > 0
+
+      if (isBranchPoint) {
+        const confirmBranchDelete = window.confirm(
+          'このメッセージは分岐の起点です。削除すると関連する分岐も影響を受けます。本当に削除しますか？'
+        )
+        if (!confirmBranchDelete) {
+          setDeleteConfirmation(null)
+          setIsUpdating(false)
+          return
+        }
       }
 
-      // メッセージを追加
-      setMessages((prev) => {
+      await dataSourceManager.deleteMessage(messageId)
+
+      // ローカル状態から削除
+      setMessages(prev => {
         const updated = { ...prev }
-        updated[newMessageId] = newMessage
-
-        // 前のメッセージのnextInLineを更新
-        if (updated[baseMessageId]) {
-          updated[baseMessageId] = {
-            ...updated[baseMessageId],
-            nextInLine: newMessageId,
-          }
-        }
-
+        delete updated[messageId]
         return updated
       })
 
-      // ラインにメッセージを追加
-      setLines((prev) => {
+      // ラインからメッセージIDを削除
+      setLines(prev => {
         const updated = { ...prev }
-        if (updated[currentLineId]) {
-          updated[currentLineId] = {
-            ...updated[currentLineId],
-            messageIds: [...updated[currentLineId].messageIds, newMessageId],
-            endMessageId: newMessageId,
+        const lineId = message.lineId
+        if (updated[lineId]) {
+          updated[lineId] = {
+            ...updated[lineId],
+            messageIds: updated[lineId].messageIds.filter(id => id !== messageId),
             updated_at: new Date().toISOString()
           }
         }
         return updated
       })
+
+      // キャッシュをクリア
+      setPathCache(new Map())
+      setLineAncestryCache(new Map())
+
+      setDeleteConfirmation(null)
+      DEV_LOG.data('Message deleted successfully', { messageId })
+
+      // 親コンポーネントにデータ変更を通知
+      if (onDataChange) {
+        onDataChange()
+      }
+    } catch (error) {
+      DEV_LOG.error('Failed to delete message', error)
+      alert('メッセージの削除に失敗しました')
+    } finally {
+      setIsUpdating(false)
     }
-
-    // キャッシュをクリア（構造が変わった可能性があるため）
-    setPathCache(new Map())
-    setLineAncestryCache(new Map())
-
-    setInputValue("")
-    setPendingImages([])
-    setSelectedBaseMessage(null)
   }
 
   const handleMessageTap = (messageId: string) => {
@@ -810,11 +1015,13 @@ export function BranchingChatUI({
 
               <div
                 id={`message-${message.id}`}
-                className={`cursor-pointer transition-all duration-200 ${
+                className={`group relative transition-all duration-200 ${
                   isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
                 } ${
                   !messageLineInfo.isCurrentLine ? "border-l-2 border-blue-200 pl-3 ml-1" : ""
                 }`}
+                onMouseEnter={() => setHoveredMessageId(message.id)}
+                onMouseLeave={() => setHoveredMessageId(null)}
                 onClick={() => handleMessageTap(message.id)}
               >
                 <div className="flex gap-3">
@@ -832,15 +1039,93 @@ export function BranchingChatUI({
                   <div className="flex-1">
                     <div className="flex items-start gap-2">
                       {message.hasBookmark && <div className="w-3 h-3 border border-gray-300 mt-1 flex-shrink-0" />}
-                      <div className={`leading-relaxed whitespace-pre-wrap text-sm ${
-                        !messageLineInfo.isCurrentLine
-                          ? "text-gray-600"
-                          : isSelected
-                          ? "text-gray-900"
-                          : "text-gray-900"
-                      }`}>
-                        {message.content}
-                      </div>
+
+                      {editingMessageId === message.id ? (
+                        /* 編集モード */
+                        <div className="flex-1 space-y-3">
+                          <textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            className="w-full min-h-[80px] p-2 border border-blue-300 rounded-md resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                e.preventDefault()
+                                handleSaveEdit()
+                              } else if (e.key === "Escape") {
+                                e.preventDefault()
+                                handleCancelEdit()
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <Button
+                              onClick={handleSaveEdit}
+                              disabled={!editingContent.trim() || isUpdating}
+                              size="sm"
+                              className="h-8 px-3 bg-blue-500 hover:bg-blue-600 text-white"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              保存
+                            </Button>
+                            <Button
+                              onClick={handleCancelEdit}
+                              disabled={isUpdating}
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3"
+                            >
+                              キャンセル
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* 表示モード */
+                        <div className="flex-1 relative">
+                          <div
+                            className={`leading-relaxed whitespace-pre-wrap text-sm cursor-pointer ${
+                              !messageLineInfo.isCurrentLine
+                                ? "text-gray-600"
+                                : isSelected
+                                ? "text-gray-900"
+                                : "text-gray-900"
+                            }`}
+                            onDoubleClick={() => handleStartEdit(message.id)}
+                          >
+                            {message.content}
+                          </div>
+
+                          {/* 編集・削除ボタン（ホバー時のみ表示） */}
+                          {hoveredMessageId === message.id && messageLineInfo.isCurrentLine && (
+                            <div className="absolute top-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleStartEdit(message.id)
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-blue-50"
+                                title="編集"
+                              >
+                                <Edit3 className="h-3 w-3 text-blue-600" />
+                              </Button>
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteMessage(message.id)
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-red-50"
+                                title="削除"
+                              >
+                                <Trash2 className="h-3 w-3 text-red-600" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* 画像表示 - 有効なURLのみレンダリング */}
@@ -1036,13 +1321,67 @@ export function BranchingChatUI({
           </div>
           <Button
             onClick={handleSendMessage}
-            disabled={!inputValue.trim() && pendingImages.length === 0}
+            disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
             className="h-11 px-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
           >
             <Send className="h-4 w-4" />
+            {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
           </Button>
         </div>
       </div>
+
+      {/* 削除確認ダイアログ */}
+      {deleteConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <Trash2 className="h-6 w-6 text-red-600" />
+                <h3 className="text-lg font-semibold text-gray-900">メッセージを削除</h3>
+              </div>
+
+              <p className="text-gray-600 mb-4">
+                このメッセージを削除してもよろしいですか？
+              </p>
+
+              <div className="bg-gray-50 rounded-md p-3 mb-4">
+                <p className="text-sm text-gray-700 line-clamp-3">
+                  {deleteConfirmation.message.content}
+                </p>
+              </div>
+
+              {branchPoints[deleteConfirmation.messageId] && branchPoints[deleteConfirmation.messageId].lines.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <GitBranch className="h-4 w-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-800">分岐の起点</span>
+                  </div>
+                  <p className="text-xs text-amber-700">
+                    このメッセージは {branchPoints[deleteConfirmation.messageId].lines.length} 個の分岐の起点です。削除すると関連する分岐構造に影響があります。
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  onClick={() => setDeleteConfirmation(null)}
+                  variant="outline"
+                  disabled={isUpdating}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleConfirmDelete}
+                  disabled={isUpdating}
+                  className="bg-red-600 hover:bg-red-700 text-white"
+                >
+                  {isUpdating ? '削除中...' : '削除'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

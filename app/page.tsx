@@ -204,6 +204,7 @@ export default function Home() {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
+          onDataChange={handleDataReload}
         />
         <FooterNavigation
           currentView={currentView}

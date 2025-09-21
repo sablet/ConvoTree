@@ -770,9 +770,10 @@ export class DataSourceManager {
       throw new Error('Line name is required');
     }
 
-    if (!line.startMessageId || line.startMessageId.trim() === '') {
-      throw new Error('Start message ID is required');
-    }
+    // startMessageIdは新規ライン作成時は空でも良い（メッセージが追加された時に設定される）
+    // if (!line.startMessageId || line.startMessageId.trim() === '') {
+    //   throw new Error('Start message ID is required');
+    // }
 
     if (!line.messageIds || !Array.isArray(line.messageIds)) {
       throw new Error('Message IDs array is required');
@@ -802,9 +803,10 @@ export class DataSourceManager {
       throw new Error('Line name cannot be empty');
     }
 
-    if (updates.startMessageId !== undefined && updates.startMessageId.trim() === '') {
-      throw new Error('Start message ID cannot be empty');
-    }
+    // startMessageIdは空文字列でも良い（新規ライン作成時や初期状態）
+    // if (updates.startMessageId !== undefined && updates.startMessageId.trim() === '') {
+    //   throw new Error('Start message ID cannot be empty');
+    // }
 
     if (updates.messageIds !== undefined && (!Array.isArray(updates.messageIds))) {
       throw new Error('Message IDs must be an array');
