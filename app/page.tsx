@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
-import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
@@ -46,7 +45,6 @@ interface BranchPoint {
 export default function Home() {
 
   const router = useRouter()
-  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
@@ -142,22 +140,10 @@ export default function Home() {
     router.replace(`/?line=${encodedLineName}`)
   }, [router])
 
-  // ビューが変更されたときのハンドラー
-  const handleViewChange = useCallback((newView: 'chat' | 'management' | 'branches') => {
-    setCurrentView(newView)
-
-    // ビューに応じてルーティング
-    if (newView === 'branches') {
-      router.push('/branch_list')
-    } else if (newView === 'management') {
-      router.push('/management')
-    }
-    // chatの場合は現在のページに留まる
-  }, [router])
 
   return (
     <TagProvider>
-      <div className="min-h-screen bg-white pb-16">
+      <div className="min-h-screen bg-white">
         <BranchingChatUI
           initialMessages={messages}
           initialLines={lines}
@@ -166,10 +152,6 @@ export default function Home() {
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
           onNewLineCreated={handleNewLineCreated}
-        />
-        <FooterNavigation
-          currentView={currentView}
-          onViewChange={handleViewChange}
         />
       </div>
     </TagProvider>

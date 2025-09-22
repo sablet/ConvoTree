@@ -1,18 +1,43 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { DataSourceToggle } from "@/components/data-source-toggle"
 import { FirestoreDebug } from "@/components/firestore-debug"
 import TagCrudTest from "@/components/tag-crud-test"
 import { MessageCrudTest } from "@/components/message-crud-test"
-import { FooterNavigation } from "@/components/footer-navigation"
+import { HamburgerMenu } from "@/components/hamburger-menu"
+import { LineHistoryMenu } from "@/components/line-history-menu"
 import { TagProvider } from "@/lib/tag-context"
-import { DataSource } from "@/lib/data-source"
-import { useRouter } from "next/navigation"
+import { DataSource, dataSourceManager } from "@/lib/data-source"
+
+interface Line {
+  id: string
+  name: string
+  messageIds: string[]
+  startMessageId: string
+  endMessageId?: string
+  branchFromMessageId?: string
+  tagIds?: string[]
+  created_at: string
+  updated_at: string
+}
 
 export default function DebugPage() {
-  const router = useRouter()
-  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('management')
+  const [lines, setLines] = useState<Line[]>([])
+
+  // データローディング
+  useEffect(() => {
+    const loadLines = async () => {
+      try {
+        const data = await dataSourceManager.loadChatData()
+        setLines(data.lines || [])
+      } catch (error) {
+        console.error('Failed to load lines:', error)
+      }
+    }
+
+    loadLines()
+  }, [])
 
   // データソース変更ハンドラー
   const handleDataSourceChange = (source: DataSource) => {
@@ -25,23 +50,14 @@ export default function DebugPage() {
     console.log('Data reload requested')
   }
 
-  // ビューが変更されたときのハンドラー
-  const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
-    setCurrentView(newView)
-
-    // ビューに応じてルーティング
-    if (newView === 'chat') {
-      router.push('/')
-    } else if (newView === 'branches') {
-      router.push('/branch_list')
-    } else if (newView === 'management') {
-      router.push('/management')
-    }
-  }
-
   return (
     <TagProvider>
-      <div className="min-h-screen bg-white pb-16">
+      <div className="min-h-screen bg-white">
+        {/* ハンバーガーメニューを右上に配置 */}
+        <HamburgerMenu>
+          <LineHistoryMenu lines={lines} />
+        </HamburgerMenu>
+
         <div className="p-4 space-y-6">
           <h1 className="text-2xl font-bold text-gray-800 mb-6">🐛 Debug Tools</h1>
 
@@ -72,11 +88,6 @@ export default function DebugPage() {
             <MessageCrudTest />
           </div>
         </div>
-
-        <FooterNavigation
-          currentView={currentView}
-          onViewChange={handleViewChange}
-        />
       </div>
     </TagProvider>
   )

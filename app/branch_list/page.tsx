@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { BranchStructure } from "@/components/branch-structure"
-import { FooterNavigation } from "@/components/footer-navigation"
+import { HamburgerMenu } from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
 import { dataSourceManager } from "@/lib/data-source"
 
@@ -53,7 +53,6 @@ interface BranchPoint {
 
 export default function BranchListPage() {
   const router = useRouter()
-  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('branches')
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Line[]>([])
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
@@ -136,25 +135,6 @@ export default function BranchListPage() {
     }
   }
 
-  // ビューが変更されたときのハンドラー
-  const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
-    setCurrentView(newView)
-
-    // ビューに応じてルーティング
-    if (newView === 'chat') {
-      // 現在のラインのチャットページにリダイレクト
-      const currentLine = lines.find(line => line.id === currentLineId)
-      if (currentLine) {
-        const encodedLineName = encodeURIComponent(currentLine.name)
-        router.push(`/chat?line=${encodedLineName}`)
-      } else {
-        router.push('/')
-      }
-    } else if (newView === 'management') {
-      router.push('/management')
-    }
-    // branchesの場合は現在のページに留まる
-  }
 
   if (isLoading) {
     return (
@@ -168,7 +148,37 @@ export default function BranchListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-16">
+    <div className="min-h-screen bg-white">
+      {/* ハンバーガーメニューを右上に配置 */}
+      <HamburgerMenu>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {lines.map((line) => {
+                const isActive = line.id === currentLineId
+                return (
+                  <button
+                    key={line.id}
+                    onClick={() => handleLineSwitch(line.id)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive
+                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                        : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    <div className="font-medium truncate">{line.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {line.messageIds.length}件のメッセージ
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </HamburgerMenu>
+
       <div className="p-4">
         <BranchStructure
           messages={messages}
@@ -179,13 +189,8 @@ export default function BranchListPage() {
           currentLineId={currentLineId}
           onLineSwitch={handleLineSwitch}
           onLineEdit={handleLineEdit}
-          onViewChange={handleViewChange}
         />
       </div>
-      <FooterNavigation
-        currentView={currentView}
-        onViewChange={handleViewChange}
-      />
     </div>
   )
 }

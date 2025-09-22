@@ -1,36 +1,50 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { TagManagement } from "@/components/tag-management"
-import { FooterNavigation } from "@/components/footer-navigation"
-import { useRouter } from "next/navigation"
+import { HamburgerMenu } from "@/components/hamburger-menu"
+import { LineHistoryMenu } from "@/components/line-history-menu"
+import { dataSourceManager } from "@/lib/data-source"
+
+interface Line {
+  id: string
+  name: string
+  messageIds: string[]
+  startMessageId: string
+  endMessageId?: string
+  branchFromMessageId?: string
+  tagIds?: string[]
+  created_at: string
+  updated_at: string
+}
 
 export default function ManagementPage() {
-  const router = useRouter()
-  const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('management')
+  const [lines, setLines] = useState<Line[]>([])
 
-  // ビューが変更されたときのハンドラー
-  const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
-    setCurrentView(newView)
-
-    // ビューに応じてルーティング
-    if (newView === 'chat') {
-      router.push('/')
-    } else if (newView === 'branches') {
-      router.push('/branch_list')
+  // データローディング
+  useEffect(() => {
+    const loadLines = async () => {
+      try {
+        const data = await dataSourceManager.loadChatData()
+        setLines(data.lines || [])
+      } catch (error) {
+        console.error('Failed to load lines:', error)
+      }
     }
-    // managementの場合は現在のページに留まる
-  }
+
+    loadLines()
+  }, [])
 
   return (
-    <div className="min-h-screen bg-white pb-16">
+    <div className="min-h-screen bg-white">
+      {/* ハンバーガーメニューを右上に配置 */}
+      <HamburgerMenu>
+        <LineHistoryMenu lines={lines} />
+      </HamburgerMenu>
+
       <div className="p-4 space-y-6">
         <TagManagement />
       </div>
-      <FooterNavigation
-        currentView={currentView}
-        onViewChange={handleViewChange}
-      />
     </div>
   )
 }

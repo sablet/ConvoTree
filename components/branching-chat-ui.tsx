@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge"
 import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check } from "lucide-react"
 import Image from "next/image"
 import { dataSourceManager } from "@/lib/data-source"
+import { HamburgerMenu } from "@/components/hamburger-menu"
+import { RecentLinesFooter } from "@/components/recent-lines-footer"
 
 interface Message {
   id: string
@@ -113,6 +115,7 @@ export function BranchingChatUI({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
+  const [footerKey, setFooterKey] = useState(0) // フッター強制更新用
 
   // 画像URLが有効かどうかをチェックする関数
   const isValidImageUrl = (url: string): boolean => {
@@ -546,6 +549,9 @@ export function BranchingChatUI({
           DEV_LOG.error('onNewLineCreated callback not provided')
         }
 
+        // フッターを強制更新
+        setFooterKey(prev => prev + 1)
+
       } else {
         // 既存のライン継続 - Firestoreにメッセージを作成
         const newMessageId = await dataSourceManager.createMessage({
@@ -893,7 +899,7 @@ export function BranchingChatUI({
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white pb-20">
+    <div className="flex flex-col h-screen bg-white">
       {/* Timeline Minimap */}
       {renderTimelineMinimap()}
 
@@ -1272,8 +1278,38 @@ export function BranchingChatUI({
         <div ref={messagesEndRef} />
       </div>
 
+      {/* Hamburger Menu - 右上に配置 */}
+      <HamburgerMenu>
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
+            <div className="space-y-1 max-h-60 overflow-y-auto">
+              {Object.values(lines).map((line) => {
+                const isActive = line.id === currentLineId
+                return (
+                  <button
+                    key={line.id}
+                    onClick={() => switchToLine(line.id)}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive
+                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                        : 'hover:bg-gray-100 text-gray-700'
+                    }`}
+                  >
+                    <div className="font-medium truncate">{line.name}</div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {line.messageIds.length}件のメッセージ
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      </HamburgerMenu>
+
       {/* Composer */}
-      <div className="p-4 border-t border-gray-100 bg-white">
+      <div className="p-4 border-t border-gray-100 bg-white mb-20">
         {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
             <div className="flex items-center justify-between gap-2">
@@ -1381,6 +1417,16 @@ export function BranchingChatUI({
           </Button>
         </div>
       </div>
+
+      {/* Recent Lines Footer */}
+      <RecentLinesFooter
+        key={footerKey}
+        lines={lines}
+        messages={messages}
+        currentLineId={currentLineId}
+        branchPoints={branchPoints}
+        onLineSelect={switchToLine}
+      />
 
       {/* 削除確認ダイアログ */}
       {deleteConfirmation && (
