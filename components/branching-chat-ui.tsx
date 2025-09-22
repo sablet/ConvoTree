@@ -1071,7 +1071,7 @@ export function BranchingChatUI({
                 }`}
                 onMouseEnter={() => setHoveredMessageId(message.id)}
                 onMouseLeave={() => setHoveredMessageId(null)}
-                onClick={() => handleMessageTap(message.id)}
+                onDoubleClick={() => handleMessageTap(message.id)}
               >
                 <div className="flex gap-3">
                   {/* 時刻表示 */}
@@ -1139,7 +1139,6 @@ export function BranchingChatUI({
                                 ? "text-gray-900"
                                 : "text-gray-900"
                             }`}
-                            onDoubleClick={() => handleStartEdit(message.id)}
                           >
                             {message.content}
                           </div>
@@ -1232,15 +1231,21 @@ export function BranchingChatUI({
                       return (
                         <div
                           key={`${message.id}-line-${line.id}`}
-                          className={`w-full text-left rounded-lg transition-all duration-200 cursor-pointer relative group ${
+                          className={`w-full text-left rounded-lg transition-all duration-200 relative group ${
                             isCurrentLine
                               ? 'bg-emerald-100 border-2 border-emerald-300 text-emerald-800'
                               : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent text-gray-700 hover:text-gray-900'
                           }`}
                         >
                           <div
-                            onClick={() => switchToLine(line.id)}
-                            className="px-3 py-2 w-full"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                            }}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              switchToLine(line.id)
+                            }}
+                            className="px-3 py-2 w-full cursor-pointer"
                           >
                             <div className="flex items-center gap-2 mb-1">
                               <div className={`w-1.5 h-1.5 rounded-full border flex-shrink-0 ${
