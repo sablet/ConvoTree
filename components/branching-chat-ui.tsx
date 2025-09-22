@@ -378,10 +378,10 @@ export function BranchingChatUI({
     return result
   }, [currentLineId, lines, getOptimizedPath])
 
-  // useMemoでメモ化されたタイムラインを取得
+  // useMemoでメモ化されたタイムラインを取得（messagesの変更も監視）
   const completeTimeline = useMemo(() => {
     return getCompleteTimeline()
-  }, [getCompleteTimeline])
+  }, [getCompleteTimeline, messages, lines])
 
   // スクロール位置を保存する関数
   const saveScrollPosition = useCallback((lineId: string) => {
@@ -655,19 +655,25 @@ export function BranchingChatUI({
         content: editingContent.trim()
       })
 
-      // ローカル状態を更新
-      setMessages(prev => ({
-        ...prev,
-        [editingMessageId]: {
+      // ローカル状態を強制的に更新（新しいオブジェクトを作成して確実に再レンダリング）
+      setMessages(prev => {
+        const newMessages = { ...prev }
+        newMessages[editingMessageId] = {
           ...prev[editingMessageId],
           content: editingContent.trim()
         }
-      }))
+        return newMessages
+      })
 
+      // キャッシュをクリアして確実に再計算
+      setPathCache(new Map())
+      setLineAncestryCache(new Map())
+
+      // 編集状態をクリア
       setEditingMessageId(null)
       setEditingContent("")
 
-      DEV_LOG.data('Message updated successfully', { messageId: editingMessageId })
+      DEV_LOG.data('Message updated successfully', { messageId: editingMessageId, newContent: editingContent.trim() })
 
       // メッセージ編集時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）

@@ -44,8 +44,6 @@ interface BranchPoint {
 }
 
 export default function Home() {
-  // NEXT_PUBLIC_CONVERSATION_ID環境変数を出力
-  console.log('NEXT_PUBLIC_CONVERSATION_ID:', process.env.NEXT_PUBLIC_CONVERSATION_ID)
 
   const router = useRouter()
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
@@ -119,6 +117,8 @@ export default function Home() {
 
   // 初期データローディング
   useEffect(() => {
+    // 初期起動時のみNEXT_PUBLIC_CONVERSATION_ID環境変数を出力
+    console.log('NEXT_PUBLIC_CONVERSATION_ID:', process.env.NEXT_PUBLIC_CONVERSATION_ID)
     loadChatData()
   }, [loadChatData])
 
