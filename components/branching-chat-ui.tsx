@@ -1014,7 +1014,7 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-24 space-y-8">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-60 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
@@ -1314,7 +1314,7 @@ export function BranchingChatUI({
       </HamburgerMenu>
 
       {/* Composer */}
-      <div className="p-4 border-t border-gray-100 bg-white mb-20">
+      <div className="fixed bottom-20 left-0 right-0 p-4 border-t border-gray-100 bg-white z-10">
         {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
             <div className="flex items-center justify-between gap-2">
