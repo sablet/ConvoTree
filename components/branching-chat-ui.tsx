@@ -100,6 +100,7 @@ export function BranchingChatUI({
   // メッセージ編集・削除関連の状態
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
+  const [editingMessageType, setEditingMessageType] = useState<'text' | 'task' | 'document' | 'session' | null>(null)
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null)
@@ -313,6 +314,10 @@ export function BranchingChatUI({
         }
         return updated
       })
+
+      // キャッシュをクリア
+      setPathCache(new Map())
+      setLineAncestryCache(new Map())
 
     } catch (error) {
       alert('画像の削除に失敗しました')
@@ -723,6 +728,36 @@ export function BranchingChatUI({
     if (message) {
       setEditingMessageId(messageId)
       setEditingContent(message.content)
+      setEditingMessageType(message.type || 'text')
+    }
+  }
+
+  // メッセージタイプに応じたデフォルトメタデータを生成
+  const getDefaultMetadataForType = (type: 'text' | 'task' | 'document' | 'session', content: string = ''): Record<string, unknown> | undefined => {
+    switch (type) {
+      case 'task':
+        return {
+          priority: 'medium' as const,
+          completed: false,
+          estimatedHours: 1,
+          tags: []
+        }
+      case 'document':
+        const wordCount = content.trim().length
+        return {
+          isCollapsed: false,
+          wordCount: wordCount,
+          originalLength: wordCount
+        }
+      case 'session':
+        return {
+          timeSpent: 0,
+          notes: ''
+          // checkedInAt, checkedOutAtは意図的に省略（undefinedを避ける）
+        }
+      case 'text':
+      default:
+        return undefined
     }
   }
 
@@ -732,17 +767,55 @@ export function BranchingChatUI({
 
     setIsUpdating(true)
     try {
-      await dataSourceManager.updateMessage(editingMessageId, {
+      const currentMessage = messages[editingMessageId]
+      const newType = editingMessageType || 'text'
+      const typeChanged = currentMessage.type !== newType
+
+      const updateData: Partial<Message> = {
         content: editingContent.trim()
-      })
+      }
+
+      // タイプが変更された場合
+      if (typeChanged) {
+        updateData.type = newType
+
+        // 新しいタイプに適したメタデータを設定
+        if (newType === 'text') {
+          // textタイプに変更する場合、メタデータを削除
+          updateData.metadata = null as unknown as Record<string, unknown>
+        } else {
+          // 他のタイプに変更する場合、デフォルトメタデータを設定
+          updateData.metadata = getDefaultMetadataForType(newType, editingContent.trim())
+        }
+      }
+
+      // timestamp以外の更新データを作成（data-sourceとの型整合性のため）
+      const { timestamp, ...safeUpdateData } = updateData
+      const dataSourceUpdateData = {
+        ...safeUpdateData,
+        ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
+      }
+
+      await dataSourceManager.updateMessage(editingMessageId, dataSourceUpdateData)
 
       // ローカル状態を強制的に更新（新しいオブジェクトを作成して確実に再レンダリング）
       setMessages(prev => {
         const newMessages = { ...prev }
-        newMessages[editingMessageId] = {
+        const updatedMessage = {
           ...prev[editingMessageId],
-          content: editingContent.trim()
+          content: editingContent.trim(),
+          ...(typeChanged && { type: newType }),
+          ...(updateData.metadata !== undefined && {
+            metadata: updateData.metadata === null ? undefined : updateData.metadata
+          })
         }
+
+        // メタデータがnullの場合は削除
+        if (updateData.metadata === null) {
+          delete updatedMessage.metadata
+        }
+
+        newMessages[editingMessageId] = updatedMessage
         return newMessages
       })
 
@@ -753,6 +826,7 @@ export function BranchingChatUI({
       // 編集状態をクリア
       setEditingMessageId(null)
       setEditingContent("")
+      setEditingMessageType(null)
 
 
       // メッセージ編集時はローカル状態が既に更新されているため、
@@ -768,6 +842,7 @@ export function BranchingChatUI({
   const handleCancelEdit = () => {
     setEditingMessageId(null)
     setEditingContent("")
+    setEditingMessageType(null)
   }
 
   // メッセージ削除確認ダイアログを開く
@@ -873,22 +948,43 @@ export function BranchingChatUI({
     }
   }
 
-  const handleSaveLineEdit = () => {
+  const handleSaveLineEdit = async () => {
     const currentLineInfo = getCurrentLine()
     if (currentLineInfo) {
-      setLines((prev) => {
-        const updated = { ...prev }
-        if (updated[currentLineId]) {
-          updated[currentLineId] = {
-            ...updated[currentLineId],
-            name: editingBranchData.name,
-            tagIds: editingBranchData.tagIds,
-            updated_at: new Date().toISOString()
+      const updatedLineData = {
+        name: editingBranchData.name,
+        tagIds: editingBranchData.tagIds,
+        updated_at: new Date().toISOString()
+      }
+
+      setIsUpdating(true)
+      try {
+        // Firestoreのデータを更新
+        await dataSourceManager.updateLine(currentLineId, updatedLineData)
+
+        // ローカルのstateを更新
+        setLines((prev) => {
+          const updated = { ...prev }
+          if (updated[currentLineId]) {
+            updated[currentLineId] = {
+              ...updated[currentLineId],
+              ...updatedLineData
+            }
           }
-        }
-        return updated
-      })
-      setIsEditingBranch(false)
+          return updated
+        })
+
+        // キャッシュをクリアしてUIを更新
+        setPathCache(new Map())
+        setLineAncestryCache(new Map())
+
+        setIsEditingBranch(false)
+      } catch (error) {
+        console.error("Failed to save line edit:", error)
+        alert("ラインの保存に失敗しました。")
+      } finally {
+        setIsUpdating(false)
+      }
     }
   }
 
@@ -1073,7 +1169,7 @@ export function BranchingChatUI({
                   キャンセル
                 </Button>
                 <Button
-                  onClick={handleSaveLineEdit}
+                  onClick={() => handleSaveLineEdit()}
                   size="sm"
                   className="text-xs bg-emerald-500 hover:bg-emerald-600"
                 >
@@ -1164,6 +1260,20 @@ export function BranchingChatUI({
                       {editingMessageId === message.id ? (
                         /* 編集モード */
                         <div className="flex-1 space-y-3">
+                          {/* メッセージタイプ選択 */}
+                          <div className="flex items-center gap-2">
+                            <label className="text-xs font-medium text-gray-600">タイプ:</label>
+                            <select
+                              value={editingMessageType || message.type || 'text'}
+                              onChange={(e) => setEditingMessageType(e.target.value as 'text' | 'task' | 'document' | 'session')}
+                              className="text-xs border border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            >
+                              <option value="text">テキスト</option>
+                              <option value="task">タスク</option>
+                              <option value="document">ドキュメント</option>
+                              <option value="session">セッション</option>
+                            </select>
+                          </div>
                           <textarea
                             value={editingContent}
                             onChange={(e) => setEditingContent(e.target.value)}

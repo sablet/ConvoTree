@@ -40,11 +40,15 @@ export function SessionMessage({
 
   const handleCheckIn = () => {
     if (onUpdate) {
-      onUpdate({
+      const updateData: SessionMessageData = {
         ...data,
-        checkedInAt: new Date().toISOString(),
-        checkedOutAt: undefined
-      })
+        checkedInAt: new Date().toISOString()
+      }
+      // checkedOutAtがある場合のみ削除（undefinedを送信しない）
+      if (data.checkedOutAt !== undefined) {
+        delete updateData.checkedOutAt
+      }
+      onUpdate(updateData)
     }
   }
 

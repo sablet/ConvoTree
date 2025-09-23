@@ -266,7 +266,7 @@ export class DataSourceManager {
         throw new Error(`Message with ID ${id} not found`);
       }
 
-      // nullの値をdeleteField()に変換
+      // nullの値をdeleteField()に変換し、undefinedを除去
       const updateData: Record<string, unknown> = {
         updatedAt: serverTimestamp()
       };
@@ -275,7 +275,18 @@ export class DataSourceManager {
         if (value === null) {
           updateData[key] = deleteField();
         } else if (value !== undefined) {
-          updateData[key] = value;
+          // metadataオブジェクト内のundefinedも除去
+          if (key === 'metadata' && typeof value === 'object' && value !== null) {
+            const cleanedMetadata: Record<string, unknown> = {};
+            for (const [metaKey, metaValue] of Object.entries(value as Record<string, unknown>)) {
+              if (metaValue !== undefined) {
+                cleanedMetadata[metaKey] = metaValue;
+              }
+            }
+            updateData[key] = cleanedMetadata;
+          } else {
+            updateData[key] = value;
+          }
         }
         // undefinedの場合は何もしない（フィールドは更新されない）
       }
