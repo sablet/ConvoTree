@@ -39,12 +39,8 @@ export function MessageTypeRenderer({
     tags?: string[]
   }) => {
     if (onUpdate) {
-      const updatedMetadata = {
-        ...message.metadata,
-        ...newTaskData
-      }
       onUpdate(message.id, {
-        metadata: updatedMetadata
+        metadata: newTaskData
       })
     }
   }
@@ -57,10 +53,7 @@ export function MessageTypeRenderer({
   }) => {
     if (onUpdate) {
       onUpdate(message.id, {
-        metadata: {
-          ...message.metadata,
-          ...newDocData
-        }
+        metadata: newDocData
       })
     }
   }
@@ -73,10 +66,7 @@ export function MessageTypeRenderer({
   }) => {
     if (onUpdate) {
       onUpdate(message.id, {
-        metadata: {
-          ...message.metadata,
-          ...newSessionData
-        }
+        metadata: newSessionData
       })
     }
   }

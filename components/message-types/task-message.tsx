@@ -40,7 +40,7 @@ export function TaskMessage({
   onUpdate,
   isEditable = false
 }: TaskMessageProps) {
-  // dataが未定義の場合のデフォルト値
+  // dataを直接使用（メモ化を削除）
   const taskData = data || {
     priority: 'medium' as const,
     completed: false,
@@ -52,13 +52,8 @@ export function TaskMessage({
 
   // propsの変更を監視してローカル状態を更新
   useEffect(() => {
-    const newTaskData = data || {
-      priority: 'medium' as const,
-      completed: false,
-      tags: []
-    };
-    setEditData(newTaskData);
-  }, [data])
+    setEditData(taskData);
+  }, [taskData])
 
   const handleSave = () => {
     if (onUpdate) {

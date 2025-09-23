@@ -69,7 +69,7 @@ export type DataSource = 'firestore' | 'sample';
 
 export class DataSourceManager {
   private static instance: DataSourceManager;
-  private currentSource: DataSource = 'sample'; // デフォルトをsampleに変更
+  private currentSource: DataSource = config.defaultDataSource;
   private conversationId = config.conversationId;
 
   static getInstance(): DataSourceManager {

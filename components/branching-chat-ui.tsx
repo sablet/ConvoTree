@@ -1213,27 +1213,36 @@ export function BranchingChatUI({
                             <MessageTypeRenderer
                               message={message}
                               onUpdate={(messageId, updates) => {
-                                // メッセージの更新処理
+                                // メッセージの更新処理（通常のメッセージ編集と同じパターンを使用）
                                 setMessages(prev => {
-                                  return {
-                                    ...prev,
-                                    [messageId]: { ...prev[messageId], ...updates }
+                                  const newMessages = { ...prev }
+                                  newMessages[messageId] = {
+                                    ...prev[messageId],
+                                    ...updates
                                   }
+                                  return newMessages
                                 })
-                                // データソースにも反映（一時的に無効化してテスト）
-                                // if (dataSourceManager.getCurrentSource() === 'firestore') {
-                                //   // timestamp以外の更新データを作成
-                                //   const { timestamp, ...otherUpdates } = updates
-                                //   const updateData = {
-                                //     ...otherUpdates,
-                                //     ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
-                                //   }
-                                //   dataSourceManager.updateMessage(messageId, updateData)
-                                //     .then(() => {
-                                //     })
-                                //     .catch((error) => {
-                                //     })
-                                // }
+
+                                // キャッシュをクリアして確実に再計算
+                                setPathCache(new Map())
+                                setLineAncestryCache(new Map())
+
+                                // データソースにも反映
+                                if (dataSourceManager.getCurrentSource() === 'firestore') {
+                                  // timestamp以外の更新データを作成
+                                  const { timestamp, ...otherUpdates } = updates
+                                  const updateData = {
+                                    ...otherUpdates,
+                                    ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
+                                  }
+                                  dataSourceManager.updateMessage(messageId, updateData)
+                                    .then(() => {
+                                      console.log('Message updated successfully in Firestore')
+                                    })
+                                    .catch((error) => {
+                                      console.error('Failed to update message in Firestore:', error)
+                                    })
+                                }
                               }}
                               isEditable={messageLineInfo.isCurrentLine}
                             />
