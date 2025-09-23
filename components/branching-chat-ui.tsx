@@ -216,14 +216,18 @@ export function BranchingChatUI({
       })
 
       if (!response.ok) {
-        throw new Error('Upload failed')
+        const errorText = await response.text()
+        console.error('Upload API error:', response.status, errorText)
+        throw new Error(`Upload failed: ${response.status} ${errorText}`)
       }
 
-      const { url } = await response.json()
-      return url
+      const result = await response.json()
+      console.log('Upload successful:', result)
+      return result.url
     } catch (error) {
-      console.error('Failed to upload image:', error)
+      console.error('Failed to upload to Vercel Blob:', error)
       // Fallback to base64 if upload fails
+      console.log('Falling back to base64 encoding')
       return new Promise((resolve, reject) => {
         const reader = new FileReader()
         reader.onload = (e) => {
@@ -239,15 +243,25 @@ export function BranchingChatUI({
   // 画像を削除する関数
   const deleteImageFromStorage = async (imageUrl: string): Promise<void> => {
     try {
+      // base64データの場合は削除処理をスキップ
+      if (imageUrl.startsWith('data:')) {
+        console.log('Skipping deletion for base64 image data')
+        return
+      }
+
+      // Vercel Blob URLの場合のみ削除API呼び出し
       const response = await fetch(`/api/delete-image?url=${encodeURIComponent(imageUrl)}`, {
         method: 'DELETE',
       })
 
       if (!response.ok) {
+        console.error('Failed to delete image from Vercel Blob:', response.status, await response.text())
         throw new Error('Delete failed')
       }
 
+      console.log('Successfully deleted image from Vercel Blob:', imageUrl)
     } catch (error) {
+      console.error('Error deleting image:', error)
       // 削除に失敗してもメッセージ削除は続行する
     }
   }
@@ -621,16 +635,22 @@ export function BranchingChatUI({
         // 既存のライン継続 - スラッシュコマンドを解析してメッセージを作成
         const parsedMessage = parseSlashCommand(inputValue)
 
-        const newMessageId = await dataSourceManager.createMessage({
+        const messageData: any = {
           content: parsedMessage.content,
           timestamp: new Date().toISOString(),
           lineId: currentLineId,
           prevInLine: baseMessageId,
           author: "User",
           type: parsedMessage.type,
-          metadata: parsedMessage.metadata,
           ...(pendingImages.length > 0 && { images: [...pendingImages] }),
-        })
+        }
+
+        // metadataがundefinedでない場合のみ追加
+        if (parsedMessage.metadata !== undefined) {
+          messageData.metadata = parsedMessage.metadata
+        }
+
+        const newMessageId = await dataSourceManager.createMessage(messageData)
 
         // 前のメッセージのnextInLineを更新（Firestore）
         if (baseMessageId) {
@@ -659,7 +679,7 @@ export function BranchingChatUI({
           prevInLine: baseMessageId,
           author: "User",
           type: parsedMessage.type,
-          metadata: parsedMessage.metadata,
+          ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
           ...(pendingImages.length > 0 && { images: [...pendingImages] }),
         }
 
