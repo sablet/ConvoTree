@@ -9,6 +9,7 @@ import Image from "next/image"
 import { dataSourceManager } from "@/lib/data-source"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { RecentLinesFooter } from "@/components/recent-lines-footer"
+import { MessageExtensionsManager } from "@/components/message-extensions/message-extensions-manager"
 
 interface Message {
   id: string
@@ -22,6 +23,13 @@ interface Message {
   hasBookmark?: boolean
   author?: string
   images?: string[]
+  // 🟢 メッセージタイプとメタデータ拡張
+  type?: 'text' | 'task' | 'document' | 'note'
+  metadata?: {
+    priority?: string
+    status?: string
+    flags?: string[]
+  }
 }
 
 interface Line {
@@ -1331,6 +1339,13 @@ export function BranchingChatUI({
                         )}
                       </div>
                     )}
+
+                    {/* Message Extensions */}
+                    <MessageExtensionsManager
+                      messageId={message.id}
+                      messageContent={message.content}
+                      isCurrentLine={messageLineInfo.isCurrentLine}
+                    />
 
                   </div>
                 </div>

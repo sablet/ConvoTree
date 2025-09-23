@@ -526,6 +526,54 @@
       "groupId": "design_ux"
     }
   },
+  "messageExtensions": {
+    "msg3": [
+      {
+        "id": "ext_task_1",
+        "messageId": "msg3",
+        "type": "task",
+        "data": {
+          "priority": "high",
+          "dueDate": "2024-01-20",
+          "completed": false,
+          "estimatedHours": 8,
+          "tags": ["技術検討"]
+        },
+        "createdAt": "2024-01-15T09:10:30.000Z",
+        "updatedAt": "2024-01-15T09:10:30.000Z"
+      }
+    ],
+    "msg16": [
+      {
+        "id": "ext_doc_1",
+        "messageId": "msg16",
+        "type": "document",
+        "data": {
+          "isCollapsed": true,
+          "wordCount": 145,
+          "originalLength": 145,
+          "summary": "実装上の技術的課題について詳述。仮想化スクロール、状態管理、リアルタイム更新の競合、ブラウザパフォーマンスの4つの主要課題を特定..."
+        },
+        "createdAt": "2024-01-15T10:45:10.000Z",
+        "updatedAt": "2024-01-15T10:45:10.000Z"
+      }
+    ],
+    "msg11": [
+      {
+        "id": "ext_work_1",
+        "messageId": "msg11",
+        "type": "workSession",
+        "data": {
+          "checkedInAt": "2024-01-15T10:00:00.000Z",
+          "checkedOutAt": "2024-01-15T11:30:00.000Z",
+          "timeSpent": 90,
+          "notes": "AWSインフラ設計について調査。EC2、RDS、ElastiCache等の設定を検討。"
+        },
+        "createdAt": "2024-01-15T10:00:00.000Z",
+        "updatedAt": "2024-01-15T11:30:00.000Z"
+      }
+    ]
+  },
   "tagGroups": {
     "development": {
       "id": "development",

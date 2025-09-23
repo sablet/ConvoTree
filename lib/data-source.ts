@@ -16,6 +16,13 @@ interface Message {
   hasBookmark?: boolean;
   author?: string;
   images?: string[];
+  // 🟢 メッセージタイプとメタデータ拡張
+  type?: 'text' | 'task' | 'document' | 'note';
+  metadata?: {
+    priority?: string;
+    status?: string;
+    flags?: string[];
+  };
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -53,19 +60,53 @@ interface TagGroup {
   order: number;
 }
 
+// 🟢 メッセージ拡張データ管理
+interface MessageExtension {
+  id: string;
+  messageId: string;
+  type: string;
+  data: Record<string, unknown>;
+  createdAt?: Timestamp | FieldValue;
+  updatedAt?: Timestamp | FieldValue;
+}
+
+// 🟢 型安全な拡張データ型定義
+interface TaskExtensionData {
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  dueDate?: string;
+  completed: boolean;
+  estimatedHours?: number;
+  tags?: string[];
+}
+
+interface DocumentExtensionData {
+  isCollapsed: boolean;
+  summary?: string;
+  wordCount: number;
+  originalLength: number;
+}
+
+interface WorkSessionExtensionData {
+  checkedInAt?: string;
+  checkedOutAt?: string;
+  timeSpent?: number; // 分単位
+  notes?: string;
+}
+
 interface ChatData {
   messages: Record<string, Message>;
   lines: Line[];
   branchPoints: Record<string, BranchPoint>;
   tags: Record<string, Tag>;
   tagGroups: Record<string, TagGroup>;
+  messageExtensions: Record<string, MessageExtension[]>; // messageId -> extensions[]
 }
 
 export type DataSource = 'firestore' | 'sample';
 
 export class DataSourceManager {
   private static instance: DataSourceManager;
-  private currentSource: DataSource = 'firestore';
+  private currentSource: DataSource = 'sample'; // デフォルトをsampleに変更
   private conversationId = config.conversationId;
 
   static getInstance(): DataSourceManager {
@@ -125,7 +166,9 @@ export class DataSourceManager {
           tags: data.tags,
           hasBookmark: data.hasBookmark,
           author: data.author,
-          images: data.images
+          images: data.images,
+          type: data.type,
+          metadata: data.metadata
         };
       });
 
@@ -188,14 +231,44 @@ export class DataSourceManager {
         };
       });
 
-      console.log(`✅ Loaded from Firestore: ${Object.keys(messages).length} messages, ${lines.length} lines`);
+      // Load message extensions (with fallback for new installations)
+      let messageExtensions: Record<string, MessageExtension[]> = {};
+      let extensionCount = 0;
+      try {
+        const messageExtensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
+        const messageExtensionsSnapshot = await getDocs(messageExtensionsRef);
+        extensionCount = messageExtensionsSnapshot.size;
+        messageExtensionsSnapshot.forEach((doc) => {
+          const data = doc.data();
+          const extension: MessageExtension = {
+            id: doc.id,
+            messageId: data.messageId,
+            type: data.type,
+            data: data.data || {},
+            createdAt: data.createdAt,
+            updatedAt: data.updatedAt
+          };
+
+          if (!messageExtensions[data.messageId]) {
+            messageExtensions[data.messageId] = [];
+          }
+          messageExtensions[data.messageId].push(extension);
+        });
+      } catch (extensionError) {
+        console.warn('⚠️ MessageExtensions collection not accessible, using empty extensions. This is normal for new installations.', extensionError);
+        messageExtensions = {};
+        extensionCount = 0;
+      }
+
+      console.log(`✅ Loaded from Firestore: ${Object.keys(messages).length} messages, ${lines.length} lines, ${extensionCount} extensions`);
 
       return {
         messages,
         lines,
         branchPoints,
         tags,
-        tagGroups
+        tagGroups,
+        messageExtensions
       };
 
     } catch (error) {
@@ -217,7 +290,8 @@ export class DataSourceManager {
         lines: data.lines || [],
         branchPoints: data.branchPoints || {},
         tags: data.tags || {},
-        tagGroups: data.tagGroups || {}
+        tagGroups: data.tagGroups || {},
+        messageExtensions: data.messageExtensions || {}
       };
     } catch (error) {
       console.error('❌ Failed to load sample data:', error);
@@ -1643,6 +1717,162 @@ export class DataSourceManager {
 
     await batch.commit();
     console.log(`✅ Tag ${tagId} removed from all lines`);
+  }
+
+  // MessageExtension CRUD Operations
+  async createMessageExtension(messageId: string, type: string, data: Record<string, unknown>): Promise<string> {
+    try {
+      // バリデーション
+      this.validateMessageId(messageId);
+      this.validateExtensionType(type);
+      this.validateExtensionData(data);
+
+      console.log(`📝 Creating message extension for ${messageId} (type: ${type}) in Firestore...`);
+
+      const extensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
+
+      const extensionData = {
+        messageId,
+        type,
+        data,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      const docRef = await addDoc(extensionsRef, extensionData);
+
+      console.log(`✅ MessageExtension created with ID: ${docRef.id}`);
+      return docRef.id;
+
+    } catch (error) {
+      console.error('❌ Failed to create message extension:', error);
+      this.handleFirestoreError(error, 'createMessageExtension');
+      throw error;
+    }
+  }
+
+  async updateMessageExtension(extensionId: string, updates: Partial<Pick<MessageExtension, 'data'>>): Promise<void> {
+    try {
+      // バリデーション
+      this.validateExtensionId(extensionId);
+
+      if (updates.data) {
+        this.validateExtensionData(updates.data);
+      }
+
+      console.log(`📝 Updating message extension ${extensionId} in Firestore...`);
+
+      const extensionRef = doc(db, 'conversations', this.conversationId, 'messageExtensions', extensionId);
+
+      // 拡張存在確認
+      const extensionDoc = await getDoc(extensionRef);
+      if (!extensionDoc.exists()) {
+        throw new Error(`MessageExtension with ID ${extensionId} not found`);
+      }
+
+      const updateData: Record<string, unknown> = {
+        updatedAt: serverTimestamp()
+      };
+
+      if (updates.data !== undefined) {
+        updateData.data = updates.data;
+      }
+
+      await updateDoc(extensionRef, updateData);
+
+      console.log(`✅ MessageExtension ${extensionId} updated successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to update message extension ${extensionId}:`, error);
+      this.handleFirestoreError(error, 'updateMessageExtension');
+      throw error;
+    }
+  }
+
+  async deleteMessageExtension(extensionId: string): Promise<void> {
+    try {
+      // バリデーション
+      this.validateExtensionId(extensionId);
+
+      console.log(`🗑️ Deleting message extension ${extensionId} from Firestore...`);
+
+      const extensionRef = doc(db, 'conversations', this.conversationId, 'messageExtensions', extensionId);
+
+      // 拡張存在確認
+      const extensionDoc = await getDoc(extensionRef);
+      if (!extensionDoc.exists()) {
+        throw new Error(`MessageExtension with ID ${extensionId} not found`);
+      }
+
+      await deleteDoc(extensionRef);
+
+      console.log(`✅ MessageExtension ${extensionId} deleted successfully`);
+
+    } catch (error) {
+      console.error(`❌ Failed to delete message extension ${extensionId}:`, error);
+      this.handleFirestoreError(error, 'deleteMessageExtension');
+      throw error;
+    }
+  }
+
+  async getMessageExtensions(messageId: string): Promise<MessageExtension[]> {
+    try {
+      // バリデーション
+      this.validateMessageId(messageId);
+
+      console.log(`🔍 Loading extensions for message ${messageId} from Firestore...`);
+
+      const extensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
+      const q = query(extensionsRef, where('messageId', '==', messageId));
+      const querySnapshot = await getDocs(q);
+
+      const extensions: MessageExtension[] = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        extensions.push({
+          id: doc.id,
+          messageId: data.messageId,
+          type: data.type,
+          data: data.data || {},
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt
+        });
+      });
+
+      console.log(`✅ Loaded ${extensions.length} extensions for message ${messageId}`);
+      return extensions;
+
+    } catch (error) {
+      // If messageExtensions collection doesn't exist, return empty array
+      if (error instanceof Error && (error.message.includes('permission') || error.message.includes('not found'))) {
+        console.warn(`⚠️ MessageExtensions collection not accessible for message ${messageId}, returning empty array. This is normal for new installations.`);
+        return [];
+      }
+
+      console.error(`❌ Failed to load extensions for message ${messageId}:`, error);
+      this.handleFirestoreError(error, 'getMessageExtensions');
+      throw error;
+    }
+  }
+
+  // MessageExtension バリデーション関数
+  private validateExtensionType(type: string): void {
+    const validTypes = ['task', 'document', 'workSession', 'note'];
+    if (!type || !validTypes.includes(type)) {
+      throw new Error(`Invalid extension type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+    }
+  }
+
+  private validateExtensionData(data: Record<string, unknown>): void {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Extension data must be a valid object');
+    }
+  }
+
+  private validateExtensionId(id: string): void {
+    if (!id || id.trim() === '') {
+      throw new Error('Extension ID is required');
+    }
   }
 
   // エラーハンドリング
