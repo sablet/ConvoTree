@@ -81,7 +81,6 @@ export class DataSourceManager {
 
   setDataSource(source: DataSource): void {
     this.currentSource = source;
-    console.log(`Data source switched to: ${source}`);
   }
 
   getCurrentSource(): DataSource {
@@ -102,7 +101,6 @@ export class DataSourceManager {
         throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
       }
 
-      console.log('🔍 Loading data from Firestore...');
 
       const conversationRef = doc(db, 'conversations', this.conversationId);
 
@@ -194,7 +192,6 @@ export class DataSourceManager {
         };
       });
 
-      console.log(`✅ Loaded from Firestore: ${Object.keys(messages).length} messages, ${lines.length} lines`);
 
       return {
         messages,
@@ -212,11 +209,9 @@ export class DataSourceManager {
 
   private async loadFromSample(): Promise<ChatData> {
     try {
-      console.log('📄 Loading sample data...');
       const response = await fetch('/data/chat-sample.json');
       const data = await response.json();
 
-      console.log(`✅ Loaded sample data: ${Object.keys(data.messages || {}).length} messages, ${data.lines?.length || 0} lines`);
 
       return {
         messages: data.messages || {},
@@ -237,7 +232,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateMessage(message);
 
-      console.log('📝 Creating new message in Firestore...');
 
       const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
 
@@ -249,7 +243,6 @@ export class DataSourceManager {
 
       const docRef = await addDoc(messagesRef, messageData);
 
-      console.log(`✅ Message created with ID: ${docRef.id}`);
       return docRef.id;
 
     } catch (error) {
@@ -264,7 +257,6 @@ export class DataSourceManager {
       this.validateMessageId(id);
       this.validateMessageUpdates(updates);
 
-      console.log(`📝 Updating message ${id} in Firestore...`);
 
       const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
 
@@ -290,7 +282,6 @@ export class DataSourceManager {
 
       await updateDoc(messageRef, updateData);
 
-      console.log(`✅ Message ${id} updated successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to update message ${id}:`, error);
@@ -303,7 +294,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateMessageId(id);
 
-      console.log(`🗑️ Deleting message ${id} from Firestore...`);
 
       const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
 
@@ -315,7 +305,6 @@ export class DataSourceManager {
 
       await deleteDoc(messageRef);
 
-      console.log(`✅ Message ${id} deleted successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to delete message ${id}:`, error);
@@ -382,7 +371,6 @@ export class DataSourceManager {
       // order の重複チェック
       await this.checkTagGroupOrderDuplicate(tagGroup.order);
 
-      console.log('📝 Creating new tag group in Firestore...');
 
       const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
 
@@ -394,7 +382,6 @@ export class DataSourceManager {
 
       const docRef = await addDoc(tagGroupsRef, tagGroupData);
 
-      console.log(`✅ TagGroup created with ID: ${docRef.id}`);
       return docRef.id;
 
     } catch (error) {
@@ -409,7 +396,6 @@ export class DataSourceManager {
       this.validateTagGroupId(id);
       this.validateTagGroupUpdates(updates);
 
-      console.log(`📝 Updating tag group ${id} in Firestore...`);
 
       const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
 
@@ -436,7 +422,6 @@ export class DataSourceManager {
 
       await updateDoc(tagGroupRef, updateData);
 
-      console.log(`✅ TagGroup ${id} updated successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to update tag group ${id}:`, error);
@@ -449,7 +434,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateTagGroupId(id);
 
-      console.log(`🗑️ Deleting tag group ${id} from Firestore...`);
 
       const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
 
@@ -465,7 +449,6 @@ export class DataSourceManager {
       // タググループ削除
       await deleteDoc(tagGroupRef);
 
-      console.log(`✅ TagGroup ${id} deleted successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to delete tag group ${id}:`, error);
@@ -475,7 +458,6 @@ export class DataSourceManager {
 
   async reorderTagGroups(orderedIds: string[]): Promise<void> {
     try {
-      console.log('📝 Reordering tag groups in Firestore...');
 
       if (orderedIds.length === 0) {
         throw new Error('Ordered IDs array cannot be empty');
@@ -502,7 +484,6 @@ export class DataSourceManager {
 
       await batch.commit();
 
-      console.log(`✅ TagGroups reordered successfully`);
 
     } catch (error) {
       console.error('❌ Failed to reorder tag groups:', error);
@@ -581,7 +562,6 @@ export class DataSourceManager {
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.log('No related tags found');
       return;
     }
 
@@ -602,7 +582,6 @@ export class DataSourceManager {
 
     await batch.commit();
 
-    console.log(`✅ Related tags ${option === 'delete' ? 'deleted' : 'unlinked'} successfully`);
   }
 
   // Line CRUD Operations
@@ -611,7 +590,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateLine(line);
 
-      console.log('📝 Creating new line in Firestore...');
 
       return await runTransaction(db, async (transaction) => {
         const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
@@ -646,7 +624,6 @@ export class DataSourceManager {
         const docRef = doc(linesRef);
         transaction.set(docRef, lineData);
 
-        console.log(`✅ Line created with ID: ${docRef.id}`);
         return docRef.id;
       });
 
@@ -662,7 +639,6 @@ export class DataSourceManager {
       this.validateLineId(id);
       this.validateLineUpdates(updates);
 
-      console.log(`📝 Updating line ${id} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, 'conversations', this.conversationId, 'lines', id);
@@ -704,7 +680,6 @@ export class DataSourceManager {
         transaction.update(lineRef, updateData);
       });
 
-      console.log(`✅ Line ${id} updated successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to update line ${id}:`, error);
@@ -717,7 +692,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateLineId(id);
 
-      console.log(`🗑️ Deleting line ${id} from Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, 'conversations', this.conversationId, 'lines', id);
@@ -768,7 +742,6 @@ export class DataSourceManager {
         transaction.delete(lineRef);
       });
 
-      console.log(`✅ Line ${id} deleted successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to delete line ${id}:`, error);
@@ -844,7 +817,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateMessageId(messageId);
 
-      console.log(`📝 Creating branch point for message ${messageId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
@@ -872,7 +844,6 @@ export class DataSourceManager {
         transaction.set(branchPointRef, branchPointData);
       });
 
-      console.log(`✅ BranchPoint created for message ${messageId}`);
 
     } catch (error) {
       console.error(`❌ Failed to create branch point for message ${messageId}:`, error);
@@ -886,7 +857,6 @@ export class DataSourceManager {
       this.validateMessageId(messageId);
       this.validateLineId(lineId);
 
-      console.log(`📝 Adding line ${lineId} to branch point ${messageId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
@@ -911,7 +881,6 @@ export class DataSourceManager {
 
         if (!branchPointDoc.exists()) {
           // BranchPointが存在しない場合は作成
-          console.log(`📝 Creating branch point for message ${messageId} during line addition...`);
           branchPointData = {
             messageId: messageId,
             lines: [],
@@ -937,7 +906,6 @@ export class DataSourceManager {
         });
       });
 
-      console.log(`✅ Line ${lineId} added to branch point ${messageId}`);
 
     } catch (error) {
       console.error(`❌ Failed to add line ${lineId} to branch point ${messageId}:`, error);
@@ -951,7 +919,6 @@ export class DataSourceManager {
       this.validateMessageId(messageId);
       this.validateLineId(lineId);
 
-      console.log(`📝 Removing line ${lineId} from branch point ${messageId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // BranchPoint存在確認
@@ -974,14 +941,12 @@ export class DataSourceManager {
         if (updatedLines.length === 0) {
           // Lineが残っていない場合はBranchPoint自体を削除
           transaction.delete(branchPointRef);
-          console.log(`✅ BranchPoint ${messageId} deleted (no lines remaining)`);
         } else {
           // 他のLineが残っている場合は更新
           transaction.update(branchPointRef, {
             lines: updatedLines,
             updatedAt: serverTimestamp()
           });
-          console.log(`✅ Line ${lineId} removed from branch point ${messageId}`);
         }
       });
 
@@ -996,7 +961,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateMessageId(messageId);
 
-      console.log(`🗑️ Deleting branch point ${messageId} from Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // BranchPoint存在確認
@@ -1029,7 +993,6 @@ export class DataSourceManager {
         transaction.delete(branchPointRef);
       });
 
-      console.log(`✅ BranchPoint ${messageId} deleted successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to delete branch point ${messageId}:`, error);
@@ -1048,7 +1011,6 @@ export class DataSourceManager {
         throw new Error('Cannot link a message to itself');
       }
 
-      console.log(`📝 Linking messages ${prevMessageId} -> ${nextMessageId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // 両方のメッセージの存在確認
@@ -1094,7 +1056,6 @@ export class DataSourceManager {
         await this.updateLineMessageIds(prevMessageData.lineId, transaction);
       });
 
-      console.log(`✅ Messages linked: ${prevMessageId} -> ${nextMessageId}`);
 
     } catch (error) {
       console.error(`❌ Failed to link messages ${prevMessageId} -> ${nextMessageId}:`, error);
@@ -1107,7 +1068,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateMessageId(messageId);
 
-      console.log(`📝 Unlinking message ${messageId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
@@ -1157,7 +1117,6 @@ export class DataSourceManager {
         }
       });
 
-      console.log(`✅ Message ${messageId} unlinked successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to unlink message ${messageId}:`, error);
@@ -1171,7 +1130,6 @@ export class DataSourceManager {
       this.validateMessageId(messageId);
       this.validateLineId(targetLineId);
 
-      console.log(`📝 Moving message ${messageId} to line ${targetLineId} in Firestore...`);
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
@@ -1218,7 +1176,6 @@ export class DataSourceManager {
         await this.updateLineMessageIds(targetLineId, transaction);
       });
 
-      console.log(`✅ Message ${messageId} moved to line ${targetLineId}`);
 
     } catch (error) {
       console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
@@ -1433,7 +1390,6 @@ export class DataSourceManager {
       // 名前の重複チェック
       await this.checkTagNameDuplicate(tag.name);
 
-      console.log('📝 Creating new tag in Firestore...');
 
       const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
 
@@ -1454,7 +1410,6 @@ export class DataSourceManager {
 
       const docRef = await addDoc(tagsRef, tagData);
 
-      console.log(`✅ Tag created with ID: ${docRef.id}`);
       return docRef.id;
 
     } catch (error) {
@@ -1469,7 +1424,6 @@ export class DataSourceManager {
       this.validateTagId(id);
       this.validateTagUpdates(updates);
 
-      console.log(`📝 Updating tag ${id} in Firestore...`);
 
       const tagRef = doc(db, 'conversations', this.conversationId, 'tags', id);
 
@@ -1502,7 +1456,6 @@ export class DataSourceManager {
 
       await updateDoc(tagRef, updateData);
 
-      console.log(`✅ Tag ${id} updated successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to update tag ${id}:`, error);
@@ -1515,7 +1468,6 @@ export class DataSourceManager {
       // バリデーション
       this.validateTagId(id);
 
-      console.log(`🗑️ Deleting tag ${id} from Firestore...`);
 
       const tagRef = doc(db, 'conversations', this.conversationId, 'tags', id);
 
@@ -1534,7 +1486,6 @@ export class DataSourceManager {
       // タグ削除
       await deleteDoc(tagRef);
 
-      console.log(`✅ Tag ${id} deleted successfully`);
 
     } catch (error) {
       console.error(`❌ Failed to delete tag ${id}:`, error);
@@ -1585,7 +1536,6 @@ export class DataSourceManager {
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.log('No messages with this tag found');
       return;
     }
 
@@ -1602,7 +1552,6 @@ export class DataSourceManager {
     });
 
     await batch.commit();
-    console.log(`✅ Tag ${tagId} removed from all messages`);
   }
 
   private async removeTagFromAllLines(tagId: string): Promise<void> {
@@ -1611,7 +1560,6 @@ export class DataSourceManager {
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
-      console.log('No lines with this tag found');
       return;
     }
 
@@ -1628,7 +1576,6 @@ export class DataSourceManager {
     });
 
     await batch.commit();
-    console.log(`✅ Tag ${tagId} removed from all lines`);
   }
 }
 

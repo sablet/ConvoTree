@@ -39,11 +39,12 @@ export function MessageTypeRenderer({
     tags?: string[]
   }) => {
     if (onUpdate) {
+      const updatedMetadata = {
+        ...message.metadata,
+        ...newTaskData
+      }
       onUpdate(message.id, {
-        metadata: {
-          ...message.metadata,
-          ...newTaskData
-        }
+        metadata: updatedMetadata
       })
     }
   }
@@ -84,15 +85,16 @@ export function MessageTypeRenderer({
   const messageType = message.type || 'text';
   switch (messageType) {
     case 'task':
+      const taskData = message.metadata as {
+        priority: 'low' | 'medium' | 'high' | 'urgent'
+        completed: boolean
+        tags?: string[]
+      }
       return (
         <TaskMessage
           messageId={message.id}
           content={message.content}
-          data={message.metadata as {
-            priority: 'low' | 'medium' | 'high' | 'urgent'
-            completed: boolean
-            tags?: string[]
-          }}
+          data={taskData}
           onUpdate={handleTaskDataUpdate}
           isEditable={isEditable}
         />

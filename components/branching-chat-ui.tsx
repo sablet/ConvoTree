@@ -51,20 +51,6 @@ interface BranchPoint {
   lines: string[] // この分岐点から派生するラインのIDリスト
 }
 
-// Development logger for debugging
-const DEV_LOG = {
-  enabled: process.env.NODE_ENV === 'development',
-  data: (message: string, data?: unknown) => {
-    if (DEV_LOG.enabled) {
-      console.log(`[BranchingChat] ${message}`, data || '')
-    }
-  },
-  error: (message: string, error?: unknown) => {
-    if (DEV_LOG.enabled) {
-      console.error(`[BranchingChat] ${message}`, error || '')
-    }
-  }
-}
 
 interface BranchingChatUIProps {
   initialMessages?: Record<string, Message>
@@ -194,22 +180,18 @@ export function BranchingChatUI({
   // 初期データの更新を監視（propsが変更されたら常に更新）
   useEffect(() => {
     setMessages(initialMessages)
-    DEV_LOG.data('Messages updated from props', { count: Object.keys(initialMessages).length })
   }, [initialMessages])
 
   useEffect(() => {
     setLines(initialLines)
-    DEV_LOG.data('Lines updated from props', { count: Object.keys(initialLines).length })
   }, [initialLines])
 
   useEffect(() => {
     setBranchPoints(initialBranchPoints)
-    DEV_LOG.data('BranchPoints updated from props', { count: Object.keys(initialBranchPoints).length })
   }, [initialBranchPoints])
 
   useEffect(() => {
     setTags(initialTags)
-    DEV_LOG.data('Tags updated from props', { count: Object.keys(initialTags).length })
   }, [initialTags])
 
   useEffect(() => {
@@ -265,9 +247,7 @@ export function BranchingChatUI({
         throw new Error('Delete failed')
       }
 
-      DEV_LOG.data('Image deleted from storage', { imageUrl })
     } catch (error) {
-      DEV_LOG.error('Failed to delete image from storage', { imageUrl, error })
       // 削除に失敗してもメッセージ削除は続行する
     }
   }
@@ -320,9 +300,7 @@ export function BranchingChatUI({
         return updated
       })
 
-      DEV_LOG.data('Image deleted from message', { messageId, imageIndex, imageUrl })
     } catch (error) {
-      DEV_LOG.error('Failed to delete image from message', error)
       alert('画像の削除に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -469,10 +447,6 @@ export function BranchingChatUI({
   // メモ化されたタイムライン取得
   const getCompleteTimeline = useCallback(() => {
     if (!currentLineId || !lines[currentLineId]) {
-      DEV_LOG.data('No current line found', {
-        currentLineId,
-        availableLines: Object.keys(lines)
-      })
       return { messages: [], transitions: [] }
     }
 
@@ -565,7 +539,6 @@ export function BranchingChatUI({
 
     const currentLine = lines[currentLineId]
     if (!currentLine) {
-      DEV_LOG.error('No current line found for message sending', { currentLineId })
       return
     }
 
@@ -574,11 +547,6 @@ export function BranchingChatUI({
     const lastMessage = timeline.messages[timeline.messages.length - 1]
     const baseMessageId = selectedBaseMessage || lastMessage?.id
 
-    DEV_LOG.data('Sending message', {
-      lineId: currentLine.id,
-      baseMessageId,
-      isNewBranch: selectedBaseMessage !== null
-    })
 
     // ベースメッセージが選択されている場合は常に新しいラインを作成
     const shouldCreateNewLine = selectedBaseMessage !== null
@@ -642,10 +610,8 @@ export function BranchingChatUI({
 
         // 新しいライン作成時専用のコールバックを呼び出し（URL更新のため）
         if (onNewLineCreated) {
-          DEV_LOG.data('Calling onNewLineCreated', { newLineId, newLineName })
           onNewLineCreated(newLineId, newLineName)
         } else {
-          DEV_LOG.error('onNewLineCreated callback not provided')
         }
 
         // フッターを強制更新
@@ -735,12 +701,10 @@ export function BranchingChatUI({
       setPendingImages([])
       setSelectedBaseMessage(null)
 
-      DEV_LOG.data('Message sent successfully')
 
       // メッセージ投稿時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
-      DEV_LOG.error('Failed to send message', error)
       alert('メッセージの送信に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -784,12 +748,10 @@ export function BranchingChatUI({
       setEditingMessageId(null)
       setEditingContent("")
 
-      DEV_LOG.data('Message updated successfully', { messageId: editingMessageId, newContent: editingContent.trim() })
 
       // メッセージ編集時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
-      DEV_LOG.error('Failed to update message', error)
       alert('メッセージの更新に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -873,12 +835,10 @@ export function BranchingChatUI({
       setLineAncestryCache(new Map())
 
       setDeleteConfirmation(null)
-      DEV_LOG.data('Message deleted successfully', { messageId })
 
       // メッセージ削除時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
     } catch (error) {
-      DEV_LOG.error('Failed to delete message', error)
       alert('メッセージの削除に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -960,14 +920,6 @@ export function BranchingChatUI({
   const currentLineInfo = getCurrentLine()
   // completeTimelineは既にuseMemoで定義済み
 
-  // Development state logging (minimal)
-  if (DEV_LOG.enabled && currentLineId && !currentLineInfo) {
-    DEV_LOG.data('Render state mismatch', {
-      currentLineId,
-      hasLineInfo: !!currentLineInfo,
-      timelineCount: completeTimeline.messages.length
-    })
-  }
 
   const renderTimelineMinimap = () => {
     if (!completeTimeline.messages.length) return null
@@ -1256,20 +1208,26 @@ export function BranchingChatUI({
                               message={message}
                               onUpdate={(messageId, updates) => {
                                 // メッセージの更新処理
-                                setMessages(prev => ({
-                                  ...prev,
-                                  [messageId]: { ...prev[messageId], ...updates }
-                                }))
-                                // データソースにも反映
-                                if (dataSourceManager.getCurrentSource() === 'firestore') {
-                                  // timestamp以外の更新データを作成
-                                  const { timestamp, ...otherUpdates } = updates
-                                  const updateData = {
-                                    ...otherUpdates,
-                                    ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
+                                setMessages(prev => {
+                                  return {
+                                    ...prev,
+                                    [messageId]: { ...prev[messageId], ...updates }
                                   }
-                                  dataSourceManager.updateMessage(messageId, updateData)
-                                }
+                                })
+                                // データソースにも反映（一時的に無効化してテスト）
+                                // if (dataSourceManager.getCurrentSource() === 'firestore') {
+                                //   // timestamp以外の更新データを作成
+                                //   const { timestamp, ...otherUpdates } = updates
+                                //   const updateData = {
+                                //     ...otherUpdates,
+                                //     ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
+                                //   }
+                                //   dataSourceManager.updateMessage(messageId, updateData)
+                                //     .then(() => {
+                                //     })
+                                //     .catch((error) => {
+                                //     })
+                                // }
                               }}
                               isEditable={messageLineInfo.isCurrentLine}
                             />
@@ -1352,12 +1310,6 @@ export function BranchingChatUI({
                               </div>
                             )
                           })}
-                        {/* 無効な画像URLがある場合の警告（開発モード時のみ） */}
-                        {DEV_LOG.enabled && message.images.some(url => !isValidImageUrl(url)) && (
-                          <div className="text-xs text-orange-500 bg-orange-50 p-2 rounded border border-orange-200">
-                            一部の画像が無効なURLのため表示されていません
-                          </div>
-                        )}
                       </div>
                     )}
 

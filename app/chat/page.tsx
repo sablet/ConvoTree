@@ -141,27 +141,21 @@ function ChatPageContent() {
 
   // ライン切り替えハンドラー（URL更新、履歴あり）
   const handleLineChange = useCallback((lineId: string) => {
-    console.log('handleLineChange called with:', lineId)
     const targetLine = lines[lineId]
-    console.log('targetLine found:', targetLine)
     if (targetLine) {
       setCurrentLineId(lineId)
       // URLクエリパラメータを更新
       const encodedLineName = encodeURIComponent(targetLine.name)
-      console.log('Updating URL to:', `/chat?line=${encodedLineName}`)
       router.push(`/chat?line=${encodedLineName}`)
     } else {
-      console.log('targetLine not found, available lines:', Object.keys(lines))
     }
   }, [lines, router])
 
   // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
   const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
-    console.log('handleNewLineCreated called with:', lineId, lineName)
     setCurrentLineId(lineId)
     // URLクエリパラメータを更新
     const encodedLineName = encodeURIComponent(lineName)
-    console.log('Updating URL to:', `/chat?line=${encodedLineName}`)
     router.push(`/chat?line=${encodedLineName}`)
   }, [router])
 

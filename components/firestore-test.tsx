@@ -24,7 +24,6 @@ export default function FirestoreTest() {
           throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
         }
 
-        console.log('🔍 Firestore からデータを取得中...');
 
         // conversations/sample-conversation-1/messages コレクションからデータ取得
         const messagesRef = collection(db, 'conversations', config.conversationId, 'messages');
@@ -41,7 +40,6 @@ export default function FirestoreTest() {
           });
         });
 
-        console.log(`✅ ${fetchedMessages.length} 件のメッセージを取得しました`);
         setMessages(fetchedMessages);
         setError(null);
       } catch (err) {

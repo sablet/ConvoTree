@@ -297,7 +297,6 @@ export function TagProvider({ children }: TagProviderProps) {
     // Tagsのリアルタイムリスナー
     const tagsRef = collection(db, 'conversations', conversationId, 'tags')
     const unsubscribeTags = onSnapshot(tagsRef, (snapshot) => {
-      console.log('🔄 Tags updated in real-time')
       // 変更があった場合のみリロード
       if (!snapshot.metadata.fromCache) {
         loadTags()
@@ -310,7 +309,6 @@ export function TagProvider({ children }: TagProviderProps) {
     // TagGroupsのリアルタイムリスナー
     const tagGroupsRef = collection(db, 'conversations', conversationId, 'tagGroups')
     const unsubscribeTagGroups = onSnapshot(tagGroupsRef, (snapshot) => {
-      console.log('🔄 TagGroups updated in real-time')
       // 変更があった場合のみリロード
       if (!snapshot.metadata.fromCache) {
         loadTags()
@@ -323,7 +321,6 @@ export function TagProvider({ children }: TagProviderProps) {
     // Linesのリアルタイムリスナー（タグカウント更新用）
     const linesRef = collection(db, 'conversations', conversationId, 'lines')
     const unsubscribeLines = onSnapshot(linesRef, (snapshot) => {
-      console.log('🔄 Lines updated in real-time (for tag counts)')
       // 変更があった場合のみリロード
       if (!snapshot.metadata.fromCache) {
         loadTags()

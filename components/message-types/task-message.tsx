@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -50,6 +50,16 @@ export function TaskMessage({
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState<TaskMessageData>(taskData)
 
+  // propsの変更を監視してローカル状態を更新
+  useEffect(() => {
+    const newTaskData = data || {
+      priority: 'medium' as const,
+      completed: false,
+      tags: []
+    };
+    setEditData(newTaskData);
+  }, [data])
+
   const handleSave = () => {
     if (onUpdate) {
       onUpdate(editData)
@@ -58,12 +68,12 @@ export function TaskMessage({
   }
 
   const handleCancel = () => {
-    setEditData(data)
+    setEditData(taskData)
     setIsEditing(false)
   }
 
   const handleToggleComplete = () => {
-    const newData = { ...data, completed: !data.completed }
+    const newData = { ...taskData, completed: !taskData.completed }
     if (onUpdate) {
       onUpdate(newData)
     }
@@ -121,7 +131,7 @@ export function TaskMessage({
 
   return (
     <div className={`border rounded-lg p-4 transition-all ${
-      data.completed
+      taskData.completed
         ? 'bg-green-50 border-green-200'
         : 'bg-gray-50 border-gray-200'
     }`}>
@@ -132,25 +142,25 @@ export function TaskMessage({
             <button
               onClick={handleToggleComplete}
               className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                data.completed
+                taskData.completed
                   ? 'bg-green-500 border-green-500 text-white'
                   : 'border-gray-300 hover:border-gray-400'
               }`}
             >
-              {data.completed && <Check className="h-3 w-3" />}
+              {taskData.completed && <Check className="h-3 w-3" />}
             </button>
 
             <div className="flex items-center gap-2">
               <CheckSquare className="h-4 w-4 text-gray-600" />
               <span className={`text-sm font-medium ${
-                data.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                taskData.completed ? 'line-through text-gray-500' : 'text-gray-900'
               }`}>
                 {content.length > 30 ? `${content.slice(0, 30)}...` : content}
               </span>
             </div>
 
-            <Badge className={`text-xs ${priorityColors[data.priority]}`}>
-              {priorityIcons[data.priority]} {data.priority.toUpperCase()}
+            <Badge className={`text-xs ${priorityColors[taskData.priority]}`}>
+              {priorityIcons[taskData.priority]} {taskData.priority.toUpperCase()}
             </Badge>
           </div>
 
@@ -158,7 +168,7 @@ export function TaskMessage({
           {/* タスク詳細 */}
           <div className="space-y-2">
 
-            {data.completed && (
+            {taskData.completed && (
               <div className="flex items-center gap-2 text-xs text-green-600">
                 <Check className="h-3 w-3" />
                 <span>完了済み</span>

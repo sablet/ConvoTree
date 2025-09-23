@@ -41,13 +41,11 @@ export default function DebugPage() {
 
   // データソース変更ハンドラー
   const handleDataSourceChange = (source: DataSource) => {
-    console.log(`Data source changed to: ${source}`)
   }
 
   // データ再読み込みハンドラー
   const handleDataReload = () => {
     // 必要に応じてデータの再読み込み処理を実装
-    console.log('Data reload requested')
   }
 
   return (
