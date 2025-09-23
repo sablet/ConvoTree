@@ -218,16 +218,34 @@ export function BranchingChatUI({
   //   scrollToBottom()
   // }, [currentLineId])
 
-  const handleImageFile = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        resolve(result)
+  const handleImageFile = async (file: File): Promise<string> => {
+    try {
+      // Upload to Vercel Blob
+      const filename = `${Date.now()}-${file.name}`
+      const response = await fetch(`/api/upload?filename=${encodeURIComponent(filename)}`, {
+        method: 'POST',
+        body: file,
+      })
+
+      if (!response.ok) {
+        throw new Error('Upload failed')
       }
-      reader.onerror = () => reject(new Error('Failed to read file'))
-      reader.readAsDataURL(file)
-    })
+
+      const { url } = await response.json()
+      return url
+    } catch (error) {
+      console.error('Failed to upload image:', error)
+      // Fallback to base64 if upload fails
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const result = e.target?.result as string
+          resolve(result)
+        }
+        reader.onerror = () => reject(new Error('Failed to read file'))
+        reader.readAsDataURL(file)
+      })
+    }
   }
 
   const handlePaste = useCallback(async (e: ClipboardEvent) => {
