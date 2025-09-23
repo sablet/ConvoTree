@@ -35,7 +35,6 @@ export function MessageTypeRenderer({
     priority: 'low' | 'medium' | 'high' | 'urgent'
     dueDate?: string
     completed: boolean
-    estimatedHours?: number
     tags?: string[]
   }) => {
     if (onUpdate) {
@@ -62,7 +61,6 @@ export function MessageTypeRenderer({
     checkedInAt?: string
     checkedOutAt?: string
     timeSpent?: number
-    notes?: string
   }) => {
     if (onUpdate) {
       onUpdate(message.id, {

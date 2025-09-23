@@ -101,6 +101,7 @@ export function BranchingChatUI({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
   const [editingMessageType, setEditingMessageType] = useState<'text' | 'task' | 'document' | 'session' | null>(null)
+  const [editingMetadata, setEditingMetadata] = useState<Record<string, unknown>>({})
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null)
@@ -319,7 +320,7 @@ export function BranchingChatUI({
       setPathCache(new Map())
       setLineAncestryCache(new Map())
 
-    } catch (error) {
+    } catch (_error) {
       alert('画像の削除に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -476,7 +477,7 @@ export function BranchingChatUI({
   // useMemoでメモ化されたタイムラインを取得（messagesの変更も監視）
   const completeTimeline = useMemo(() => {
     return getCompleteTimeline()
-  }, [getCompleteTimeline, messages, lines])
+  }, [getCompleteTimeline])
 
   // スクロール位置を保存する関数
   const saveScrollPosition = useCallback((lineId: string) => {
@@ -715,7 +716,7 @@ export function BranchingChatUI({
 
       // メッセージ投稿時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (error) {
+    } catch (_error) {
       alert('メッセージの送信に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -729,6 +730,7 @@ export function BranchingChatUI({
       setEditingMessageId(messageId)
       setEditingContent(message.content)
       setEditingMessageType(message.type || 'text')
+      setEditingMetadata(message.metadata || {})
     }
   }
 
@@ -739,7 +741,6 @@ export function BranchingChatUI({
         return {
           priority: 'medium' as const,
           completed: false,
-          estimatedHours: 1,
           tags: []
         }
       case 'document':
@@ -751,8 +752,7 @@ export function BranchingChatUI({
         }
       case 'session':
         return {
-          timeSpent: 0,
-          notes: ''
+          timeSpent: 0
           // checkedInAt, checkedOutAtは意図的に省略（undefinedを避ける）
         }
       case 'text':
@@ -784,8 +784,15 @@ export function BranchingChatUI({
           // textタイプに変更する場合、メタデータを削除
           updateData.metadata = null as unknown as Record<string, unknown>
         } else {
-          // 他のタイプに変更する場合、デフォルトメタデータを設定
-          updateData.metadata = getDefaultMetadataForType(newType, editingContent.trim())
+          // 他のタイプに変更する場合、編集されたメタデータまたはデフォルトメタデータを設定
+          updateData.metadata = Object.keys(editingMetadata).length > 0
+            ? editingMetadata
+            : getDefaultMetadataForType(newType, editingContent.trim())
+        }
+      } else {
+        // タイプが変更されていない場合、編集されたメタデータを使用
+        if (Object.keys(editingMetadata).length > 0) {
+          updateData.metadata = editingMetadata
         }
       }
 
@@ -827,11 +834,12 @@ export function BranchingChatUI({
       setEditingMessageId(null)
       setEditingContent("")
       setEditingMessageType(null)
+      setEditingMetadata({})
 
 
       // メッセージ編集時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (error) {
+    } catch (_error) {
       alert('メッセージの更新に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -843,6 +851,7 @@ export function BranchingChatUI({
     setEditingMessageId(null)
     setEditingContent("")
     setEditingMessageType(null)
+    setEditingMetadata({})
   }
 
   // メッセージ削除確認ダイアログを開く
@@ -919,7 +928,7 @@ export function BranchingChatUI({
 
       // メッセージ削除時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (error) {
+    } catch (_error) {
       alert('メッセージの削除に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -1258,8 +1267,8 @@ export function BranchingChatUI({
                       {message.hasBookmark && <div className="w-3 h-3 border border-gray-300 mt-1 flex-shrink-0" />}
 
                       {editingMessageId === message.id ? (
-                        /* 編集モード */
-                        <div className="flex-1 space-y-3">
+                        /* 統合編集モード */
+                        <div className="flex-1 space-y-4">
                           {/* メッセージタイプ選択 */}
                           <div className="flex items-center gap-2">
                             <label className="text-xs font-medium text-gray-600">タイプ:</label>
@@ -1274,10 +1283,13 @@ export function BranchingChatUI({
                               <option value="session">セッション</option>
                             </select>
                           </div>
+
+                          {/* テキスト内容編集 */}
                           <textarea
                             value={editingContent}
                             onChange={(e) => setEditingContent(e.target.value)}
                             className="w-full min-h-[80px] p-2 border border-blue-300 rounded-md resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm"
+                            placeholder="メッセージ内容"
                             onKeyDown={(e) => {
                               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                                 e.preventDefault()
@@ -1289,7 +1301,167 @@ export function BranchingChatUI({
                             }}
                             autoFocus
                           />
-                          <div className="flex gap-2">
+
+                          {/* タイプ別プロパティ編集 */}
+                          {(editingMessageType === 'task' || (editingMessageType === null && message.type === 'task')) && (
+                            <div className="bg-orange-50 p-3 rounded-md border border-orange-200">
+                              <h4 className="text-xs font-medium text-orange-800 mb-2">タスクプロパティ</h4>
+                              <div>
+                                <label className="text-xs text-gray-600">優先度</label>
+                                <select
+                                  className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                  value={(editingMetadata.priority as string) || (message.metadata?.priority as string) || 'medium'}
+                                  onChange={(e) => setEditingMetadata(prev => ({ ...prev, priority: e.target.value }))}
+                                >
+                                  <option value="low">低</option>
+                                  <option value="medium">中</option>
+                                  <option value="high">高</option>
+                                </select>
+                              </div>
+                              <div className="mt-2">
+                                <label className="flex items-center gap-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={(editingMetadata.completed as boolean) ?? (message.metadata?.completed as boolean) ?? false}
+                                    onChange={(e) => setEditingMetadata(prev => ({ ...prev, completed: e.target.checked }))}
+                                    className="rounded"
+                                  />
+                                  完了
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {(editingMessageType === 'session' || (editingMessageType === null && message.type === 'session')) && (
+                            <div className="bg-purple-50 p-3 rounded-md border border-purple-200">
+                              <h4 className="text-xs font-medium text-purple-800 mb-2">セッションプロパティ</h4>
+                              <div className="space-y-2">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div>
+                                    <label className="text-xs text-gray-600">開始日時</label>
+                                    <input
+                                      type="datetime-local"
+                                      className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                      value={(() => {
+                                        const checkedInAt = (editingMetadata.checkedInAt as string) ?? (message.metadata?.checkedInAt as string) ?? ''
+                                        if (!checkedInAt) return ''
+                                        // ISO文字列をローカル日時に変換
+                                        const date = new Date(checkedInAt)
+                                        const year = date.getFullYear()
+                                        const month = String(date.getMonth() + 1).padStart(2, '0')
+                                        const day = String(date.getDate()).padStart(2, '0')
+                                        const hours = String(date.getHours()).padStart(2, '0')
+                                        const minutes = String(date.getMinutes()).padStart(2, '0')
+                                        return `${year}-${month}-${day}T${hours}:${minutes}`
+                                      })()}
+                                      onChange={(e) => {
+                                        const isoString = e.target.value ? new Date(e.target.value).toISOString() : ''
+                                        setEditingMetadata(prev => {
+                                          const newMetadata: Record<string, unknown> = { ...prev, checkedInAt: isoString }
+                                          // 経過分数が設定されている場合は終了日時を自動計算
+                                          const timeSpent = prev.timeSpent as number || 0
+                                          if (isoString && timeSpent > 0) {
+                                            const endDate = new Date(isoString)
+                                            endDate.setMinutes(endDate.getMinutes() + timeSpent)
+                                            newMetadata.checkedOutAt = endDate.toISOString()
+                                          }
+                                          return newMetadata
+                                        })
+                                      }}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-600">経過分数</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="1"
+                                      className="w-full text-xs border border-gray-300 rounded px-2 py-1"
+                                      value={(editingMetadata.timeSpent as number) ?? (message.metadata?.timeSpent as number) ?? 0}
+                                      onChange={(e) => {
+                                        const minutes = parseInt(e.target.value) || 0
+                                        setEditingMetadata(prev => {
+                                          const newMetadata: Record<string, unknown> = { ...prev, timeSpent: minutes }
+                                          // 開始日時が設定されている場合は終了日時を自動計算
+                                          const checkedInAt = prev.checkedInAt as string || message.metadata?.checkedInAt as string
+                                          if (checkedInAt && minutes > 0) {
+                                            const endDate = new Date(checkedInAt)
+                                            endDate.setMinutes(endDate.getMinutes() + minutes)
+                                            newMetadata.checkedOutAt = endDate.toISOString()
+                                          } else if (minutes === 0) {
+                                            // 経過分数が0の場合は終了日時をクリア
+                                            newMetadata.checkedOutAt = ''
+                                          }
+                                          return newMetadata
+                                        })
+                                      }}
+                                      onKeyDown={(e) => {
+                                        // 数字、Backspace、Delete、Arrow keys、Tab、Enterを許可
+                                        if (
+                                          !((e.key >= '0' && e.key <= '9') ||
+                                            e.key === 'Backspace' ||
+                                            e.key === 'Delete' ||
+                                            e.key === 'ArrowLeft' ||
+                                            e.key === 'ArrowRight' ||
+                                            e.key === 'ArrowUp' ||
+                                            e.key === 'ArrowDown' ||
+                                            e.key === 'Tab' ||
+                                            e.key === 'Enter' ||
+                                            (e.ctrlKey && (e.key === 'a' || e.key === 'c' || e.key === 'v' || e.key === 'x')))
+                                        ) {
+                                          e.preventDefault()
+                                        }
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                {/* 計算結果の終了日時を表示 */}
+                                {(() => {
+                                  const checkedInAt = (editingMetadata.checkedInAt as string) ?? (message.metadata?.checkedInAt as string) ?? ''
+                                  const timeSpent = (editingMetadata.timeSpent as number) ?? (message.metadata?.timeSpent as number) ?? 0
+                                  const checkedOutAt = (editingMetadata.checkedOutAt as string) ?? (message.metadata?.checkedOutAt as string) ?? ''
+
+                                  if (checkedInAt && timeSpent > 0 && checkedOutAt) {
+                                    const endDate = new Date(checkedOutAt)
+                                    const year = endDate.getFullYear()
+                                    const month = String(endDate.getMonth() + 1).padStart(2, '0')
+                                    const day = String(endDate.getDate()).padStart(2, '0')
+                                    const hours = String(endDate.getHours()).padStart(2, '0')
+                                    const minutes = String(endDate.getMinutes()).padStart(2, '0')
+                                    const formattedEndTime = `${year}-${month}-${day} ${hours}:${minutes}`
+
+                                    return (
+                                      <div className="mt-2 p-2 bg-purple-100 rounded text-xs">
+                                        <span className="text-purple-700 font-medium">終了日時: </span>
+                                        <span className="text-purple-800">{formattedEndTime}</span>
+                                      </div>
+                                    )
+                                  }
+                                  return null
+                                })()}
+                              </div>
+                            </div>
+                          )}
+
+                          {(editingMessageType === 'document' || (editingMessageType === null && message.type === 'document')) && (
+                            <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
+                              <h4 className="text-xs font-medium text-blue-800 mb-2">ドキュメントプロパティ</h4>
+                              <div>
+                                <label className="flex items-center gap-2 text-xs">
+                                  <input
+                                    type="checkbox"
+                                    checked={(editingMetadata.isCollapsed as boolean) ?? (message.metadata?.isCollapsed as boolean) ?? false}
+                                    onChange={(e) => setEditingMetadata(prev => ({ ...prev, isCollapsed: e.target.checked }))}
+                                    className="rounded"
+                                  />
+                                  折りたたみ表示
+                                </label>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* 保存・キャンセルボタン */}
+                          <div className="flex gap-2 pt-2 border-t border-gray-200">
                             <Button
                               onClick={handleSaveEdit}
                               disabled={!editingContent.trim() || isUpdating}

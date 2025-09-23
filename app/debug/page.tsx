@@ -40,7 +40,7 @@ export default function DebugPage() {
   }, [])
 
   // データソース変更ハンドラー
-  const handleDataSourceChange = (source: DataSource) => {
+  const handleDataSourceChange = (_source: DataSource) => {
   }
 
   // データ再読み込みハンドラー

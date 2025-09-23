@@ -1,10 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Check, Edit3, CheckSquare } from "lucide-react"
+import { Check, CheckSquare } from "lucide-react"
 
 interface TaskMessageData {
   priority: 'low' | 'medium' | 'high' | 'urgent'
@@ -37,15 +36,14 @@ const priorityIcons = {
 export function TaskMessage({
   content,
   data,
-  onUpdate,
-  isEditable = false
+  onUpdate
 }: TaskMessageProps) {
   // dataを直接使用（メモ化を削除）
-  const taskData = data || {
+  const taskData = useMemo(() => data || {
     priority: 'medium' as const,
     completed: false,
     tags: []
-  };
+  }, [data]);
 
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState<TaskMessageData>(taskData)
@@ -172,20 +170,6 @@ export function TaskMessage({
           </div>
         </div>
 
-        {/* アクションボタン - 右下に配置してメッセージ編集アイコンとの重複を回避 */}
-        {isEditable && (
-          <div className="self-end">
-            <Button
-              onClick={() => setIsEditing(true)}
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-              title="編集"
-            >
-              <Edit3 className="h-3 w-3" />
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   )
