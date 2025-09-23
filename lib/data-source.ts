@@ -17,12 +17,8 @@ interface Message {
   author?: string;
   images?: string[];
   // 🟢 メッセージタイプとメタデータ拡張
-  type?: 'text' | 'task' | 'document' | 'note';
-  metadata?: {
-    priority?: string;
-    status?: string;
-    flags?: string[];
-  };
+  type?: 'text' | 'task' | 'document' | 'session';
+  metadata?: Record<string, unknown>;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

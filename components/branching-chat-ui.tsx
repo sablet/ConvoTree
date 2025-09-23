@@ -10,6 +10,9 @@ import { dataSourceManager } from "@/lib/data-source"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { RecentLinesFooter } from "@/components/recent-lines-footer"
 import { MessageExtensionsManager } from "@/components/message-extensions/message-extensions-manager"
+import { SlashCommandButtons } from "@/components/slash-command-buttons"
+import { parseSlashCommand } from "@/lib/slash-command-parser"
+import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
 
 interface Message {
   id: string
@@ -24,12 +27,8 @@ interface Message {
   author?: string
   images?: string[]
   // 🟢 メッセージタイプとメタデータ拡張
-  type?: 'text' | 'task' | 'document' | 'note'
-  metadata?: {
-    priority?: string
-    status?: string
-    flags?: string[]
-  }
+  type?: 'text' | 'task' | 'document' | 'session'
+  metadata?: Record<string, unknown>
 }
 
 interface Line {
@@ -655,13 +654,17 @@ export function BranchingChatUI({
         setFooterKey(prev => prev + 1)
 
       } else {
-        // 既存のライン継続 - Firestoreにメッセージを作成
+        // 既存のライン継続 - スラッシュコマンドを解析してメッセージを作成
+        const parsedMessage = parseSlashCommand(inputValue)
+
         const newMessageId = await dataSourceManager.createMessage({
-          content: inputValue,
+          content: parsedMessage.content,
           timestamp: new Date().toISOString(),
           lineId: currentLineId,
           prevInLine: baseMessageId,
           author: "User",
+          type: parsedMessage.type,
+          metadata: parsedMessage.metadata,
           ...(pendingImages.length > 0 && { images: [...pendingImages] }),
         })
 
@@ -686,11 +689,13 @@ export function BranchingChatUI({
         // ローカル状態を更新
         const newMessage: Message = {
           id: newMessageId,
-          content: inputValue,
+          content: parsedMessage.content,
           timestamp: new Date(),
           lineId: currentLineId,
           prevInLine: baseMessageId,
           author: "User",
+          type: parsedMessage.type,
+          metadata: parsedMessage.metadata,
           ...(pendingImages.length > 0 && { images: [...pendingImages] }),
         }
 
@@ -1242,16 +1247,34 @@ export function BranchingChatUI({
                       ) : (
                         /* 表示モード */
                         <div className="flex-1 relative">
-                          <div
-                            className={`leading-relaxed whitespace-pre-wrap text-sm cursor-pointer ${
+                          <div className={`${
                               !messageLineInfo.isCurrentLine
                                 ? "text-gray-600"
                                 : isSelected
                                 ? "text-gray-900"
                                 : "text-gray-900"
-                            }`}
-                          >
-                            {message.content}
+                            }`}>
+                            <MessageTypeRenderer
+                              message={message}
+                              onUpdate={(messageId, updates) => {
+                                // メッセージの更新処理
+                                setMessages(prev => ({
+                                  ...prev,
+                                  [messageId]: { ...prev[messageId], ...updates }
+                                }))
+                                // データソースにも反映
+                                if (dataSourceManager.getCurrentSource() === 'firestore') {
+                                  // timestamp以外の更新データを作成
+                                  const { timestamp, ...otherUpdates } = updates
+                                  const updateData = {
+                                    ...otherUpdates,
+                                    ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
+                                  }
+                                  dataSourceManager.updateMessage(messageId, updateData)
+                                }
+                              }}
+                              isEditable={messageLineInfo.isCurrentLine}
+                            />
                           </div>
 
                           {/* 編集・削除ボタン（ホバー時のみ表示） */}
@@ -1340,12 +1363,14 @@ export function BranchingChatUI({
                       </div>
                     )}
 
-                    {/* Message Extensions */}
-                    <MessageExtensionsManager
-                      messageId={message.id}
-                      messageContent={message.content}
-                      isCurrentLine={messageLineInfo.isCurrentLine}
-                    />
+                    {/* Message Extensions - テキストメッセージのみに表示 */}
+                    {(!message.type || message.type === 'text') && (
+                      <MessageExtensionsManager
+                        messageId={message.id}
+                        messageContent={message.content}
+                        isCurrentLine={messageLineInfo.isCurrentLine}
+                      />
+                    )}
 
                   </div>
                 </div>
@@ -1543,7 +1568,7 @@ export function BranchingChatUI({
             <textarea
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              placeholder="メッセージを入力..."
+              placeholder="メッセージを入力... (/task_high, /document, /session などのコマンドが使用できます)"
               className="min-h-[80px] max-h-40 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -1553,14 +1578,28 @@ export function BranchingChatUI({
               }}
             />
           </div>
-          <Button
-            onClick={handleSendMessage}
-            disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
-            className="h-11 px-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
-          >
-            <Send className="h-4 w-4" />
-            {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
-          </Button>
+          <div className="flex flex-col gap-2">
+            <SlashCommandButtons
+              onCommandSelect={(command) => {
+                setInputValue(prevValue => {
+                  // カーソル位置に挿入するか、先頭に追加
+                  if (prevValue.trim() === '') {
+                    return command
+                  } else {
+                    return command + prevValue
+                  }
+                })
+              }}
+            />
+            <Button
+              onClick={handleSendMessage}
+              disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
+              className="h-11 px-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+            >
+              <Send className="h-4 w-4" />
+              {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
+            </Button>
+          </div>
         </div>
       </div>
 

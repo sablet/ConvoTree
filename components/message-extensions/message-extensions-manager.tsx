@@ -62,9 +62,10 @@ export function MessageExtensionsManager({
     loadExtensions()
   }, [messageId])
 
-  // 長文の場合は自動的にドキュメント拡張を作成
+  // 長文の場合は自動的にドキュメント拡張を作成（スラッシュコマンドを使用していない場合のみ）
   useEffect(() => {
-    if (extensions.length === 0 && shouldCreateDocumentExtension(messageContent)) {
+    const isSlashCommand = messageContent.trim().startsWith('/')
+    if (extensions.length === 0 && !isSlashCommand && shouldCreateDocumentExtension(messageContent)) {
       handleCreateDocumentExtension()
     }
   }, [messageContent, extensions.length])
@@ -340,8 +341,8 @@ export function MessageExtensionsManager({
         }
       })}
 
-      {/* 拡張機能追加ボタン（現在のラインのメッセージのみ） */}
-      {isCurrentLine && (
+      {/* 拡張機能追加ボタン（現在のラインのメッセージのみ、かつ拡張機能がない場合のみ） */}
+      {isCurrentLine && extensions.length === 0 && (
         <div className="relative">
           {showAddMenu ? (
             <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-2 space-y-1">
@@ -395,15 +396,22 @@ export function MessageExtensionsManager({
               </div>
             </div>
           ) : (
-            <Button
-              onClick={() => setShowAddMenu(true)}
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-gray-400 hover:text-gray-600"
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              <span className="text-xs">拡張機能</span>
-            </Button>
+            <div className="space-y-1">
+              <Button
+                onClick={() => setShowAddMenu(true)}
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-gray-400 hover:text-gray-600"
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                <span className="text-xs">拡張機能</span>
+              </Button>
+              <div className="text-xs text-gray-400 pl-1">
+                メッセージ投稿時に <code className="bg-gray-100 px-1 rounded text-blue-600">/task_high</code>,
+                <code className="bg-gray-100 px-1 rounded text-blue-600 ml-1">/document</code>
+                等のコマンドも使用できます
+              </div>
+            </div>
           )}
         </div>
       )}
