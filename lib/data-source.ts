@@ -1577,6 +1577,78 @@ export class DataSourceManager {
 
     await batch.commit();
   }
+
+  // アトミックなメッセージ作成（トランザクション）
+  async createMessageWithLineUpdate(
+    messageData: Omit<Message, 'id'>,
+    lineId: string,
+    prevMessageId?: string
+  ): Promise<string> {
+    try {
+      return await runTransaction(db, async (transaction) => {
+        // 🔵 全ての読み取り操作を最初に実行
+        const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
+        const lineDoc = await transaction.get(lineRef);
+
+        let prevMessageDoc = null;
+        if (prevMessageId) {
+          const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
+          prevMessageDoc = await transaction.get(prevMessageRef);
+        }
+
+        // 読み取り結果のバリデーション
+        if (!lineDoc.exists()) {
+          throw new Error(`Line with ID ${lineId} not found`);
+        }
+
+        const lineData = lineDoc.data() as Line;
+
+        // 🔵 ここから書き込み操作のみ実行
+        // メッセージ作成
+        const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
+        const newMessageRef = doc(messagesRef);
+
+        const newMessageData = {
+          ...messageData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.set(newMessageRef, newMessageData);
+
+        // 前のメッセージのnextInLineを更新
+        if (prevMessageId && prevMessageDoc && prevMessageDoc.exists()) {
+          const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
+          transaction.update(prevMessageRef, {
+            nextInLine: newMessageRef.id,
+            updatedAt: serverTimestamp()
+          });
+        }
+
+        // LineのmessageIds、startMessageId、endMessageIdを更新
+        const updatedMessageIds = [...lineData.messageIds, newMessageRef.id];
+        const isFirstMessage = lineData.messageIds.length === 0;
+
+        const lineUpdateData: Record<string, unknown> = {
+          messageIds: updatedMessageIds,
+          endMessageId: newMessageRef.id,
+          updatedAt: serverTimestamp()
+        };
+
+        if (isFirstMessage) {
+          lineUpdateData.startMessageId = newMessageRef.id;
+        }
+
+        transaction.update(lineRef, lineUpdateData);
+
+        return newMessageRef.id;
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to create message with line update:', error);
+      throw error;
+    }
+  }
 }
 
 export const dataSourceManager = new DataSourceManager();

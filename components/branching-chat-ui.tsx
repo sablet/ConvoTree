@@ -635,7 +635,7 @@ export function BranchingChatUI({
         // 既存のライン継続 - スラッシュコマンドを解析してメッセージを作成
         const parsedMessage = parseSlashCommand(inputValue)
 
-        const messageData: any = {
+        const messageData = {
           content: parsedMessage.content,
           timestamp: new Date().toISOString(),
           lineId: currentLineId,
@@ -643,34 +643,17 @@ export function BranchingChatUI({
           author: "User",
           type: parsedMessage.type,
           ...(pendingImages.length > 0 && { images: [...pendingImages] }),
+          ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
         }
 
-        // metadataがundefinedでない場合のみ追加
-        if (parsedMessage.metadata !== undefined) {
-          messageData.metadata = parsedMessage.metadata
-        }
+        // アトミックなメッセージ作成（トランザクション）
+        const newMessageId = await dataSourceManager.createMessageWithLineUpdate(
+          messageData,
+          currentLineId,
+          baseMessageId
+        )
 
-        const newMessageId = await dataSourceManager.createMessage(messageData)
-
-        // 前のメッセージのnextInLineを更新（Firestore）
-        if (baseMessageId) {
-          await dataSourceManager.updateMessage(baseMessageId, {
-            nextInLine: newMessageId
-          })
-        }
-
-        // ラインのメッセージリストを更新（Firestore）
-        const updatedMessageIds = [...currentLine.messageIds, newMessageId]
-        const isFirstMessage = currentLine.messageIds.length === 0
-
-        await dataSourceManager.updateLine(currentLineId, {
-          messageIds: updatedMessageIds,
-          endMessageId: newMessageId,
-          ...(isFirstMessage && { startMessageId: newMessageId }), // 最初のメッセージの場合はstartMessageIdも設定
-          updated_at: new Date().toISOString()
-        })
-
-        // ローカル状態を更新
+        // ローカル状態を更新（トランザクション成功後のため安全）
         const newMessage: Message = {
           id: newMessageId,
           content: parsedMessage.content,
@@ -688,7 +671,7 @@ export function BranchingChatUI({
           updated[newMessageId] = newMessage
 
           // 前のメッセージのnextInLineを更新
-          if (updated[baseMessageId]) {
+          if (baseMessageId && updated[baseMessageId]) {
             updated[baseMessageId] = {
               ...updated[baseMessageId],
               nextInLine: newMessageId,
@@ -701,11 +684,14 @@ export function BranchingChatUI({
         setLines((prev) => {
           const updated = { ...prev }
           if (updated[currentLineId]) {
+            const updatedMessageIds = [...updated[currentLineId].messageIds, newMessageId]
+            const isFirstMessage = updated[currentLineId].messageIds.length === 0
+
             updated[currentLineId] = {
               ...updated[currentLineId],
               messageIds: updatedMessageIds,
               endMessageId: newMessageId,
-              ...(isFirstMessage && { startMessageId: newMessageId }), // 最初のメッセージの場合はstartMessageIdも設定
+              ...(isFirstMessage && { startMessageId: newMessageId }),
               updated_at: new Date().toISOString()
             }
           }
