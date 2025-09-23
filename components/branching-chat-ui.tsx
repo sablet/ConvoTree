@@ -9,7 +9,6 @@ import Image from "next/image"
 import { dataSourceManager } from "@/lib/data-source"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { RecentLinesFooter } from "@/components/recent-lines-footer"
-import { MessageExtensionsManager } from "@/components/message-extensions/message-extensions-manager"
 import { SlashCommandButtons } from "@/components/slash-command-buttons"
 import { parseSlashCommand } from "@/lib/slash-command-parser"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
@@ -26,7 +25,6 @@ interface Message {
   hasBookmark?: boolean
   author?: string
   images?: string[]
-  // 🟢 メッセージタイプとメタデータ拡張
   type?: 'text' | 'task' | 'document' | 'session'
   metadata?: Record<string, unknown>
 }
@@ -1363,14 +1361,6 @@ export function BranchingChatUI({
                       </div>
                     )}
 
-                    {/* Message Extensions - テキストメッセージのみに表示 */}
-                    {(!message.type || message.type === 'text') && (
-                      <MessageExtensionsManager
-                        messageId={message.id}
-                        messageContent={message.content}
-                        isCurrentLine={messageLineInfo.isCurrentLine}
-                      />
-                    )}
 
                   </div>
                 </div>

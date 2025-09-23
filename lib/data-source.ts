@@ -56,38 +56,6 @@ interface TagGroup {
   order: number;
 }
 
-// 🟢 メッセージ拡張データ管理
-interface MessageExtension {
-  id: string;
-  messageId: string;
-  type: string;
-  data: Record<string, unknown>;
-  createdAt?: Timestamp | FieldValue;
-  updatedAt?: Timestamp | FieldValue;
-}
-
-// 🟢 型安全な拡張データ型定義
-interface TaskExtensionData {
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  dueDate?: string;
-  completed: boolean;
-  estimatedHours?: number;
-  tags?: string[];
-}
-
-interface DocumentExtensionData {
-  isCollapsed: boolean;
-  summary?: string;
-  wordCount: number;
-  originalLength: number;
-}
-
-interface WorkSessionExtensionData {
-  checkedInAt?: string;
-  checkedOutAt?: string;
-  timeSpent?: number; // 分単位
-  notes?: string;
-}
 
 interface ChatData {
   messages: Record<string, Message>;
@@ -95,7 +63,6 @@ interface ChatData {
   branchPoints: Record<string, BranchPoint>;
   tags: Record<string, Tag>;
   tagGroups: Record<string, TagGroup>;
-  messageExtensions: Record<string, MessageExtension[]>; // messageId -> extensions[]
 }
 
 export type DataSource = 'firestore' | 'sample';
@@ -227,44 +194,14 @@ export class DataSourceManager {
         };
       });
 
-      // Load message extensions (with fallback for new installations)
-      let messageExtensions: Record<string, MessageExtension[]> = {};
-      let extensionCount = 0;
-      try {
-        const messageExtensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
-        const messageExtensionsSnapshot = await getDocs(messageExtensionsRef);
-        extensionCount = messageExtensionsSnapshot.size;
-        messageExtensionsSnapshot.forEach((doc) => {
-          const data = doc.data();
-          const extension: MessageExtension = {
-            id: doc.id,
-            messageId: data.messageId,
-            type: data.type,
-            data: data.data || {},
-            createdAt: data.createdAt,
-            updatedAt: data.updatedAt
-          };
-
-          if (!messageExtensions[data.messageId]) {
-            messageExtensions[data.messageId] = [];
-          }
-          messageExtensions[data.messageId].push(extension);
-        });
-      } catch (extensionError) {
-        console.warn('⚠️ MessageExtensions collection not accessible, using empty extensions. This is normal for new installations.', extensionError);
-        messageExtensions = {};
-        extensionCount = 0;
-      }
-
-      console.log(`✅ Loaded from Firestore: ${Object.keys(messages).length} messages, ${lines.length} lines, ${extensionCount} extensions`);
+      console.log(`✅ Loaded from Firestore: ${Object.keys(messages).length} messages, ${lines.length} lines`);
 
       return {
         messages,
         lines,
         branchPoints,
         tags,
-        tagGroups,
-        messageExtensions
+        tagGroups
       };
 
     } catch (error) {
@@ -287,7 +224,6 @@ export class DataSourceManager {
         branchPoints: data.branchPoints || {},
         tags: data.tags || {},
         tagGroups: data.tagGroups || {},
-        messageExtensions: data.messageExtensions || {}
       };
     } catch (error) {
       console.error('❌ Failed to load sample data:', error);
@@ -318,7 +254,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error('❌ Failed to create message:', error);
-      this.handleFirestoreError(error, 'create');
       throw error;
     }
   }
@@ -359,7 +294,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to update message ${id}:`, error);
-      this.handleFirestoreError(error, 'update');
       throw error;
     }
   }
@@ -385,7 +319,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to delete message ${id}:`, error);
-      this.handleFirestoreError(error, 'delete');
       throw error;
     }
   }
@@ -466,7 +399,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error('❌ Failed to create tag group:', error);
-      this.handleFirestoreError(error, 'createTagGroup');
       throw error;
     }
   }
@@ -508,7 +440,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to update tag group ${id}:`, error);
-      this.handleFirestoreError(error, 'updateTagGroup');
       throw error;
     }
   }
@@ -538,7 +469,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to delete tag group ${id}:`, error);
-      this.handleFirestoreError(error, 'deleteTagGroup');
       throw error;
     }
   }
@@ -576,7 +506,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error('❌ Failed to reorder tag groups:', error);
-      this.handleFirestoreError(error, 'reorderTagGroups');
       throw error;
     }
   }
@@ -723,7 +652,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error('❌ Failed to create line:', error);
-      this.handleFirestoreError(error, 'createLine');
       throw error;
     }
   }
@@ -780,7 +708,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to update line ${id}:`, error);
-      this.handleFirestoreError(error, 'updateLine');
       throw error;
     }
   }
@@ -845,7 +772,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to delete line ${id}:`, error);
-      this.handleFirestoreError(error, 'deleteLine');
       throw error;
     }
   }
@@ -950,7 +876,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to create branch point for message ${messageId}:`, error);
-      this.handleFirestoreError(error, 'createBranchPoint');
       throw error;
     }
   }
@@ -1016,7 +941,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to add line ${lineId} to branch point ${messageId}:`, error);
-      this.handleFirestoreError(error, 'addLineToBranchPoint');
       throw error;
     }
   }
@@ -1063,7 +987,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to remove line ${lineId} from branch point ${messageId}:`, error);
-      this.handleFirestoreError(error, 'removeLineFromBranchPoint');
       throw error;
     }
   }
@@ -1110,7 +1033,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to delete branch point ${messageId}:`, error);
-      this.handleFirestoreError(error, 'deleteBranchPoint');
       throw error;
     }
   }
@@ -1176,7 +1098,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to link messages ${prevMessageId} -> ${nextMessageId}:`, error);
-      this.handleFirestoreError(error, 'linkMessages');
       throw error;
     }
   }
@@ -1240,7 +1161,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to unlink message ${messageId}:`, error);
-      this.handleFirestoreError(error, 'unlinkMessages');
       throw error;
     }
   }
@@ -1302,7 +1222,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
-      this.handleFirestoreError(error, 'moveMessageToLine');
       throw error;
     }
   }
@@ -1540,7 +1459,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error('❌ Failed to create tag:', error);
-      this.handleFirestoreError(error, 'createTag');
       throw error;
     }
   }
@@ -1588,7 +1506,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to update tag ${id}:`, error);
-      this.handleFirestoreError(error, 'updateTag');
       throw error;
     }
   }
@@ -1621,7 +1538,6 @@ export class DataSourceManager {
 
     } catch (error) {
       console.error(`❌ Failed to delete tag ${id}:`, error);
-      this.handleFirestoreError(error, 'deleteTag');
       throw error;
     }
   }
@@ -1714,181 +1630,7 @@ export class DataSourceManager {
     await batch.commit();
     console.log(`✅ Tag ${tagId} removed from all lines`);
   }
-
-  // MessageExtension CRUD Operations
-  async createMessageExtension(messageId: string, type: string, data: Record<string, unknown>): Promise<string> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-      this.validateExtensionType(type);
-      this.validateExtensionData(data);
-
-      console.log(`📝 Creating message extension for ${messageId} (type: ${type}) in Firestore...`);
-
-      const extensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
-
-      const extensionData = {
-        messageId,
-        type,
-        data,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      const docRef = await addDoc(extensionsRef, extensionData);
-
-      console.log(`✅ MessageExtension created with ID: ${docRef.id}`);
-      return docRef.id;
-
-    } catch (error) {
-      console.error('❌ Failed to create message extension:', error);
-      this.handleFirestoreError(error, 'createMessageExtension');
-      throw error;
-    }
-  }
-
-  async updateMessageExtension(extensionId: string, updates: Partial<Pick<MessageExtension, 'data'>>): Promise<void> {
-    try {
-      // バリデーション
-      this.validateExtensionId(extensionId);
-
-      if (updates.data) {
-        this.validateExtensionData(updates.data);
-      }
-
-      console.log(`📝 Updating message extension ${extensionId} in Firestore...`);
-
-      const extensionRef = doc(db, 'conversations', this.conversationId, 'messageExtensions', extensionId);
-
-      // 拡張存在確認
-      const extensionDoc = await getDoc(extensionRef);
-      if (!extensionDoc.exists()) {
-        throw new Error(`MessageExtension with ID ${extensionId} not found`);
-      }
-
-      const updateData: Record<string, unknown> = {
-        updatedAt: serverTimestamp()
-      };
-
-      if (updates.data !== undefined) {
-        updateData.data = updates.data;
-      }
-
-      await updateDoc(extensionRef, updateData);
-
-      console.log(`✅ MessageExtension ${extensionId} updated successfully`);
-
-    } catch (error) {
-      console.error(`❌ Failed to update message extension ${extensionId}:`, error);
-      this.handleFirestoreError(error, 'updateMessageExtension');
-      throw error;
-    }
-  }
-
-  async deleteMessageExtension(extensionId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateExtensionId(extensionId);
-
-      console.log(`🗑️ Deleting message extension ${extensionId} from Firestore...`);
-
-      const extensionRef = doc(db, 'conversations', this.conversationId, 'messageExtensions', extensionId);
-
-      // 拡張存在確認
-      const extensionDoc = await getDoc(extensionRef);
-      if (!extensionDoc.exists()) {
-        throw new Error(`MessageExtension with ID ${extensionId} not found`);
-      }
-
-      await deleteDoc(extensionRef);
-
-      console.log(`✅ MessageExtension ${extensionId} deleted successfully`);
-
-    } catch (error) {
-      console.error(`❌ Failed to delete message extension ${extensionId}:`, error);
-      this.handleFirestoreError(error, 'deleteMessageExtension');
-      throw error;
-    }
-  }
-
-  async getMessageExtensions(messageId: string): Promise<MessageExtension[]> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-
-      console.log(`🔍 Loading extensions for message ${messageId} from Firestore...`);
-
-      const extensionsRef = collection(db, 'conversations', this.conversationId, 'messageExtensions');
-      const q = query(extensionsRef, where('messageId', '==', messageId));
-      const querySnapshot = await getDocs(q);
-
-      const extensions: MessageExtension[] = [];
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        extensions.push({
-          id: doc.id,
-          messageId: data.messageId,
-          type: data.type,
-          data: data.data || {},
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt
-        });
-      });
-
-      console.log(`✅ Loaded ${extensions.length} extensions for message ${messageId}`);
-      return extensions;
-
-    } catch (error) {
-      // If messageExtensions collection doesn't exist, return empty array
-      if (error instanceof Error && (error.message.includes('permission') || error.message.includes('not found'))) {
-        console.warn(`⚠️ MessageExtensions collection not accessible for message ${messageId}, returning empty array. This is normal for new installations.`);
-        return [];
-      }
-
-      console.error(`❌ Failed to load extensions for message ${messageId}:`, error);
-      this.handleFirestoreError(error, 'getMessageExtensions');
-      throw error;
-    }
-  }
-
-  // MessageExtension バリデーション関数
-  private validateExtensionType(type: string): void {
-    const validTypes = ['task', 'document', 'workSession', 'note'];
-    if (!type || !validTypes.includes(type)) {
-      throw new Error(`Invalid extension type: ${type}. Must be one of: ${validTypes.join(', ')}`);
-    }
-  }
-
-  private validateExtensionData(data: Record<string, unknown>): void {
-    if (!data || typeof data !== 'object') {
-      throw new Error('Extension data must be a valid object');
-    }
-  }
-
-  private validateExtensionId(id: string): void {
-    if (!id || id.trim() === '') {
-      throw new Error('Extension ID is required');
-    }
-  }
-
-  // エラーハンドリング
-  private handleFirestoreError(error: unknown, operation: string): void {
-    if (error instanceof Error) {
-      if (error.message.includes('permission-denied')) {
-        console.error(`❌ Permission denied for ${operation} operation. Check Firestore security rules.`);
-      } else if (error.message.includes('not-found')) {
-        console.error(`❌ Document not found for ${operation} operation.`);
-      } else if (error.message.includes('already-exists')) {
-        console.error(`❌ Document already exists for ${operation} operation.`);
-      } else if (error.message.includes('network')) {
-        console.error(`❌ Network error during ${operation} operation. Please check your connection.`);
-      } else {
-        console.error(`❌ Unexpected error during ${operation} operation:`, error.message);
-      }
-    } else {
-      console.error(`❌ Unknown error during ${operation} operation:`, error);
-    }
-  }
 }
 
-export const dataSourceManager = DataSourceManager.getInstance();
+export const dataSourceManager = new DataSourceManager();
+

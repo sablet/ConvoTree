@@ -4,13 +4,11 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, Clock, Check, Edit3, CheckSquare } from "lucide-react"
+import { Check, Edit3, CheckSquare } from "lucide-react"
 
 interface TaskMessageData {
   priority: 'low' | 'medium' | 'high' | 'urgent'
-  dueDate?: string
   completed: boolean
-  estimatedHours?: number
   tags?: string[]
 }
 
@@ -42,8 +40,15 @@ export function TaskMessage({
   onUpdate,
   isEditable = false
 }: TaskMessageProps) {
+  // dataが未定義の場合のデフォルト値
+  const taskData = data || {
+    priority: 'medium' as const,
+    completed: false,
+    tags: []
+  };
+
   const [isEditing, setIsEditing] = useState(false)
-  const [editData, setEditData] = useState<TaskMessageData>(data)
+  const [editData, setEditData] = useState<TaskMessageData>(taskData)
 
   const handleSave = () => {
     if (onUpdate) {
@@ -64,25 +69,6 @@ export function TaskMessage({
     }
   }
 
-  const formatDueDate = (dateString?: string) => {
-    if (!dateString) return null
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = date.getTime() - now.getTime()
-    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffDays < 0) {
-      return { text: `${Math.abs(diffDays)}日遅延`, color: 'text-red-600', isOverdue: true }
-    } else if (diffDays === 0) {
-      return { text: '今日期限', color: 'text-orange-600', isOverdue: false }
-    } else if (diffDays === 1) {
-      return { text: '明日期限', color: 'text-yellow-600', isOverdue: false }
-    } else {
-      return { text: `${diffDays}日後`, color: 'text-gray-600', isOverdue: false }
-    }
-  }
-
-  const dueDateInfo = formatDueDate(data.dueDate)
 
   if (isEditing) {
     return (
@@ -110,34 +96,6 @@ export function TaskMessage({
             </select>
           </div>
 
-          <div>
-            <label className="text-xs text-gray-600 block mb-1">期限日</label>
-            <Input
-              type="date"
-              value={editData.dueDate || ''}
-              onChange={(e) => setEditData(prev => ({
-                ...prev,
-                dueDate: e.target.value || undefined
-              }))}
-              className="text-sm"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs text-gray-600 block mb-1">予想時間（時間）</label>
-            <Input
-              type="number"
-              min="0"
-              step="0.5"
-              value={editData.estimatedHours || ''}
-              onChange={(e) => setEditData(prev => ({
-                ...prev,
-                estimatedHours: e.target.value ? parseFloat(e.target.value) : undefined
-              }))}
-              placeholder="例: 2.5"
-              className="text-sm"
-            />
-          </div>
 
           <div className="flex gap-2 justify-end">
             <Button
@@ -184,7 +142,11 @@ export function TaskMessage({
 
             <div className="flex items-center gap-2">
               <CheckSquare className="h-4 w-4 text-gray-600" />
-              <span className="text-sm font-medium text-gray-900">タスク</span>
+              <span className={`text-sm font-medium ${
+                data.completed ? 'line-through text-gray-500' : 'text-gray-900'
+              }`}>
+                {content.length > 30 ? `${content.slice(0, 30)}...` : content}
+              </span>
             </div>
 
             <Badge className={`text-xs ${priorityColors[data.priority]}`}>
@@ -192,33 +154,9 @@ export function TaskMessage({
             </Badge>
           </div>
 
-          {/* タスク内容 */}
-          <div className={`text-sm ${
-            data.completed ? 'line-through text-gray-500' : 'text-gray-900'
-          }`}>
-            {content}
-          </div>
 
           {/* タスク詳細 */}
           <div className="space-y-2">
-            {data.dueDate && (
-              <div className="flex items-center gap-2 text-xs">
-                <Calendar className="h-3 w-3" />
-                <span className={dueDateInfo?.color}>
-                  期限: {new Date(data.dueDate).toLocaleDateString('ja-JP')}
-                  {dueDateInfo && (
-                    <span className="ml-1">({dueDateInfo.text})</span>
-                  )}
-                </span>
-              </div>
-            )}
-
-            {data.estimatedHours && (
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <Clock className="h-3 w-3" />
-                <span>予想時間: {data.estimatedHours}時間</span>
-              </div>
-            )}
 
             {data.completed && (
               <div className="flex items-center gap-2 text-xs text-green-600">
@@ -229,17 +167,19 @@ export function TaskMessage({
           </div>
         </div>
 
-        {/* アクションボタン */}
+        {/* アクションボタン - 右下に配置してメッセージ編集アイコンとの重複を回避 */}
         {isEditable && (
-          <Button
-            onClick={() => setIsEditing(true)}
-            variant="ghost"
-            size="sm"
-            className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-            title="編集"
-          >
-            <Edit3 className="h-3 w-3" />
-          </Button>
+          <div className="self-end">
+            <Button
+              onClick={() => setIsEditing(true)}
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+              title="編集"
+            >
+              <Edit3 className="h-3 w-3" />
+            </Button>
+          </div>
         )}
       </div>
     </div>

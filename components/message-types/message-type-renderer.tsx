@@ -80,8 +80,9 @@ export function MessageTypeRenderer({
     }
   }
 
-  // メッセージタイプに応じたレンダリング
-  switch (message.type) {
+  // メッセージタイプに応じたレンダリング（デフォルトはtext）
+  const messageType = message.type || 'text';
+  switch (messageType) {
     case 'task':
       return (
         <TaskMessage
@@ -89,9 +90,7 @@ export function MessageTypeRenderer({
           content={message.content}
           data={message.metadata as {
             priority: 'low' | 'medium' | 'high' | 'urgent'
-            dueDate?: string
             completed: boolean
-            estimatedHours?: number
             tags?: string[]
           }}
           onUpdate={handleTaskDataUpdate}

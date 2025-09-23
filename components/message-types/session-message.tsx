@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Play, Square, Clock, Edit3, Timer } from "lucide-react"
+import { Play, Square, Clock, Timer } from "lucide-react"
 
 interface SessionMessageData {
   checkedInAt?: string
   checkedOutAt?: string
   timeSpent?: number // 分単位
-  notes?: string
 }
 
 interface SessionMessageProps {
@@ -26,8 +25,6 @@ export function SessionMessage({
   isEditable = false
 }: SessionMessageProps) {
   const [currentTime, setCurrentTime] = useState(Date.now())
-  const [notes, setNotes] = useState(data.notes || '')
-  const [isEditingNotes, setIsEditingNotes] = useState(false)
 
   // 現在時刻を1秒ごとに更新（作業中の場合）
   useEffect(() => {
@@ -62,15 +59,6 @@ export function SessionMessage({
     }
   }
 
-  const handleSaveNotes = () => {
-    if (onUpdate) {
-      onUpdate({
-        ...data,
-        notes: notes.trim() || undefined
-      })
-    }
-    setIsEditingNotes(false)
-  }
 
   const formatDuration = (minutes: number): string => {
     const hours = Math.floor(minutes / 60)
@@ -106,7 +94,7 @@ export function SessionMessage({
           <span className={`text-sm font-medium ${
             isWorking ? 'text-green-800' : 'text-purple-800'
           }`}>
-            作業セッション
+            {content.length > 30 ? `${content.slice(0, 30)}...` : content}
           </span>
           {isWorking && (
             <div className="flex items-center gap-1 animate-pulse">
@@ -119,9 +107,6 @@ export function SessionMessage({
 
       {/* セッション内容 */}
       <div className="space-y-3">
-        <div className="text-sm text-gray-700">
-          {content}
-        </div>
 
         {/* 現在のセッション */}
         {isWorking && (
@@ -187,62 +172,6 @@ export function SessionMessage({
           </div>
         )}
 
-        {/* メモ */}
-        <div className="bg-white rounded p-2 border">
-          {isEditingNotes ? (
-            <div className="space-y-2">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="作業メモを入力..."
-                className="w-full text-sm border border-gray-300 rounded px-2 py-1 resize-none"
-                rows={3}
-              />
-              <div className="flex gap-2 justify-end">
-                <Button
-                  onClick={() => {
-                    setNotes(data.notes || '')
-                    setIsEditingNotes(false)
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="text-xs"
-                >
-                  キャンセル
-                </Button>
-                <Button
-                  onClick={handleSaveNotes}
-                  size="sm"
-                  className="text-xs"
-                >
-                  保存
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="text-xs text-gray-500 mb-1">作業メモ</div>
-                <div className="text-sm text-gray-700">
-                  {data.notes || (
-                    <span className="text-gray-400 italic">メモなし</span>
-                  )}
-                </div>
-              </div>
-              {isEditable && (
-                <Button
-                  onClick={() => setIsEditingNotes(true)}
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                  title="編集"
-                >
-                  <Edit3 className="h-3 w-3" />
-                </Button>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )
