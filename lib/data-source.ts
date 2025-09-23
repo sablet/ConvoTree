@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { config } from '@/lib/config';
 
@@ -269,10 +269,19 @@ export class DataSourceManager {
         throw new Error(`Message with ID ${id} not found`);
       }
 
-      const updateData = {
-        ...updates,
+      // nullの値をdeleteField()に変換
+      const updateData: Record<string, unknown> = {
         updatedAt: serverTimestamp()
       };
+
+      for (const [key, value] of Object.entries(updates)) {
+        if (value === null) {
+          updateData[key] = deleteField();
+        } else if (value !== undefined) {
+          updateData[key] = value;
+        }
+        // undefinedの場合は何もしない（フィールドは更新されない）
+      }
 
       await updateDoc(messageRef, updateData);
 

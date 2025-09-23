@@ -110,6 +110,7 @@ export function BranchingChatUI({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
+  const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -245,6 +246,81 @@ export function BranchingChatUI({
         reader.onerror = () => reject(new Error('Failed to read file'))
         reader.readAsDataURL(file)
       })
+    }
+  }
+
+  // 画像を削除する関数
+  const deleteImageFromStorage = async (imageUrl: string): Promise<void> => {
+    try {
+      const response = await fetch(`/api/delete-image?url=${encodeURIComponent(imageUrl)}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Delete failed')
+      }
+
+      DEV_LOG.data('Image deleted from storage', { imageUrl })
+    } catch (error) {
+      DEV_LOG.error('Failed to delete image from storage', { imageUrl, error })
+      // 削除に失敗してもメッセージ削除は続行する
+    }
+  }
+
+  // メッセージから特定の画像のみを削除する関数
+  const handleDeleteImage = async (messageId: string, imageIndex: number) => {
+    const message = messages[messageId]
+    if (!message || !message.images || imageIndex >= message.images.length) return
+
+    const imageUrl = message.images[imageIndex]
+    setIsUpdating(true)
+
+    try {
+      // ストレージから画像を削除
+      await deleteImageFromStorage(imageUrl)
+
+      // 画像リストから該当画像を削除
+      const updatedImages = message.images.filter((_, index) => index !== imageIndex)
+
+      // Firestoreでメッセージを更新
+      if (updatedImages.length > 0) {
+        await dataSourceManager.updateMessage(messageId, {
+          images: updatedImages
+        })
+      } else {
+        // 画像がすべて削除された場合、imagesフィールドを完全に削除
+        // nullを送信してdata-source側でdeleteField()に変換させる
+        await dataSourceManager.updateMessage(messageId, {
+          images: null as unknown as string[]
+        })
+      }
+
+      // ローカル状態を更新
+      setMessages(prev => {
+        const updated = { ...prev }
+        if (updated[messageId]) {
+          const newMessage = {
+            ...updated[messageId]
+          }
+
+          if (updatedImages.length > 0) {
+            newMessage.images = updatedImages
+          } else {
+            // 画像がすべて削除された場合はプロパティを削除
+            delete newMessage.images
+          }
+
+          updated[messageId] = newMessage
+        }
+        return updated
+      })
+
+      DEV_LOG.data('Image deleted from message', { messageId, imageIndex, imageUrl })
+    } catch (error) {
+      DEV_LOG.error('Failed to delete image from message', error)
+      alert('画像の削除に失敗しました')
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -749,6 +825,15 @@ export function BranchingChatUI({
         }
       }
 
+      // メッセージに関連する画像を削除
+      if (message.images && message.images.length > 0) {
+        const deletePromises = message.images
+          .filter(imageUrl => isValidImageUrl(imageUrl))
+          .map(imageUrl => deleteImageFromStorage(imageUrl))
+
+        await Promise.allSettled(deletePromises)
+      }
+
       await dataSourceManager.deleteMessage(messageId)
 
       // ローカル状態から削除
@@ -1199,22 +1284,45 @@ export function BranchingChatUI({
                       <div className="mt-2 space-y-2">
                         {message.images
                           .filter(imageUrl => isValidImageUrl(imageUrl))
-                          .map((imageUrl, imageIndex) => (
-                          <div key={`${message.id}-image-${imageIndex}`} className="relative">
-                            <Image
-                              src={imageUrl}
-                              alt={`Image ${imageIndex + 1}`}
-                              width={500}
-                              height={300}
-                              className={`max-w-full h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
-                                !messageLineInfo.isCurrentLine ? 'border-blue-200 opacity-80' : 'border-gray-200'
-                              }`}
-                              onClick={() => {
-                                window.open(imageUrl, '_blank')
-                              }}
-                            />
-                          </div>
-                        ))}
+                          .map((imageUrl, imageIndex) => {
+                            const imageId = `${message.id}-image-${imageIndex}`
+                            const isImageHovered = hoveredImageId === imageId
+                            return (
+                              <div
+                                key={imageId}
+                                className="relative group"
+                                onMouseEnter={() => setHoveredImageId(imageId)}
+                                onMouseLeave={() => setHoveredImageId(null)}
+                              >
+                                <Image
+                                  src={imageUrl}
+                                  alt={`Image ${imageIndex + 1}`}
+                                  width={300}
+                                  height={200}
+                                  className={`max-w-xs h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
+                                    !messageLineInfo.isCurrentLine ? 'border-blue-200 opacity-80' : 'border-gray-200'
+                                  }`}
+                                  onClick={() => {
+                                    window.open(imageUrl, '_blank')
+                                  }}
+                                />
+                                {/* 画像削除ボタン（ホバー時のみ表示、メッセージ編集時のみ） */}
+                                {isImageHovered && editingMessageId === message.id && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleDeleteImage(message.id, imageIndex)
+                                    }}
+                                    disabled={isUpdating}
+                                    className="absolute top-2 right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 transition-colors shadow-md disabled:opacity-50"
+                                    title="画像を削除"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                            )
+                          })}
                         {/* 無効な画像URLがある場合の警告（開発モード時のみ） */}
                         {DEV_LOG.enabled && message.images.some(url => !isValidImageUrl(url)) && (
                           <div className="text-xs text-orange-500 bg-orange-50 p-2 rounded border border-orange-200">
