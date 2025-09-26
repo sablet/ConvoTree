@@ -6,6 +6,7 @@ import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
 
+
 interface Message {
   id: string
   content: string
@@ -115,7 +116,7 @@ export default function Home() {
 
   // 初期データローディング
   useEffect(() => {
-    // 初期起動時のみNEXT_PUBLIC_CONVERSATION_ID環境変数を出力
+    // 初期データローディング
     loadChatData()
   }, [loadChatData])
 

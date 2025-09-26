@@ -4,6 +4,7 @@ import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverT
 import { db } from '@/lib/firebase';
 import { config } from '@/lib/config';
 
+
 interface Message {
   id: string;
   content: string;
@@ -72,6 +73,10 @@ export class DataSourceManager {
   private currentSource: DataSource = config.defaultDataSource;
   private conversationId = config.conversationId;
 
+  private constructor() {
+    console.log(`🚀 DataSource initialized: ${this.currentSource}, Conversation: ${this.conversationId}`);
+  }
+
   static getInstance(): DataSourceManager {
     if (!DataSourceManager.instance) {
       DataSourceManager.instance = new DataSourceManager();
@@ -101,6 +106,7 @@ export class DataSourceManager {
         throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
       }
 
+      // Loading data from Firestore
 
       const conversationRef = doc(db, 'conversations', this.conversationId);
 
@@ -192,6 +198,7 @@ export class DataSourceManager {
         };
       });
 
+      // Data loaded successfully
 
       return {
         messages,

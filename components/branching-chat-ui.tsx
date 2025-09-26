@@ -51,6 +51,20 @@ interface BranchPoint {
   lines: string[] // この分岐点から派生するラインのIDリスト
 }
 
+// Development logger for debugging
+const DEV_LOG = {
+  enabled: process.env.NODE_ENV === 'development',
+  data: (message: string, data?: unknown) => {
+    if (DEV_LOG.enabled && message.includes('current line found')) {
+      console.log(`[BranchingChat] ${message}`, data || '')
+    }
+  },
+  error: (message: string, error?: unknown) => {
+    if (DEV_LOG.enabled) {
+      console.error(`[BranchingChat] ${message}`, error || '')
+    }
+  }
+}
 
 interface BranchingChatUIProps {
   initialMessages?: Record<string, Message>
