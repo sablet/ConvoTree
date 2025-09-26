@@ -578,6 +578,17 @@ export function BranchingChatUI({
         const newLineName = inputValue.trim() || 'New Branch'
         const currentTimestamp = new Date()
 
+        // 20文字以上の分岐名の場合は確認ダイアログを表示
+        if (newLineName.length >= 20) {
+          const confirmCreate = window.confirm(
+            `分岐名が20文字以上です（${newLineName.length}文字）。\n\n「${newLineName}」\n\nこの名前で分岐を作成しますか？`
+          )
+          if (!confirmCreate) {
+            setIsUpdating(false)
+            return
+          }
+        }
+
         // 1. 新しいラインをFirestoreに作成（空の状態）
         const newLineId = await dataSourceManager.createLine({
           name: newLineName,
