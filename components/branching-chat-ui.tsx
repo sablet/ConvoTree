@@ -576,6 +576,7 @@ export function BranchingChatUI({
       if (shouldCreateNewLine) {
         // 新しい分岐を作成（テキストは分岐名として使用、メッセージは作成しない）
         const newLineName = inputValue.trim() || 'New Branch'
+        const currentTimestamp = new Date()
 
         // 1. 新しいラインをFirestoreに作成（空の状態）
         const newLineId = await dataSourceManager.createLine({
@@ -584,8 +585,8 @@ export function BranchingChatUI({
           startMessageId: "",
           branchFromMessageId: selectedBaseMessage,
           tagIds: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: currentTimestamp.toISOString(),
+          updated_at: currentTimestamp.toISOString()
         })
 
         // 2. 分岐点をFirestoreに作成/更新（自動で分岐点作成も含む）
@@ -600,8 +601,8 @@ export function BranchingChatUI({
           endMessageId: undefined,
           branchFromMessageId: selectedBaseMessage,
           tagIds: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          created_at: currentTimestamp.toISOString(),
+          updated_at: currentTimestamp.toISOString()
         }
 
         setLines((prev) => ({
@@ -640,10 +641,11 @@ export function BranchingChatUI({
       } else {
         // 既存のライン継続 - スラッシュコマンドを解析してメッセージを作成
         const parsedMessage = parseSlashCommand(inputValue)
+        const currentTimestamp = new Date()
 
         const messageData = {
           content: parsedMessage.content,
-          timestamp: new Date().toISOString(),
+          timestamp: currentTimestamp.toISOString(),
           lineId: currentLineId,
           prevInLine: baseMessageId,
           author: "User",
@@ -663,7 +665,7 @@ export function BranchingChatUI({
         const newMessage: Message = {
           id: newMessageId,
           content: parsedMessage.content,
-          timestamp: new Date(),
+          timestamp: currentTimestamp,
           lineId: currentLineId,
           prevInLine: baseMessageId,
           author: "User",
@@ -698,7 +700,7 @@ export function BranchingChatUI({
               messageIds: updatedMessageIds,
               endMessageId: newMessageId,
               ...(isFirstMessage && { startMessageId: newMessageId }),
-              updated_at: new Date().toISOString()
+              updated_at: currentTimestamp.toISOString()
             }
           }
           return updated
@@ -907,6 +909,7 @@ export function BranchingChatUI({
       })
 
       // ラインからメッセージIDを削除
+      const deleteTimestamp = new Date()
       setLines(prev => {
         const updated = { ...prev }
         const lineId = message.lineId
@@ -914,7 +917,7 @@ export function BranchingChatUI({
           updated[lineId] = {
             ...updated[lineId],
             messageIds: updated[lineId].messageIds.filter(id => id !== messageId),
-            updated_at: new Date().toISOString()
+            updated_at: deleteTimestamp.toISOString()
           }
         }
         return updated
@@ -960,10 +963,11 @@ export function BranchingChatUI({
   const handleSaveLineEdit = async () => {
     const currentLineInfo = getCurrentLine()
     if (currentLineInfo) {
+      const currentTimestamp = new Date()
       const updatedLineData = {
         name: editingBranchData.name,
         tagIds: editingBranchData.tagIds,
-        updated_at: new Date().toISOString()
+        updated_at: currentTimestamp.toISOString()
       }
 
       setIsUpdating(true)

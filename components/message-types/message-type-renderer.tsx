@@ -61,6 +61,7 @@ export function MessageTypeRenderer({
     checkedInAt?: string
     checkedOutAt?: string
     timeSpent?: number
+    autoStart?: boolean
   }) => {
     if (onUpdate) {
       onUpdate(message.id, {
@@ -114,6 +115,7 @@ export function MessageTypeRenderer({
             checkedOutAt?: string
             timeSpent?: number
             notes?: string
+            autoStart?: boolean
           }}
           onUpdate={handleSessionDataUpdate}
           isEditable={isEditable}

@@ -8,6 +8,7 @@ interface SessionMessageData {
   checkedInAt?: string
   checkedOutAt?: string
   timeSpent?: number // 分単位
+  autoStart?: boolean // 自動開始フラグ
 }
 
 interface SessionMessageProps {
@@ -28,6 +29,18 @@ export function SessionMessage({
   const [isEditMode, setIsEditMode] = useState(false)
   const [editCheckedInAt, setEditCheckedInAt] = useState('')
   const [editCheckedOutAt, setEditCheckedOutAt] = useState('')
+
+  // 自動開始の処理
+  useEffect(() => {
+    if (data.autoStart && !data.checkedInAt && onUpdate) {
+      const updateData: SessionMessageData = {
+        ...data,
+        checkedInAt: new Date().toISOString(),
+        autoStart: false // 自動開始フラグをクリア
+      }
+      onUpdate(updateData)
+    }
+  }, [data.autoStart, data.checkedInAt, onUpdate, data])
 
   // 現在時刻を1秒ごとに更新（作業中の場合）
   useEffect(() => {

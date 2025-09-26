@@ -63,8 +63,8 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
     pattern: /^\/session\s+([\s\S]*)$/,
     type: 'session',
     metadata: {
-      checkedInAt: new Date().toISOString(),
-      timeSpent: 0
+      timeSpent: 0,
+      autoStart: true
     }
   }
 ]
