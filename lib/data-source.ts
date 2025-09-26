@@ -685,6 +685,7 @@ export class DataSourceManager {
 
         const updateData = {
           ...updates,
+          updated_at: new Date().toISOString(),
           updatedAt: serverTimestamp()
         };
 
@@ -993,6 +994,7 @@ export class DataSourceManager {
               if (lineData.branchFromMessageId === messageId) {
                 transaction.update(lineRef, {
                   branchFromMessageId: null,
+                  updated_at: new Date().toISOString(),
                   updatedAt: serverTimestamp()
                 });
               }
@@ -1236,6 +1238,7 @@ export class DataSourceManager {
     const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
     transaction.update(lineRef, {
       messageIds: orderedIds,
+      updated_at: new Date().toISOString(),
       updatedAt: serverTimestamp()
     });
   }
@@ -1582,6 +1585,7 @@ export class DataSourceManager {
 
       batch.update(lineDoc.ref, {
         tagIds: updatedTagIds,
+        updated_at: new Date().toISOString(),
         updatedAt: serverTimestamp()
       });
     });
@@ -1643,6 +1647,7 @@ export class DataSourceManager {
         const lineUpdateData: Record<string, unknown> = {
           messageIds: updatedMessageIds,
           endMessageId: newMessageRef.id,
+          updated_at: new Date().toISOString(),
           updatedAt: serverTimestamp()
         };
 
