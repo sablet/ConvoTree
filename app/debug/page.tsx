@@ -8,7 +8,7 @@ import { MessageCrudTest } from "@/components/message-crud-test"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { LineHistoryMenu } from "@/components/line-history-menu"
 import { TagProvider } from "@/lib/tag-context"
-import { DataSource, dataSourceManager } from "@/lib/data-source"
+import { dataSourceManager } from "@/lib/data-source"
 
 interface Line {
   id: string
@@ -40,7 +40,7 @@ export default function DebugPage() {
   }, [])
 
   // データソース変更ハンドラー
-  const handleDataSourceChange = (_source: DataSource) => {
+  const handleDataSourceChange = () => {
   }
 
   // データ再読み込みハンドラー

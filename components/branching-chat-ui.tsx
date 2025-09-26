@@ -320,7 +320,7 @@ export function BranchingChatUI({
       setPathCache(new Map())
       setLineAncestryCache(new Map())
 
-    } catch (_error) {
+    } catch {
       alert('画像の削除に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -718,7 +718,7 @@ export function BranchingChatUI({
 
       // メッセージ投稿時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (_error) {
+    } catch {
       alert('メッセージの送信に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -841,7 +841,7 @@ export function BranchingChatUI({
 
       // メッセージ編集時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (_error) {
+    } catch {
       alert('メッセージの更新に失敗しました')
     } finally {
       setIsUpdating(false)
@@ -931,7 +931,7 @@ export function BranchingChatUI({
 
       // メッセージ削除時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
-    } catch (_error) {
+    } catch {
       alert('メッセージの削除に失敗しました')
     } finally {
       setIsUpdating(false)
