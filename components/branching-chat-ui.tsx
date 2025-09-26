@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check } from "lucide-react"
+import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check, Copy, CheckCircle } from "lucide-react"
 import Image from "next/image"
 import { dataSourceManager } from "@/lib/data-source"
 import { HamburgerMenu } from "@/components/hamburger-menu"
@@ -110,6 +110,7 @@ export function BranchingChatUI({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
   const [footerKey, setFooterKey] = useState(0) // フッター強制更新用
+  const [copySuccessMessageId, setCopySuccessMessageId] = useState<string | null>(null)
 
   // 画像URLが有効かどうかをチェックする関数
   const isValidImageUrl = (url: string): boolean => {
@@ -879,6 +880,24 @@ export function BranchingChatUI({
     }
   }
 
+  // メッセージをクリップボードにコピー
+  const handleCopyMessage = async (messageId: string) => {
+    const message = messages[messageId]
+    if (message) {
+      try {
+        await navigator.clipboard.writeText(message.content)
+        // 成功時の視覚的フィードバック
+        setCopySuccessMessageId(messageId)
+        setTimeout(() => {
+          setCopySuccessMessageId(null)
+        }, 2000)
+      } catch (error) {
+        console.error('Failed to copy message:', error)
+        alert('クリップボードへのコピーに失敗しました')
+      }
+    }
+  }
+
   // メッセージ削除確認
   const handleConfirmDelete = async () => {
     if (!deleteConfirmation) return
@@ -1545,9 +1564,30 @@ export function BranchingChatUI({
                             />
                           </div>
 
-                          {/* 編集・削除ボタン（ホバー時のみ表示） */}
+                          {/* コピー成功フィードバック */}
+                          {copySuccessMessageId === message.id && (
+                            <div className="absolute -top-8 right-0 flex items-center gap-1 bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-1 duration-300">
+                              <CheckCircle className="h-3 w-3" />
+                              <span>コピーしました</span>
+                            </div>
+                          )}
+
+                          {/* 編集・削除・コピーボタン（ホバー時のみ表示） */}
                           {hoveredMessageId === message.id && messageLineInfo.isCurrentLine && (
                             <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleCopyMessage(message.id)
+                                }}
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 hover:bg-gray-50"
+                                title="コピー"
+                                data-copy-message-id={message.id}
+                              >
+                                <Copy className="h-3 w-3 text-gray-600" />
+                              </Button>
                               <Button
                                 onClick={(e) => {
                                   e.stopPropagation()
