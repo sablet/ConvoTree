@@ -152,8 +152,8 @@ export function TaskMessage({
               </span>
             </div>
 
-            <Badge className={`text-xs ${priorityColors[taskData.priority]}`}>
-              {priorityIcons[taskData.priority]} {taskData.priority.toUpperCase()}
+            <Badge className={`text-xs ${priorityColors[taskData.priority || 'medium']}`}>
+              {priorityIcons[taskData.priority || 'medium']} {(taskData.priority || 'medium').toUpperCase()}
             </Badge>
           </div>
 
