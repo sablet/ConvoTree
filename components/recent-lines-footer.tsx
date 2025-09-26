@@ -201,7 +201,7 @@ export function RecentLinesFooter({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-0">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-40">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-gray-600">
           {mainLine ? 'メインブランチ・最近の更新' : '最近の更新'}

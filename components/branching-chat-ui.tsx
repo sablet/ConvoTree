@@ -1536,7 +1536,7 @@ export function BranchingChatUI({
 
                           {/* 編集・削除ボタン（ホバー時のみ表示） */}
                           {hoveredMessageId === message.id && messageLineInfo.isCurrentLine && (
-                            <div className="absolute top-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
+                            <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
                               <Button
                                 onClick={(e) => {
                                   e.stopPropagation()
