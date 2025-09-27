@@ -123,9 +123,27 @@ export function BranchingChatUI({
   const [hasSetCursorToEnd, setHasSetCursorToEnd] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
   const [footerKey, setFooterKey] = useState(0) // フッター強制更新用
   const [copySuccessMessageId, setCopySuccessMessageId] = useState<string | null>(null)
+
+  // テキストエリアの高さを自動調整する関数
+  const adjustTextareaHeight = useCallback(() => {
+    if (textareaRef.current) {
+      const textarea = textareaRef.current
+      // 高さをリセットして正確な scrollHeight を取得
+      textarea.style.height = 'auto'
+      // 最小高さ80px、最大高さ128px（max-h-32）に制限
+      const newHeight = Math.min(Math.max(textarea.scrollHeight, 80), 128)
+      textarea.style.height = `${newHeight}px`
+    }
+  }, [])
+
+  // inputValue が変更されたときに高さを調整
+  useEffect(() => {
+    adjustTextareaHeight()
+  }, [inputValue, adjustTextareaHeight])
 
   // 画像URLが有効かどうかをチェックする関数
   const isValidImageUrl = (url: string): boolean => {
@@ -759,6 +777,11 @@ export function BranchingChatUI({
       setPendingImages([])
       setSelectedBaseMessage(null)
 
+      // テキストエリアの高さをリセット
+      if (textareaRef.current) {
+        textareaRef.current.style.height = '80px'
+      }
+
 
       // メッセージ投稿後に最下部にスクロール
       setTimeout(() => {
@@ -1281,7 +1304,7 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 pb-60 space-y-8">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 pb-80 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
@@ -1839,7 +1862,7 @@ export function BranchingChatUI({
       </HamburgerMenu>
 
       {/* Composer */}
-      <div className="fixed bottom-20 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
+      <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
         {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
             <div className="flex items-center justify-between gap-2">
@@ -1925,10 +1948,13 @@ export function BranchingChatUI({
         <div className="flex gap-3">
           <div className="flex-1">
             <textarea
+              ref={textareaRef}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              onInput={adjustTextareaHeight}
               placeholder="メッセージを入力... (/task_high, /document, /session などのコマンドが使用できます)"
-              className="min-h-[80px] max-h-40 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full"
+              className="min-h-[80px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full overflow-y-auto"
+              style={{ height: '80px' }}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault()
@@ -1952,9 +1978,9 @@ export function BranchingChatUI({
             <Button
               onClick={handleSendMessage}
               disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
-              className="h-11 px-4 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+              className="h-9 px-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 [&_svg]:!size-3"
             >
-              <Send className="h-4 w-4" />
+              <Send className="h-3 w-3" />
               {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
             </Button>
           </div>

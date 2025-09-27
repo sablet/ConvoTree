@@ -68,10 +68,10 @@ export function SlashCommandButtons({ onCommandSelect }: SlashCommandButtonsProp
         onClick={() => setIsOpen(!isOpen)}
         variant="outline"
         size="sm"
-        className="h-11 w-11 p-0 text-gray-600 hover:text-gray-800 border-gray-300"
+        className="h-9 w-9 p-0 text-gray-600 hover:text-gray-800 border-gray-300 [&_svg]:!size-3"
         title="スラッシュコマンドを挿入"
       >
-        <Zap className="h-4 w-4" />
+        <Zap className="h-3 w-3" />
       </Button>
 
       {isOpen && (
