@@ -1,18 +1,8 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
+import { Line } from "@/lib/types"
+import { LineList } from "@/components/ui/line-list"
 
 interface LineHistoryMenuProps {
   lines: Line[]
@@ -45,31 +35,10 @@ export function LineHistoryMenu({ lines, currentLineId, onLineSelect }: LineHist
     })
 
   return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
-        <div className="space-y-1 max-h-60 overflow-y-auto">
-          {sortedLines.map((line) => {
-            const isActive = line.id === currentLineId
-            return (
-              <button
-                key={line.id}
-                onClick={() => handleLineClick(line.id)}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                  isActive
-                    ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                    : 'hover:bg-gray-100 text-gray-700'
-                }`}
-              >
-                <div className="font-medium truncate">{line.name}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  {line.messageIds.length}件のメッセージ
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </div>
+    <LineList
+      lines={sortedLines}
+      currentLineId={currentLineId}
+      onLineClick={handleLineClick}
+    />
   )
 }

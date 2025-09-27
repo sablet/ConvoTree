@@ -6,6 +6,7 @@ import { HamburgerMenu } from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
 import { dataSourceManager } from "@/lib/data-source"
 import { PageLayout } from "@/components/layouts/PageLayout"
+import { LineList } from "@/components/ui/line-list"
 import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
 
 export default function BranchListPage() {
@@ -109,32 +110,11 @@ export default function BranchListPage() {
       title="Branch Structure"
       sidebar={
         <HamburgerMenu>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
-              <div className="space-y-1 max-h-60 overflow-y-auto">
-                {lines.map((line) => {
-                  const isActive = line.id === currentLineId
-                  return (
-                    <button
-                      key={line.id}
-                      onClick={() => handleLineSwitch(line.id)}
-                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                        isActive
-                          ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                          : 'hover:bg-gray-100 text-gray-700'
-                      }`}
-                    >
-                      <div className="font-medium truncate">{line.name}</div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {line.messageIds.length}件のメッセージ
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          </div>
+          <LineList
+            lines={lines}
+            currentLineId={currentLineId}
+            onLineClick={handleLineSwitch}
+          />
         </HamburgerMenu>
       }
     >

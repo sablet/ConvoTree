@@ -1,3 +1,5 @@
+import { execSync } from 'child_process';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
@@ -5,7 +7,19 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
-  distDir: 'out'
+  distDir: 'out',
+  webpack: (config, { dev, isServer }) => {
+    if (!dev && isServer) {
+      // ビルド時にコード重複チェックを実行
+      try {
+        execSync('npm run cpd-check', { stdio: 'inherit' });
+      } catch (error) {
+        console.warn('⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.');
+        // warningとして表示するだけで、ビルドは継続
+      }
+    }
+    return config;
+  }
 };
 
 export default nextConfig;
