@@ -37,7 +37,7 @@ export function RecentLinesFooter({
         return dateB.getTime() - dateA.getTime()
       })
 
-    return allLines.slice(0, 10) // 最新10件表示
+    return allLines.slice(0, 30) // 最新30件表示
   }
 
 
@@ -68,7 +68,8 @@ export function RecentLinesFooter({
 
   // ラインの分岐情報を含む名前を生成
   const getLineDisplayInfo = (line: Line): { name: string, ancestry: string, branchCount: number } => {
-    const name = line.name
+    // ライン名を13文字に制限
+    const name = line.name.length > 13 ? line.name.slice(0, 13) + "..." : line.name
     const ancestry = getLineAncestry(line.id)
 
     // 分岐点情報を取得（このラインから分岐している場合）

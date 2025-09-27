@@ -293,9 +293,17 @@ export function BranchStructure({
             {!isEditing ? (
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                  <h3 className={`font-medium truncate ${
-                    isActive ? 'text-blue-900' : 'text-gray-900'
-                  }`}>
+                  <h3
+                    className={`font-medium truncate ${
+                      isActive ? 'text-blue-900' : 'text-gray-900'
+                    }`}
+                    style={{
+                      wordWrap: 'break-word',
+                      overflowWrap: 'anywhere',
+                      wordBreak: 'break-word',
+                      maxWidth: '100%'
+                    }}
+                  >
                     {line.name}
                   </h3>
                   {isActive && (
@@ -324,7 +332,17 @@ export function BranchStructure({
                       const tag = tags[tagId]
                       if (!tag) return null
                       return (
-                        <Badge key={index} variant="secondary" className="text-xs bg-emerald-100 text-emerald-700">
+                        <Badge
+                          key={index}
+                          variant="secondary"
+                          className="text-xs bg-emerald-100 text-emerald-700"
+                          style={{
+                            wordWrap: 'break-word',
+                            overflowWrap: 'anywhere',
+                            wordBreak: 'break-word',
+                            maxWidth: '100%'
+                          }}
+                        >
                           {tag.name}
                         </Badge>
                       )
@@ -344,6 +362,14 @@ export function BranchStructure({
                   onChange={(e) => setEditData(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="ライン名"
                   className="text-sm"
+                  style={{
+                    wordWrap: 'break-word',
+                    overflowWrap: 'anywhere',
+                    wordBreak: 'break-word',
+                    maxWidth: '100%',
+                    width: '100%',
+                    boxSizing: 'border-box'
+                  }}
                 />
 
                 {/* 現在割り当てられているタグ */}
@@ -359,6 +385,12 @@ export function BranchStructure({
                             key={tagId}
                             variant="secondary"
                             className="text-xs bg-emerald-100 text-emerald-700 flex items-center gap-1"
+                            style={{
+                              wordWrap: 'break-word',
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word',
+                              maxWidth: '100%'
+                            }}
                           >
                             {tag.name}
                             <Button
@@ -583,7 +615,16 @@ export function BranchStructure({
       </div>
 
       {/* ブランチリスト */}
-      <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+      <div
+        className="space-y-2 max-h-[70vh] overflow-y-auto"
+        style={{
+          wordWrap: 'break-word',
+          overflowWrap: 'anywhere',
+          maxWidth: '100%',
+          width: '100%',
+          boxSizing: 'border-box'
+        }}
+      >
         {allBranches.map(node => renderBranchItem(node))}
       </div>
 
