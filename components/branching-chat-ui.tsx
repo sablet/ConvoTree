@@ -218,10 +218,13 @@ export function BranchingChatUI({
   }, [initialCurrentLineId])
 
 
-  // ブランチ選択時の自動スクロールを無効化
-  // useEffect(() => {
-  //   scrollToBottom()
-  // }, [currentLineId])
+  // 最下部への即座のスクロール（アニメーションなし）
+  const scrollToBottom = useCallback(() => {
+    if (messagesEndRef.current && messagesContainerRef.current) {
+      // スムーズスクロールではなく、即座に移動
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [])
 
   const handleImageFile = async (file: File): Promise<string> => {
     try {
@@ -496,6 +499,14 @@ export function BranchingChatUI({
     return getCompleteTimeline()
   }, [getCompleteTimeline])
 
+  // 初回データ読み込み時とメッセージ投稿時に最下部にスクロール
+  useEffect(() => {
+    // 初回起動時（メッセージがある場合のみ）
+    if (completeTimeline.messages.length > 0) {
+      scrollToBottom()
+    }
+  }, [completeTimeline.messages.length, scrollToBottom])
+
   // スクロール位置を保存する関数
   const saveScrollPosition = useCallback((lineId: string) => {
     if (messagesContainerRef.current) {
@@ -742,6 +753,11 @@ export function BranchingChatUI({
       setPendingImages([])
       setSelectedBaseMessage(null)
 
+
+      // メッセージ投稿後に最下部にスクロール
+      setTimeout(() => {
+        scrollToBottom()
+      }, 100)
 
       // メッセージ投稿時はローカル状態が既に更新されているため、
       // 親のデータリロードは不要（リロードすると画面が上部に戻されてしまう）
