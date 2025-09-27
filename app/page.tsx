@@ -3,20 +3,36 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { TagProvider } from "@/lib/tag-context"
-import { useRouter } from "next/navigation"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 
 export default function Home() {
-  const router = useRouter()
   const [currentLineId, setCurrentLineId] = useState<string>('')
 
   const { messages, lines, branchPoints, tags, loadChatData } = useChatData({
     onDataLoaded: (data) => {
-      // デフォルトライン設定
-      const mainLine = data.lines.main || Object.values(data.lines)[0]
-      if (mainLine) {
-        setCurrentLineId(mainLine.id)
+      // URLからライン名を取得（クライアントサイド）
+      const lineFromUrl = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('line')
+        : null
+
+      if (lineFromUrl && !currentLineId) {
+        // URLで指定されたライン名に一致するラインを検索
+        const targetLine = Object.values(data.lines).find(line =>
+          line.name === decodeURIComponent(lineFromUrl)
+        )
+        if (targetLine) {
+          setCurrentLineId(targetLine.id)
+          return
+        }
+      }
+
+      // デフォルトライン設定（現在のラインIDが空の場合のみ）
+      if (!currentLineId) {
+        const mainLine = data.lines.main || Object.values(data.lines)[0]
+        if (mainLine) {
+          setCurrentLineId(mainLine.id)
+        }
       }
     }
   })
@@ -27,24 +43,30 @@ export default function Home() {
   }, [loadChatData])
 
 
-  // ライン切り替えハンドラー（URL更新、履歴なし、リロードなし）
+  // ライン切り替えハンドラー（状態更新を優先し、URL更新は遅延実行）
   const handleLineChange = useCallback((lineId: string) => {
     const targetLine = lines[lineId]
     if (targetLine) {
       setCurrentLineId(lineId)
-      // URLクエリパラメータを更新（リロードを防ぐためreplaceを使用）
-      const encodedLineName = encodeURIComponent(targetLine.name)
-      router.replace(`/?line=${encodedLineName}`)
+      // 状態更新が完了してからURL更新を実行（200ms遅延）
+      setTimeout(() => {
+        const encodedLineName = encodeURIComponent(targetLine.name)
+        // History APIを直接使用してNext.jsの再レンダリングを回避
+        window.history.replaceState(null, '', `/?line=${encodedLineName}`)
+      }, 200)
     }
-  }, [lines, router])
+  }, [lines])
 
   // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
   const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
     setCurrentLineId(lineId)
-    // URLクエリパラメータを更新（リロードを防ぐためreplaceを使用）
-    const encodedLineName = encodeURIComponent(lineName)
-    router.replace(`/?line=${encodedLineName}`)
-  }, [router])
+    // 状態更新が完了してからURL更新を実行（200ms遅延）
+    setTimeout(() => {
+      const encodedLineName = encodeURIComponent(lineName)
+      // History APIを直接使用してNext.jsの再レンダリングを回避
+      window.history.replaceState(null, '', `/?line=${encodedLineName}`)
+    }, 200)
+  }, [])
 
 
   return (
