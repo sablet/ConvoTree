@@ -120,6 +120,7 @@ export function BranchingChatUI({
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmationState | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
+  const [hasSetCursorToEnd, setHasSetCursorToEnd] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
@@ -557,6 +558,7 @@ export function BranchingChatUI({
       return {
         isLineStart: false,
         isCurrentLine: false,
+        isEditable: false,
         lineInfo: null,
         transitionInfo: null
       }
@@ -569,9 +571,13 @@ export function BranchingChatUI({
     // 現在ラインかどうかをチェック
     const isCurrentLine = message.lineId === currentLineId
 
+    // 編集可能かどうかをチェック（現在のタイムラインに表示されているメッセージは全て編集可能）
+    const isEditable = true
+
     return {
       isLineStart,
       isCurrentLine,
+      isEditable,
       lineInfo: lines[message.lineId],
       transitionInfo: transitionAtThisIndex || null
     }
@@ -776,6 +782,23 @@ export function BranchingChatUI({
       setEditingContent(message.content)
       setEditingMessageType(message.type || 'text')
       setEditingMetadata(message.metadata || {})
+      setHasSetCursorToEnd(null) // カーソル設定フラグをリセット
+
+      // 編集開始後に該当メッセージまでスクロール
+      setTimeout(() => {
+        const messageElement = document.getElementById(`message-${messageId}`)
+        if (messageElement && messagesContainerRef.current) {
+          // メッセージ要素の位置を取得
+          const messageOffsetTop = messageElement.offsetTop
+          const containerHeight = messagesContainerRef.current.clientHeight
+
+          // メッセージを画面中央に配置するためのスクロール位置を計算
+          const targetScrollTop = messageOffsetTop - (containerHeight / 2)
+
+          // 即座にスクロール（アニメーションなし）
+          messagesContainerRef.current.scrollTop = Math.max(0, targetScrollTop)
+        }
+      }, 100)
     }
   }
 
@@ -880,6 +903,7 @@ export function BranchingChatUI({
       setEditingContent("")
       setEditingMessageType(null)
       setEditingMetadata({})
+      setHasSetCursorToEnd(null)
 
 
       // メッセージ編集時はローカル状態が既に更新されているため、
@@ -897,6 +921,7 @@ export function BranchingChatUI({
     setEditingContent("")
     setEditingMessageType(null)
     setEditingMetadata({})
+    setHasSetCursorToEnd(null)
   }
 
   // メッセージ削除確認ダイアログを開く
@@ -1349,23 +1374,53 @@ export function BranchingChatUI({
                             </select>
                           </div>
 
-                          {/* テキスト内容編集 */}
-                          <textarea
-                            value={editingContent}
-                            onChange={(e) => setEditingContent(e.target.value)}
-                            className="w-full min-h-[80px] p-2 border border-blue-300 rounded-md resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm"
-                            placeholder="メッセージ内容"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                                e.preventDefault()
-                                handleSaveEdit()
-                              } else if (e.key === "Escape") {
-                                e.preventDefault()
-                                handleCancelEdit()
-                              }
-                            }}
-                            autoFocus
-                          />
+                          {/* テキスト内容編集と保存ボタン */}
+                          <div className="flex gap-2">
+                            <textarea
+                              value={editingContent}
+                              onChange={(e) => setEditingContent(e.target.value)}
+                              className="flex-1 min-h-[80px] p-2 border border-blue-300 rounded-md resize-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none text-sm"
+                              placeholder="メッセージ内容"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                  e.preventDefault()
+                                  handleSaveEdit()
+                                } else if (e.key === "Escape") {
+                                  e.preventDefault()
+                                  handleCancelEdit()
+                                }
+                              }}
+                              ref={(textarea) => {
+                                if (textarea && editingMessageId && hasSetCursorToEnd !== editingMessageId) {
+                                  textarea.focus()
+                                  // カーソルを文末に移動（初回のみ）
+                                  textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+                                  setHasSetCursorToEnd(editingMessageId)
+                                }
+                              }}
+                            />
+                            {/* 保存・キャンセルボタン（メッセージと同じ高さ） */}
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                onClick={handleSaveEdit}
+                                disabled={!editingContent.trim() || isUpdating}
+                                size="sm"
+                                className="h-8 px-3 bg-blue-500 hover:bg-blue-600 text-white"
+                              >
+                                <Check className="h-3 w-3 mr-1" />
+                                保存
+                              </Button>
+                              <Button
+                                onClick={handleCancelEdit}
+                                disabled={isUpdating}
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-3"
+                              >
+                                キャンセル
+                              </Button>
+                            </div>
+                          </div>
 
                           {/* タイプ別プロパティ編集 */}
                           {(editingMessageType === 'task' || (editingMessageType === null && message.type === 'task')) && (
@@ -1525,27 +1580,6 @@ export function BranchingChatUI({
                             </div>
                           )}
 
-                          {/* 保存・キャンセルボタン */}
-                          <div className="flex gap-2 pt-2 border-t border-gray-200">
-                            <Button
-                              onClick={handleSaveEdit}
-                              disabled={!editingContent.trim() || isUpdating}
-                              size="sm"
-                              className="h-8 px-3 bg-blue-500 hover:bg-blue-600 text-white"
-                            >
-                              <Check className="h-3 w-3 mr-1" />
-                              保存
-                            </Button>
-                            <Button
-                              onClick={handleCancelEdit}
-                              disabled={isUpdating}
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-3"
-                            >
-                              キャンセル
-                            </Button>
-                          </div>
                         </div>
                       ) : (
                         /* 表示モード */
@@ -1591,7 +1625,7 @@ export function BranchingChatUI({
                                     })
                                 }
                               }}
-                              isEditable={messageLineInfo.isCurrentLine}
+                              isEditable={messageLineInfo.isEditable}
                             />
                           </div>
 
@@ -1604,7 +1638,7 @@ export function BranchingChatUI({
                           )}
 
                           {/* 編集・削除・コピーボタン（ホバー時のみ表示） */}
-                          {hoveredMessageId === message.id && messageLineInfo.isCurrentLine && (
+                          {hoveredMessageId === message.id && messageLineInfo.isEditable && editingMessageId !== message.id && (
                             <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
                               <Button
                                 onClick={(e) => {
