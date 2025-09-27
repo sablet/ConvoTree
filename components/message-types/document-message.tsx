@@ -46,7 +46,7 @@ export function DocumentMessage({
       summary += sentence + (sentence.includes('\n') ? '' : '。')
     }
 
-    return summary || content.slice(0, maxLength) + '...'
+    return summary || `${content.slice(0, maxLength)}...`
   }
 
   const displaySummary = data.summary || generateSummary(content)

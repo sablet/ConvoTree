@@ -91,7 +91,7 @@ export function TagEditDialog({ open, onOpenChange, tag, onSave, parentTag }: Ta
     onOpenChange(false)
   }
 
-  const isEditing = !!tag
+  const isEditing = Boolean(tag)
   const title = isEditing
     ? "タグを編集"
     : parentTag

@@ -73,8 +73,8 @@ function ChatPageContent() {
       if (data.messages) {
         Object.entries(data.messages).forEach(([id, msg]) => {
           newMessages[id] = {
-            ...msg,
-            timestamp: new Date(msg.timestamp)
+            ...(msg as Message & { timestamp: string | number | Date }),
+            timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
           }
         })
       }
@@ -89,14 +89,14 @@ function ChatPageContent() {
       // 分岐点データ
       if (data.branchPoints) {
         Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
-          newBranchPoints[id] = branchPoint
+          newBranchPoints[id] = branchPoint as BranchPoint
         })
       }
 
       // タグデータ
       if (data.tags) {
         Object.entries(data.tags).forEach(([id, tag]) => {
-          newTags[id] = tag
+          newTags[id] = tag as Tag
         })
       }
 
@@ -115,7 +115,7 @@ function ChatPageContent() {
         setLineNotFound(false)
       } else {
         // ラインが見つからない場合、メインラインにフォールバック
-        const mainLine = newLines['main'] || Object.values(newLines)[0]
+        const mainLine = newLines.main || Object.values(newLines)[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
         }
@@ -148,6 +148,7 @@ function ChatPageContent() {
       const encodedLineName = encodeURIComponent(targetLine.name)
       router.push(`/chat?line=${encodedLineName}`)
     } else {
+      // ライン切り替えに失敗した場合の処理は不要
     }
   }, [lines, router])
 

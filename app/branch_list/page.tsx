@@ -72,8 +72,8 @@ export default function BranchListPage() {
         const newMessages: Record<string, Message> = {}
         Object.entries(data.messages).forEach(([id, msg]) => {
           newMessages[id] = {
-            ...msg,
-            timestamp: new Date(msg.timestamp)
+            ...(msg as Message & { timestamp: string | number | Date }),
+            timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
           }
         })
 
@@ -84,7 +84,7 @@ export default function BranchListPage() {
         setTagGroups(data.tagGroups)
 
         // デフォルトライン設定
-        const mainLine = data.lines.find(line => line.id === 'main') || data.lines[0]
+        const mainLine = data.lines.find((line: Line) => line.id === 'main') || data.lines[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
         }

@@ -260,7 +260,7 @@ export function BranchStructure({
     setEditData({
       name: line.name,
       tagIds: [...currentTagIds],
-      availableTags: availableTags
+      availableTags
     })
     setEditingLineId(line.id)
   }

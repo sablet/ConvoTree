@@ -290,7 +290,7 @@ export function SessionMessage({
                   {formatDuration(getCurrentSessionDuration())}
                 </div>
                 <div className="text-xs text-green-600">
-                  開始: {formatTime(data.checkedInAt!)}
+                  開始: {data.checkedInAt ? formatTime(data.checkedInAt) : ''}
                 </div>
               </div>
               <Button

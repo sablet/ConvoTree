@@ -66,8 +66,8 @@ export default function Home() {
       if (data.messages) {
         Object.entries(data.messages).forEach(([id, msg]) => {
           newMessages[id] = {
-            ...msg,
-            timestamp: new Date(msg.timestamp)
+            ...(msg as Message & { timestamp: string | number | Date }),
+            timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
           }
         })
       }
@@ -82,14 +82,14 @@ export default function Home() {
       // 分岐点データ
       if (data.branchPoints) {
         Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
-          newBranchPoints[id] = branchPoint
+          newBranchPoints[id] = branchPoint as BranchPoint
         })
       }
 
       // タグデータ
       if (data.tags) {
         Object.entries(data.tags).forEach(([id, tag]) => {
-          newTags[id] = tag
+          newTags[id] = tag as Tag
         })
       }
 
@@ -99,7 +99,7 @@ export default function Home() {
       setTags(newTags)
 
       // デフォルトライン設定
-      const mainLine = newLines['main'] || Object.values(newLines)[0]
+      const mainLine = newLines.main || Object.values(newLines)[0]
       if (mainLine) {
         setCurrentLineId(mainLine.id)
       }

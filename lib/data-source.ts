@@ -68,8 +68,9 @@ interface ChatData {
 
 export type DataSource = 'firestore' | 'sample';
 
-export class DataSourceManager {
-  private static instance: DataSourceManager;
+class DataSourceManager {
+  // eslint-disable-next-line no-use-before-define
+  private static instance: DataSourceManager | undefined;
   private currentSource: DataSource = config.defaultDataSource;
   private conversationId = config.conversationId;
 
@@ -78,10 +79,10 @@ export class DataSourceManager {
   }
 
   static getInstance(): DataSourceManager {
-    if (!DataSourceManager.instance) {
-      DataSourceManager.instance = new DataSourceManager();
+    if (!this.instance) {
+      this.instance = new DataSourceManager();
     }
-    return DataSourceManager.instance;
+    return this.instance;
   }
 
   setDataSource(source: DataSource): void {
@@ -95,9 +96,8 @@ export class DataSourceManager {
   async loadChatData(): Promise<ChatData> {
     if (this.currentSource === 'firestore') {
       return this.loadFromFirestore();
-    } else {
-      return this.loadFromSample();
     }
+    return this.loadFromSample();
   }
 
   private async loadFromFirestore(): Promise<ChatData> {
@@ -854,7 +854,7 @@ export class DataSourceManager {
 
         // BranchPoint作成
         const branchPointData = {
-          messageId: messageId,
+          messageId,
           lines: [],
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
@@ -901,7 +901,7 @@ export class DataSourceManager {
         if (!branchPointDoc.exists()) {
           // BranchPointが存在しない場合は作成
           branchPointData = {
-            messageId: messageId,
+            messageId,
             lines: [],
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -1674,5 +1674,6 @@ export class DataSourceManager {
   }
 }
 
-export const dataSourceManager = new DataSourceManager();
+export { DataSourceManager };
+export const dataSourceManager = DataSourceManager.getInstance();
 

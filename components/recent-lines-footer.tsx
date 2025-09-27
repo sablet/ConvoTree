@@ -212,11 +212,10 @@ export function RecentLinesFooter({
       </div>
 
       <div
-        className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide"
+        className="flex gap-2 overflow-x-auto pb-1"
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          // スムーズスクロールを有効化
           scrollBehavior: 'smooth'
         }}
       >
@@ -227,11 +226,6 @@ export function RecentLinesFooter({
         {recentLines.map((line) => renderLineItem(line, false))}
       </div>
 
-      <style jsx>{`
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-      `}</style>
     </div>
   )
 }

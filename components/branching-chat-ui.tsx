@@ -398,7 +398,8 @@ export function BranchingChatUI({
   const getLineAncestry = useCallback((lineId: string): string[] => {
     // キャッシュチェック
     if (lineAncestryCache.has(lineId)) {
-      return lineAncestryCache.get(lineId)!
+      const cached = lineAncestryCache.get(lineId)
+      if (cached) return cached
     }
 
     const line = lines[lineId]
@@ -427,7 +428,8 @@ export function BranchingChatUI({
   const getOptimizedPath = useCallback((lineId: string): { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> } => {
     // キャッシュチェック
     if (pathCache.has(lineId)) {
-      return pathCache.get(lineId)!
+      const cached = pathCache.get(lineId)
+      if (cached) return cached
     }
 
     const ancestry = getLineAncestry(lineId)
@@ -616,7 +618,7 @@ export function BranchingChatUI({
         })
 
         // 2. 分岐点をFirestoreに作成/更新（自動で分岐点作成も含む）
-        await dataSourceManager.addLineToBranchPoint(selectedBaseMessage!, newLineId)
+        await dataSourceManager.addLineToBranchPoint(selectedBaseMessage, newLineId)
 
         // 3. ローカル状態を更新（空のライン）
         const newLine: Line = {
@@ -638,14 +640,14 @@ export function BranchingChatUI({
 
         setBranchPoints((prev) => {
           const updated = { ...prev }
-          if (updated[selectedBaseMessage!]) {
-            updated[selectedBaseMessage!] = {
-              ...updated[selectedBaseMessage!],
-              lines: [...updated[selectedBaseMessage!].lines, newLineId]
+          if (updated[selectedBaseMessage]) {
+            updated[selectedBaseMessage] = {
+              ...updated[selectedBaseMessage],
+              lines: [...updated[selectedBaseMessage].lines, newLineId]
             }
           } else {
-            updated[selectedBaseMessage!] = {
-              messageId: selectedBaseMessage!,
+            updated[selectedBaseMessage] = {
+              messageId: selectedBaseMessage,
               lines: [newLineId]
             }
           }
@@ -658,7 +660,6 @@ export function BranchingChatUI({
         // 新しいライン作成時専用のコールバックを呼び出し（URL更新のため）
         if (onNewLineCreated) {
           onNewLineCreated(newLineId, newLineName)
-        } else {
         }
 
         // フッターを強制更新
@@ -775,7 +776,7 @@ export function BranchingChatUI({
         const wordCount = content.trim().length
         return {
           isCollapsed: false,
-          wordCount: wordCount,
+          wordCount,
           originalLength: wordCount
         }
       case 'session':
@@ -1569,7 +1570,7 @@ export function BranchingChatUI({
                                     .then(() => {
                                       console.log('Message updated successfully in Firestore')
                                     })
-                                    .catch((error) => {
+                                    .catch((error: Error) => {
                                       console.error('Failed to update message in Firestore:', error)
                                     })
                                 }
@@ -1893,9 +1894,8 @@ export function BranchingChatUI({
                   // カーソル位置に挿入するか、先頭に追加
                   if (prevValue.trim() === '') {
                     return command
-                  } else {
-                    return command + prevValue
                   }
+                  return command + prevValue
                 })
               }}
             />

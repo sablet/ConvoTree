@@ -44,7 +44,7 @@ export function MessageCrudTest() {
 
     try {
       await dataSourceManager.updateMessage(messageId, {
-        content: messageContent + ' (更新済み)',
+        content: `${messageContent} (更新済み)`,
         hasBookmark: true
       });
       setResult(`✅ メッセージ ${messageId} が更新されました！`);
