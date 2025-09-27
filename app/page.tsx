@@ -5,43 +5,8 @@ import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager } from "@/lib/data-source"
 import { useRouter } from "next/navigation"
-
-
-interface Message {
-  id: string
-  content: string
-  timestamp: Date
-  lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
-  tags?: string[]
-  hasBookmark?: boolean
-  author?: string
-  images?: string[]
-}
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
-
-interface Tag {
-  id: string
-  name: string
-}
-
-interface BranchPoint {
-  messageId: string
-  lines: string[]
-}
+import { PageLayout } from "@/components/layouts/PageLayout"
+import { Message, Line, Tag, BranchPoint } from "@/lib/types"
 
 export default function Home() {
 
@@ -143,7 +108,7 @@ export default function Home() {
 
   return (
     <TagProvider>
-      <div className="min-h-screen bg-white">
+      <PageLayout>
         <BranchingChatUI
           initialMessages={messages}
           initialLines={lines}
@@ -153,7 +118,7 @@ export default function Home() {
           onLineChange={handleLineChange}
           onNewLineCreated={handleNewLineCreated}
         />
-      </div>
+      </PageLayout>
     </TagProvider>
   )
 }

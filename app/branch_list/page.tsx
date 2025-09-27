@@ -5,51 +5,8 @@ import { BranchStructure } from "@/components/branch-structure"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
 import { dataSourceManager } from "@/lib/data-source"
-
-interface Message {
-  id: string
-  content: string
-  timestamp: Date
-  lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
-  tags?: string[]
-  hasBookmark?: boolean
-  author?: string
-  images?: string[]
-}
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
-
-interface Tag {
-  id: string
-  name: string
-  color?: string
-  groupId?: string
-}
-
-interface TagGroup {
-  id: string
-  name: string
-  color: string
-  order: number
-}
-
-interface BranchPoint {
-  messageId: string
-  lines: string[]
-}
+import { PageLayout } from "@/components/layouts/PageLayout"
+import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
 
 export default function BranchListPage() {
   const router = useRouter()
@@ -148,49 +105,49 @@ export default function BranchListPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* ハンバーガーメニューを右上に配置 */}
-      <HamburgerMenu>
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
-            <div className="space-y-1 max-h-60 overflow-y-auto">
-              {lines.map((line) => {
-                const isActive = line.id === currentLineId
-                return (
-                  <button
-                    key={line.id}
-                    onClick={() => handleLineSwitch(line.id)}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      isActive
-                        ? 'bg-blue-100 text-blue-900 border border-blue-200'
-                        : 'hover:bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    <div className="font-medium truncate">{line.name}</div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {line.messageIds.length}件のメッセージ
-                    </div>
-                  </button>
-                )
-              })}
+    <PageLayout
+      title="Branch Structure"
+      sidebar={
+        <HamburgerMenu>
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {lines.map((line) => {
+                  const isActive = line.id === currentLineId
+                  return (
+                    <button
+                      key={line.id}
+                      onClick={() => handleLineSwitch(line.id)}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+                        isActive
+                          ? 'bg-blue-100 text-blue-900 border border-blue-200'
+                          : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      <div className="font-medium truncate">{line.name}</div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        {line.messageIds.length}件のメッセージ
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
           </div>
-        </div>
-      </HamburgerMenu>
-
-      <div className="p-4">
-        <BranchStructure
-          messages={messages}
-          lines={lines}
-          branchPoints={branchPoints}
-          tags={tags}
-          tagGroups={tagGroups}
-          currentLineId={currentLineId}
-          onLineSwitch={handleLineSwitch}
-          onLineEdit={handleLineEdit}
-        />
-      </div>
-    </div>
+        </HamburgerMenu>
+      }
+    >
+      <BranchStructure
+        messages={messages}
+        lines={lines}
+        branchPoints={branchPoints}
+        tags={tags}
+        tagGroups={tagGroups}
+        currentLineId={currentLineId}
+        onLineSwitch={handleLineSwitch}
+        onLineEdit={handleLineEdit}
+      />
+    </PageLayout>
   )
 }

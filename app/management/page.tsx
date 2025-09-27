@@ -5,18 +5,8 @@ import { TagManagement } from "@/components/tag-management"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { LineHistoryMenu } from "@/components/line-history-menu"
 import { dataSourceManager } from "@/lib/data-source"
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
+import { PageLayout } from "@/components/layouts/PageLayout"
+import { Line } from "@/lib/types"
 
 export default function ManagementPage() {
   const [lines, setLines] = useState<Line[]>([])
@@ -36,15 +26,15 @@ export default function ManagementPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* ハンバーガーメニューを右上に配置 */}
-      <HamburgerMenu>
-        <LineHistoryMenu lines={lines} />
-      </HamburgerMenu>
-
-      <div className="p-4 space-y-6">
-        <TagManagement />
-      </div>
-    </div>
+    <PageLayout
+      title="Tag Management"
+      sidebar={
+        <HamburgerMenu>
+          <LineHistoryMenu lines={lines} />
+        </HamburgerMenu>
+      }
+    >
+      <TagManagement />
+    </PageLayout>
   )
 }

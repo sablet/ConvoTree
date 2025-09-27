@@ -15,51 +15,8 @@ import {
   Circle,
   Dot
 } from "lucide-react"
-
-interface Message {
-  id: string
-  content: string
-  timestamp: Date
-  lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
-  tags?: string[]
-  hasBookmark?: boolean
-  author?: string
-  images?: string[]
-}
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
-
-interface Tag {
-  id: string
-  name: string
-  color?: string
-  groupId?: string
-}
-
-interface BranchPoint {
-  messageId: string
-  lines: string[]
-}
-
-interface TagGroup {
-  id: string
-  name: string
-  color: string
-  order: number
-}
+import { Message, Line, Tag, BranchPoint, TagGroup } from "@/lib/types"
+import { formatRelativeTime } from "@/lib/utils/date"
 
 interface BranchStructureProps {
   messages: Record<string, Message>
@@ -228,29 +185,6 @@ export function BranchStructure({
     }
   }, [allBranches, lines, messages, branchPoints])
 
-  const getRelativeTime = (updatedAt: string, createdAt: string): string => {
-    // 更新日時を優先、なければ作成日時を使用
-    const dateString = updatedAt || createdAt
-    if (!dateString) return ""
-
-    const now = new Date()
-    const date = new Date(dateString)
-
-    if (isNaN(date.getTime())) return ""
-
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffMinutes < 1) return "今"
-    if (diffMinutes < 60) return `${diffMinutes}分前`
-    if (diffHours < 24) return `${diffHours}時間前`
-    if (diffDays < 30) return `${diffDays}日前`
-
-    const diffMonths = Math.floor(diffDays / 30)
-    return `${diffMonths}ヶ月前`
-  }
 
   const handleEditStart = (line: Line) => {
     // 利用可能なタグ = 全てのタグ - 現在のラインに既に割り当てられているタグ
@@ -316,7 +250,7 @@ export function BranchStructure({
   const renderBranchItem = (node: BranchNode): React.ReactNode => {
     const { line, depth, messageCount } = node
     const isActive = line.id === currentLineId
-    const relativeTime = getRelativeTime(line.updated_at, line.created_at)
+    const relativeTime = formatRelativeTime(line.updated_at, line.created_at)
     const isEditing = editingLineId === line.id
 
     return (

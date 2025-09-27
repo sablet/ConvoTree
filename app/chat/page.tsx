@@ -6,42 +6,8 @@ import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { dataSourceManager } from "@/lib/data-source"
-
-interface Message {
-  id: string
-  content: string
-  timestamp: Date
-  lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
-  tags?: string[]
-  hasBookmark?: boolean
-  author?: string
-  images?: string[]
-}
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
-
-interface Tag {
-  id: string
-  name: string
-}
-
-interface BranchPoint {
-  messageId: string
-  lines: string[]
-}
+import { ChatLayout } from "@/components/layouts/ChatLayout"
+import { Message, Line, Tag, BranchPoint } from "@/lib/types"
 
 function ChatPageContent() {
   const router = useRouter()
@@ -186,7 +152,14 @@ function ChatPageContent() {
 
   return (
     <TagProvider>
-      <div className="min-h-screen bg-white pb-16">
+      <ChatLayout
+        footer={
+          <FooterNavigation
+            currentView={currentView}
+            onViewChange={handleViewChange}
+          />
+        }
+      >
         {lineNotFound && (
           <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
             <div className="flex">
@@ -208,12 +181,7 @@ function ChatPageContent() {
           onLineChange={handleLineChange}
           onNewLineCreated={handleNewLineCreated}
         />
-
-        <FooterNavigation
-          currentView={currentView}
-          onViewChange={handleViewChange}
-        />
-      </div>
+      </ChatLayout>
     </TagProvider>
   )
 }

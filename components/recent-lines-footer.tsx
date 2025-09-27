@@ -1,38 +1,8 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-
-interface Message {
-  id: string
-  content: string
-  timestamp: Date
-  lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
-  tags?: string[]
-  hasBookmark?: boolean
-  author?: string
-  images?: string[]
-}
-
-interface Line {
-  id: string
-  name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
-  tagIds?: string[]
-  created_at: string
-  updated_at: string
-}
-
-
-interface BranchPoint {
-  messageId: string
-  lines: string[]
-}
+import { Message, Line, BranchPoint } from "@/lib/types"
+import { formatRelativeTime } from "@/lib/utils/date"
 
 interface RecentLinesFooterProps {
   lines: Record<string, Line>
@@ -70,27 +40,6 @@ export function RecentLinesFooter({
     return allLines.slice(0, 10) // 最新10件表示
   }
 
-  const getRelativeTime = (dateString: string): string => {
-    if (!dateString) return ""
-
-    const now = new Date()
-    const date = new Date(dateString)
-
-    if (isNaN(date.getTime())) return ""
-
-    const diffMs = now.getTime() - date.getTime()
-    const diffMinutes = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-    if (diffMinutes < 1) return "今"
-    if (diffMinutes < 60) return `${diffMinutes}分前`
-    if (diffHours < 24) return `${diffHours}時間前`
-    if (diffDays < 30) return `${diffDays}日前`
-
-    const diffMonths = Math.floor(diffDays / 30)
-    return `${diffMonths}ヶ月前`
-  }
 
   // ラインの祖先チェーンを取得して階層表示を生成
   const getLineAncestry = (lineId: string): string[] => {
@@ -150,7 +99,7 @@ export function RecentLinesFooter({
     const lastMessagePreview = lastMessage?.content
       ? lastMessage.content.slice(0, 20) + (lastMessage.content.length > 20 ? "..." : "")
       : ""
-    const relativeTime = line.updated_at ? getRelativeTime(line.updated_at) : ""
+    const relativeTime = line.updated_at ? formatRelativeTime(line.updated_at) : ""
     const displayInfo = getLineDisplayInfo(line)
 
     return (

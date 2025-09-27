@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 next build",
+    "build": "npm run cpd-check && next build",
+    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && next build",
     "start": "next start",
     "lint": "next lint",
+    "cpd-check": "jscpd --config .jscpd.json ./app ./components",
+    "cpd-report": "jscpd --config .jscpd.json ./app ./components",
     "serve": "firebase serve --only hosting",
     "build:serve": "rm -rf out && npm run build && npm run serve"
   },
@@ -74,6 +76,7 @@
     "@types/react-dom": "^18",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.3",
+    "jscpd": "^4.0.5",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
     "tw-animate-css": "1.3.3",
