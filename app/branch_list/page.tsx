@@ -93,6 +93,79 @@ export default function BranchListPage() {
     }
   }
 
+  // ライン削除ハンドラー
+  const handleLineDelete = async (lineId: string) => {
+    try {
+      // mainラインは削除不可
+      if (lineId === 'main') {
+        alert('メインラインは削除できません')
+        return
+      }
+
+      // ラインに属するメッセージも削除
+      const lineToDelete = lines.find(line => line.id === lineId)
+      if (lineToDelete && lineToDelete.messageIds.length > 0) {
+        // メッセージを削除（存在するメッセージのみ）
+        for (const messageId of lineToDelete.messageIds) {
+          // ローカルの messages オブジェクトに存在するメッセージのみ削除
+          if (messages[messageId] && dataSourceManager.getCurrentSource() === 'firestore') {
+            try {
+              await dataSourceManager.deleteMessage(messageId)
+            } catch (error) {
+              console.warn(`Failed to delete message ${messageId}:`, error)
+              // 個別のメッセージ削除失敗はライン削除を妨げない
+            }
+          }
+        }
+      }
+
+      // ラインを削除
+      if (dataSourceManager.getCurrentSource() === 'firestore') {
+        await dataSourceManager.deleteLine(lineId)
+      }
+
+      // 分岐点からも削除
+      setBranchPoints(prev => {
+        const updated = { ...prev }
+        Object.keys(updated).forEach(branchPointId => {
+          const branchPoint = updated[branchPointId]
+          if (branchPoint.lines.includes(lineId)) {
+            updated[branchPointId] = {
+              ...branchPoint,
+              lines: branchPoint.lines.filter(id => id !== lineId)
+            }
+            // 分岐点に他のラインがない場合は分岐点自体を削除
+            if (updated[branchPointId].lines.length === 0) {
+              delete updated[branchPointId]
+            }
+          }
+        })
+        return updated
+      })
+
+      // ローカル状態から削除
+      setLines(prev => prev.filter(line => line.id !== lineId))
+      setMessages(prev => {
+        const updated = { ...prev }
+        if (lineToDelete) {
+          lineToDelete.messageIds.forEach(messageId => {
+            delete updated[messageId]
+          })
+        }
+        return updated
+      })
+
+      // 削除したラインが現在選択されている場合はmainに切り替え
+      if (currentLineId === lineId) {
+        setCurrentLineId('main')
+      }
+
+    } catch (error) {
+      console.error('Failed to delete line:', error)
+      alert('ラインの削除に失敗しました')
+    }
+  }
+
 
   if (isLoading) {
     return (
@@ -127,6 +200,7 @@ export default function BranchListPage() {
         currentLineId={currentLineId}
         onLineSwitch={handleLineSwitch}
         onLineEdit={handleLineEdit}
+        onLineDelete={handleLineDelete}
       />
     </PageLayout>
   )

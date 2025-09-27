@@ -13,7 +13,8 @@ import {
   X,
   Plus,
   Circle,
-  Dot
+  Dot,
+  Trash2
 } from "lucide-react"
 import { Message, Line, Tag, BranchPoint, TagGroup } from "@/lib/types"
 import { formatRelativeTime } from "@/lib/utils/date"
@@ -27,6 +28,7 @@ interface BranchStructureProps {
   currentLineId: string
   onLineSwitch: (lineId: string) => void
   onLineEdit: (lineId: string, updates: Partial<Line>) => void
+  onLineDelete?: (lineId: string) => void
   onViewChange?: (view: 'chat' | 'management' | 'branches') => void
 }
 
@@ -46,6 +48,7 @@ export function BranchStructure({
   currentLineId,
   onLineSwitch,
   onLineEdit,
+  onLineDelete,
   onViewChange
 }: BranchStructureProps) {
   const [editingLineId, setEditingLineId] = useState<string | null>(null)
@@ -60,6 +63,7 @@ export function BranchStructure({
   })
   const [showStatistics, setShowStatistics] = useState(false)
   const [sortByTag, setSortByTag] = useState<string | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null)
 
   // タググループごとのタグ一覧を生成
   const tagsByGroup = useMemo(() => {
@@ -245,6 +249,22 @@ export function BranchStructure({
     // ラインを切り替えてチャット画面に遷移
     onLineSwitch(line.id)
     onViewChange?.('chat')
+  }
+
+  const handleDeleteConfirm = (lineId: string) => {
+    if (onLineDelete) {
+      onLineDelete(lineId)
+    }
+    setShowDeleteConfirm(null)
+  }
+
+  const canDeleteLine = (line: Line): boolean => {
+    // mainラインは削除不可
+    if (line.id === 'main') {
+      return false
+    }
+    // 削除可能
+    return true
   }
 
   const renderBranchItem = (node: BranchNode): React.ReactNode => {
@@ -468,17 +488,32 @@ export function BranchStructure({
           {/* アクションボタン */}
           <div className="flex gap-1 flex-shrink-0">
             {!isEditing ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleEditStart(line)
-                }}
-                className="h-8 px-2 text-gray-400 hover:text-gray-600"
-              >
-                <Edit3 className="h-4 w-4" />
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleEditStart(line)
+                  }}
+                  className="h-8 px-2 text-gray-400 hover:text-gray-600"
+                >
+                  <Edit3 className="h-4 w-4" />
+                </Button>
+                {canDeleteLine(line) && onLineDelete && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setShowDeleteConfirm(line.id)
+                    }}
+                    className="h-8 px-2 text-gray-400 hover:text-red-600"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+              </>
             ) : (
               <div className="flex gap-1">
                 <Button
@@ -632,6 +667,34 @@ export function BranchStructure({
         <div className="text-center py-8 text-gray-500">
           <GitBranch className="w-8 h-8 mx-auto mb-2 text-gray-400" />
           <p>ブランチが見つかりません</p>
+        </div>
+      )}
+
+      {/* 削除確認ダイアログ */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">ブランチを削除しますか？</h3>
+            <p className="text-gray-600 mb-4">
+              ライン「{lines.find(l => l.id === showDeleteConfirm)?.name}」を削除します。
+              この操作は取り消せません。
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(null)}
+              >
+                キャンセル
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => handleDeleteConfirm(showDeleteConfirm)}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                削除
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

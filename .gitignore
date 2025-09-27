@@ -70,3 +70,4 @@ firebase-adminsdk-*.json
 doc/firebase-secrets-template.md
 doc/*-secrets.md
 *-secrets.*
+.jscpd.json.save
