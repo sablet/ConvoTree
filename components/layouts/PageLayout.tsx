@@ -18,8 +18,8 @@ export function PageLayout({ title, children, footer, sidebar }: PageLayoutProps
         </header>
       )}
 
-      <main className="container mx-auto px-4 py-6">
-        <div className="flex gap-6">
+      <main className="w-full">
+        <div className="flex">
           <div className="flex-1">
             {children}
           </div>

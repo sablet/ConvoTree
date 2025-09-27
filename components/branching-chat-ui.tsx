@@ -1089,7 +1089,7 @@ export function BranchingChatUI({
     const breadcrumbPath = [...ancestry, currentLineId]
 
     return (
-      <div className="px-4 py-2 border-b border-gray-200 bg-white">
+      <div className="px-2 sm:px-4 py-2 border-b border-gray-200 bg-white">
         {/* パンくずリスト */}
         <div className="flex items-center gap-1 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {breadcrumbPath.map((lineId, index) => {
@@ -1131,7 +1131,7 @@ export function BranchingChatUI({
 
       {/* Current Line Header */}
       {currentLineInfo && (
-        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+        <div className="px-2 sm:px-4 py-3 border-b border-gray-100 bg-gray-50">
           {!isEditingBranch ? (
             <>
               <div className="flex items-center justify-between">
@@ -1240,7 +1240,7 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-60 space-y-8">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 pb-60 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
@@ -1653,7 +1653,7 @@ export function BranchingChatUI({
                                   alt={`Image ${imageIndex + 1}`}
                                   width={300}
                                   height={200}
-                                  className={`max-w-xs h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
+                                  className={`max-w-sm md:max-w-md lg:max-w-lg h-auto rounded-lg border shadow-sm cursor-pointer hover:shadow-md transition-shadow ${
                                     !messageLineInfo.isCurrentLine ? 'border-blue-200 opacity-80' : 'border-gray-200'
                                   }`}
                                   onClick={() => {
@@ -1789,7 +1789,7 @@ export function BranchingChatUI({
       </HamburgerMenu>
 
       {/* Composer */}
-      <div className="fixed bottom-20 left-0 right-0 p-4 border-t border-gray-100 bg-white z-10">
+      <div className="fixed bottom-20 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
         {selectedBaseMessage ? (
           <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
             <div className="flex items-center justify-between gap-2">
