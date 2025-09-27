@@ -126,7 +126,18 @@ export function MessageTypeRenderer({
     default:
       // 通常のテキストメッセージ
       return (
-        <div className="text-sm text-gray-700 whitespace-pre-wrap">
+        <div
+          className="text-sm text-gray-700 whitespace-pre-wrap break-words overflow-wrap-anywhere"
+          style={{
+            wordWrap: 'break-word',
+            overflowWrap: 'anywhere',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+            maxWidth: '100%',
+            width: '100%',
+            boxSizing: 'border-box'
+          }}
+        >
           {message.content}
         </div>
       )

@@ -124,4 +124,34 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  /* テキスト折り返しの強制適用 */
+  .message-content,
+  .message-container {
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    hyphens: auto !important;
+    white-space: pre-wrap !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  /* 全体的なテキスト要素の折り返し強制 */
+  body * {
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  /* Firebaseホスティング環境での強制適用 */
+  div[class*="text-"],
+  span[class*="text-"],
+  p[class*="text-"] {
+    word-wrap: break-word !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+    max-width: 100% !important;
+    white-space: pre-wrap !important;
+  }
 }

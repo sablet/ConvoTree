@@ -1304,7 +1304,7 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-2 sm:px-4 py-6 pb-80 space-y-8">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-2 sm:px-4 py-6 pb-80 space-y-8">
         {completeTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
@@ -1375,7 +1375,7 @@ export function BranchingChatUI({
                   </div>
 
                   {/* メッセージ内容 */}
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-start gap-2">
                       {message.hasBookmark && <div className="w-3 h-3 border border-gray-300 mt-1 flex-shrink-0" />}
 
@@ -1606,14 +1606,25 @@ export function BranchingChatUI({
                         </div>
                       ) : (
                         /* 表示モード */
-                        <div className="flex-1 relative">
-                          <div className={`${
-                              !messageLineInfo.isCurrentLine
-                                ? "text-gray-600"
-                                : isSelected
-                                ? "text-gray-900"
-                                : "text-gray-900"
-                            }`}>
+                        <div className="flex-1 relative" style={{ minWidth: 0, maxWidth: '100%' }}>
+                          <div
+                            className={`break-words overflow-wrap-anywhere message-content ${
+                                !messageLineInfo.isCurrentLine
+                                  ? "text-gray-600"
+                                  : isSelected
+                                  ? "text-gray-900"
+                                  : "text-gray-900"
+                              }`}
+                            style={{
+                              wordWrap: 'break-word',
+                              overflowWrap: 'anywhere',
+                              wordBreak: 'break-word',
+                              whiteSpace: 'pre-wrap',
+                              maxWidth: '100%',
+                              width: '100%',
+                              boxSizing: 'border-box'
+                            }}
+                          >
                             <MessageTypeRenderer
                               message={message}
                               onUpdate={(messageId, updates) => {

@@ -226,10 +226,10 @@ export function SessionMessage({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <Timer className={`h-4 w-4 ${isWorking ? 'text-green-600' : 'text-purple-600'}`} />
-          <span className={`text-sm font-medium ${
+          <span className={`text-sm font-medium break-words overflow-wrap-anywhere ${
             isWorking ? 'text-green-800' : 'text-purple-800'
           }`}>
-            {content.length > 30 ? `${content.slice(0, 30)}...` : content}
+            {content}
           </span>
           {isWorking && (
             <div className="flex items-center gap-1 animate-pulse">

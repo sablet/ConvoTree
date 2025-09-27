@@ -88,7 +88,7 @@ export function DocumentMessage({
       {/* コンテンツ */}
       {data.isCollapsed ? (
         <div className="space-y-2">
-          <div className="text-sm text-gray-700 bg-white rounded p-3 border border-blue-200">
+          <div className="text-sm text-gray-700 bg-white rounded p-3 border border-blue-200 break-words overflow-wrap-anywhere">
             {displaySummary}
           </div>
           <div className="text-xs text-blue-600">
@@ -98,7 +98,7 @@ export function DocumentMessage({
       ) : (
         <div className="space-y-2">
           <div className="text-sm text-gray-700 bg-white rounded p-3 border border-blue-200 max-h-96 overflow-y-auto">
-            <div className="whitespace-pre-wrap">{content}</div>
+            <div className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{content}</div>
           </div>
           <div className="flex items-center justify-between text-xs text-blue-600">
             <span>全文表示中</span>

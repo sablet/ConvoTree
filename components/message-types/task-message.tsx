@@ -145,10 +145,10 @@ export function TaskMessage({
 
             <div className="flex items-center gap-2">
               <CheckSquare className="h-4 w-4 text-gray-600" />
-              <span className={`text-sm font-medium ${
+              <span className={`text-sm font-medium break-words overflow-wrap-anywhere ${
                 taskData.completed ? 'line-through text-gray-500' : 'text-gray-900'
               }`}>
-                {content.length > 30 ? `${content.slice(0, 30)}...` : content}
+                {content}
               </span>
             </div>
 
