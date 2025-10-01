@@ -24,17 +24,24 @@ export function DocumentMessage({
   data,
   onUpdate
 }: DocumentMessageProps) {
+  // dataがundefinedの場合のデフォルト値
+  const safeData: DocumentMessageData = data || {
+    isCollapsed: true,
+    wordCount: content.length,
+    originalLength: content.length
+  }
+
   const handleToggleCollapse = () => {
     if (onUpdate) {
       onUpdate({
-        ...data,
-        isCollapsed: !data.isCollapsed
+        ...safeData,
+        isCollapsed: !safeData.isCollapsed
       })
     }
   }
 
   // タイトルがある場合、本文からタイトル行を除外
-  const bodyContent = data.title
+  const bodyContent = safeData.title
     ? content.split('\n').slice(1).join('\n').trim()
     : content
 
@@ -55,7 +62,7 @@ export function DocumentMessage({
     return summary || `${content.slice(0, maxLength)}...`
   }
 
-  const displaySummary = data.summary || generateSummary(bodyContent)
+  const displaySummary = safeData.summary || generateSummary(bodyContent)
 
   return (
     <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
@@ -63,13 +70,13 @@ export function DocumentMessage({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-blue-600" />
-          {data.title ? (
+          {safeData.title ? (
             <>
               <span className="text-sm font-medium text-blue-800">
-                {data.title}
+                {safeData.title}
               </span>
               <span className="text-xs text-blue-600">
-                ({data.wordCount}文字)
+                ({safeData.wordCount}文字)
               </span>
             </>
           ) : (
@@ -78,7 +85,7 @@ export function DocumentMessage({
                 ドキュメント
               </span>
               <span className="text-xs text-blue-600">
-                ({data.wordCount}文字)
+                ({safeData.wordCount}文字)
               </span>
             </>
           )}
@@ -90,7 +97,7 @@ export function DocumentMessage({
           size="sm"
           className="h-6 px-2 text-blue-600 hover:bg-blue-100"
         >
-          {data.isCollapsed ? (
+          {safeData.isCollapsed ? (
             <>
               <ChevronRight className="h-3 w-3 mr-1" />
               <span className="text-xs">展開</span>
@@ -105,7 +112,7 @@ export function DocumentMessage({
       </div>
 
       {/* コンテンツ */}
-      {data.isCollapsed ? (
+      {safeData.isCollapsed ? (
         <div className="space-y-2">
           <div className="text-sm text-gray-700 bg-white rounded p-3 border border-blue-200 break-words overflow-wrap-anywhere">
             {displaySummary}
@@ -122,7 +129,7 @@ export function DocumentMessage({
           <div className="flex items-center justify-between text-xs text-blue-600">
             <span>全文表示中</span>
             <span>
-              {Math.ceil(data.wordCount / 400)}分程度の読み時間
+              {Math.ceil(safeData.wordCount / 400)}分程度の読み時間
             </span>
           </div>
         </div>

@@ -515,24 +515,46 @@ export function BranchingChatUI({
 
   // メモ化されたタイムライン取得
   const getCompleteTimeline = useCallback(() => {
+    const TIMELINE_BRANCH_ID = '__timeline__'
+
+    // タイムライン仮想ブランチの場合
+    if (currentLineId === TIMELINE_BRANCH_ID) {
+      const allMessages = Object.values(messages).sort((a, b) => {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      })
+
+      // ライン切り替わり情報を生成
+      const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
+      let prevLineId: string | null = null
+
+      allMessages.forEach((msg, index) => {
+        if (msg.lineId !== prevLineId) {
+          const line = lines[msg.lineId]
+          transitions.push({
+            index,
+            lineId: msg.lineId,
+            lineName: line?.name || msg.lineId
+          })
+          prevLineId = msg.lineId
+        }
+      })
+
+      return { messages: allMessages, transitions }
+    }
+
+    // 通常のライン表示
     if (!currentLineId || !lines[currentLineId]) {
       return { messages: [], transitions: [] }
     }
 
     const result = getOptimizedPath(currentLineId)
     return result
-  }, [currentLineId, lines, getOptimizedPath])
+  }, [currentLineId, lines, messages, getOptimizedPath])
 
   // useMemoでメモ化されたタイムラインを取得（messagesの変更も監視）
   const completeTimeline = useMemo(() => {
-    const timeline = getCompleteTimeline()
-    console.log('[Debug] completeTimeline:', {
-      currentLineId,
-      totalMessages: timeline.messages.length,
-      messageLineIds: timeline.messages.map(m => ({ id: m.id, content: m.content.slice(0, 10), lineId: m.lineId }))
-    })
-    return timeline
-  }, [getCompleteTimeline, currentLineId])
+    return getCompleteTimeline()
+  }, [currentLineId, lines, messages, pathCache, lineAncestryCache, getCompleteTimeline])
 
   // 初回データ読み込み時とメッセージ投稿時に最下部にスクロール
   useEffect(() => {
@@ -565,7 +587,10 @@ export function BranchingChatUI({
 
   // ラインの切り替え（スクロール位置保持機能付き）
   const switchToLine = (lineId: string) => {
-    if (lines[lineId]) {
+    // タイムライン仮想ブランチの場合は特別な処理
+    const TIMELINE_BRANCH_ID = '__timeline__'
+
+    if (lineId === TIMELINE_BRANCH_ID || lines[lineId]) {
       // 現在のラインのスクロール位置を保存
       if (currentLineId) {
         saveScrollPosition(currentLineId)
@@ -619,11 +644,37 @@ export function BranchingChatUI({
 
   // 現在のラインオブジェクトを取得
   const getCurrentLine = (): Line | null => {
+    const TIMELINE_BRANCH_ID = '__timeline__'
+
+    // タイムライン仮想ブランチの場合
+    if (currentLineId === TIMELINE_BRANCH_ID) {
+      const allMessages = Object.values(messages)
+      return {
+        id: TIMELINE_BRANCH_ID,
+        name: '全メッセージ (時系列)',
+        messageIds: allMessages.map(m => m.id).sort((a, b) => {
+          const msgA = messages[a]
+          const msgB = messages[b]
+          return new Date(msgA.timestamp).getTime() - new Date(msgB.timestamp).getTime()
+        }),
+        startMessageId: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    }
+
     return lines[currentLineId] || null
   }
 
   const handleSendMessage = async () => {
+    const TIMELINE_BRANCH_ID = '__timeline__'
+
     if (!inputValue.trim() && pendingImages.length === 0) return
+
+    // タイムライン仮想ブランチでは投稿不可
+    if (currentLineId === TIMELINE_BRANCH_ID) {
+      return
+    }
 
     const currentLine = lines[currentLineId]
     if (!currentLine) {

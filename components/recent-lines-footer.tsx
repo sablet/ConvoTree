@@ -19,17 +19,21 @@ export function RecentLinesFooter({
   branchPoints = {},
   onLineSelect
 }: RecentLinesFooterProps) {
+  // タイムライン仮想ブランチの定義
+  const TIMELINE_BRANCH_ID = '__timeline__'
+
   // メインブランチを取得
   const getMainLine = (): Line | null => {
     return Object.values(lines).find(line => line.id === 'main') || null
   }
 
-  // 最近更新されたラインを取得（現在のラインとメインラインを除く）
+  // 最近更新されたラインを取得（現在のラインとメインラインとタイムラインを除く）
   const getRecentLines = (): Line[] => {
     const allLines = Object.values(lines)
       .filter(line =>
         line.id !== currentLineId && // 現在のラインを除外
-        line.id !== 'main' // メインラインを除外（別途固定表示）
+        line.id !== 'main' && // メインラインを除外（別途固定表示）
+        line.id !== TIMELINE_BRANCH_ID // タイムライン仮想ブランチを除外
       )
       .sort((a, b) => {
         const dateA = new Date(a.updated_at || a.created_at)
@@ -69,7 +73,7 @@ export function RecentLinesFooter({
   // ラインの分岐情報を含む名前を生成
   const getLineDisplayInfo = (line: Line): { name: string, ancestry: string, branchCount: number } => {
     // ライン名を13文字に制限
-    const name = line.name.length > 13 ? line.name.slice(0, 13) + "..." : line.name
+    const name = line.name.length > 13 ? `${line.name.slice(0, 13)}...` : line.name
     const ancestry = getLineAncestry(line.id)
 
     // 分岐点情報を取得（このラインから分岐している場合）
@@ -87,6 +91,9 @@ export function RecentLinesFooter({
 
   const mainLine = getMainLine()
   const recentLines = getRecentLines()
+
+  // タイムライン仮想ブランチの作成
+  const allMessagesCount = Object.keys(messages).length
 
   // メインラインと最近のラインがどちらもない場合は表示しない
   if (!mainLine && recentLines.length === 0) {
@@ -154,10 +161,10 @@ export function RecentLinesFooter({
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-40">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-gray-600">
-          {mainLine ? 'メインブランチ・最近の更新' : '最近の更新'}
+          タイムライン・メインブランチ・最近の更新
         </span>
         <span className="text-xs text-gray-400">
-          {mainLine ? `Main + ${recentLines.length}件` : `${recentLines.length}件`}
+          {`Timeline + Main + ${recentLines.length}件`}
         </span>
       </div>
 
@@ -169,6 +176,28 @@ export function RecentLinesFooter({
           scrollBehavior: 'smooth'
         }}
       >
+        {/* タイムライン仮想ブランチを最左に固定表示（現在のラインでない場合のみ） */}
+        {currentLineId !== TIMELINE_BRANCH_ID && (
+          <div
+            key={TIMELINE_BRANCH_ID}
+            onClick={() => onLineSelect(TIMELINE_BRANCH_ID)}
+            className="flex-shrink-0 border rounded-lg p-2 cursor-pointer transition-colors min-w-[180px] max-w-[240px] bg-purple-50 hover:bg-purple-100 border-purple-200"
+          >
+            <div className="flex items-center gap-2 mb-1">
+              <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-600"></div>
+              <span className="text-sm font-medium text-gray-900 flex-1 truncate">
+                全メッセージ
+              </span>
+              <Badge variant="secondary" className="text-xs bg-purple-200 text-purple-800 px-1 py-0 flex-shrink-0">
+                Timeline
+              </Badge>
+            </div>
+            <div className="text-xs text-gray-500">
+              {allMessagesCount}件のメッセージ（時系列順）
+            </div>
+          </div>
+        )}
+
         {/* メインブランチを固定表示（現在のラインでない場合のみ） */}
         {mainLine && mainLine.id !== currentLineId && renderLineItem(mainLine, true)}
 
