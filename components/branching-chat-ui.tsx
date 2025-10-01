@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check, Copy, CheckCircle } from "lucide-react"
+import { Send, Zap, Edit3, Plus, X, GitBranch, Trash2, Check, Copy, CheckCircle, Search, Filter } from "lucide-react"
 import Image from "next/image"
 import { dataSourceManager } from "@/lib/data-source"
 import { HamburgerMenu } from "@/components/hamburger-menu"
@@ -130,6 +130,11 @@ export function BranchingChatUI({
   const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
   const [footerKey, setFooterKey] = useState(0) // フッター強制更新用
   const [copySuccessMessageId, setCopySuccessMessageId] = useState<string | null>(null)
+
+  // フィルター・検索関連の状態
+  const [filterMessageType, setFilterMessageType] = useState<'text' | 'task' | 'document' | 'session' | 'all'>('all')
+  const [filterTag, setFilterTag] = useState<string>('')
+  const [searchKeyword, setSearchKeyword] = useState<string>('')
 
   // テキストエリアの高さを自動調整する関数
   const adjustTextareaHeight = useCallback(() => {
@@ -555,6 +560,43 @@ export function BranchingChatUI({
   const completeTimeline = useMemo(() => {
     return getCompleteTimeline()
   }, [getCompleteTimeline])
+
+  // フィルタリング済みタイムライン
+  const filteredTimeline = useMemo(() => {
+    const filtered = completeTimeline.messages.filter(message => {
+      // メッセージタイプフィルター
+      if (filterMessageType !== 'all' && message.type !== filterMessageType) {
+        return false
+      }
+
+      // タグフィルター（部分一致）
+      if (filterTag) {
+        const messageTags = message.tags || []
+        const hasMatchingTag = messageTags.some(tag =>
+          tag.toLowerCase().includes(filterTag.toLowerCase())
+        )
+        if (!hasMatchingTag) {
+          return false
+        }
+      }
+
+      // キーワード検索（部分一致）
+      if (searchKeyword) {
+        const contentMatch = message.content.toLowerCase().includes(searchKeyword.toLowerCase())
+        const authorMatch = message.author?.toLowerCase().includes(searchKeyword.toLowerCase()) || false
+        if (!contentMatch && !authorMatch) {
+          return false
+        }
+      }
+
+      return true
+    })
+
+    return {
+      messages: filtered,
+      transitions: completeTimeline.transitions
+    }
+  }, [completeTimeline, filterMessageType, filterTag, searchKeyword])
 
   // 初回データ読み込み時とメッセージ投稿時に最下部にスクロール
   useEffect(() => {
@@ -1377,41 +1419,99 @@ export function BranchingChatUI({
   const renderTimelineMinimap = (): JSX.Element | null => {
     if (!completeTimeline.messages.length) return null
 
+    const TIMELINE_BRANCH_ID = '__timeline__'
+
     // 現在のラインの祖先チェーンを取得
     const ancestry = getLineAncestry(currentLineId)
     const breadcrumbPath = [...ancestry, currentLineId]
 
     return (
       <div className="px-2 sm:px-4 py-2 border-b border-gray-200 bg-white">
-        {/* パンくずリスト */}
-        <div className="flex items-center gap-1 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {breadcrumbPath.map((lineId, index) => {
-            const line = lines[lineId]
-            if (!line) return null
-
-            const isCurrentLine = lineId === currentLineId
-            const isLast = index === breadcrumbPath.length - 1
-
-            return (
-              <div key={`breadcrumb-${lineId}-${index}`} className="flex items-center gap-1 flex-shrink-0">
-                <button
-                  className={`px-2 py-1 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap ${
-                    isCurrentLine
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900'
-                  }`}
-                  onClick={() => switchToLine(lineId)}
-                >
-                  {line.name}
-                </button>
-                {!isLast && (
-                  <div className="text-gray-400 text-xs font-medium px-1">
-                    &gt;
+        <div className="flex items-center justify-between gap-3 overflow-x-auto">
+          {/* パンくずリスト */}
+          <div className="flex items-center gap-1 flex-shrink-0" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            {breadcrumbPath.map((lineId, index) => {
+              // タイムライン仮想ブランチの特別処理
+              if (lineId === TIMELINE_BRANCH_ID) {
+                return (
+                  <div key={`breadcrumb-${lineId}-${index}`} className="flex items-center gap-1 flex-shrink-0">
+                    <button
+                      className="px-2 py-1 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap bg-blue-500 text-white shadow-sm"
+                      onClick={() => switchToLine(lineId)}
+                    >
+                      全メッセージ
+                    </button>
                   </div>
-                )}
-              </div>
-            )
-          })}
+                )
+              }
+
+              const line = lines[lineId]
+              if (!line) return null
+
+              const isCurrentLine = lineId === currentLineId
+              const isLast = index === breadcrumbPath.length - 1
+
+              return (
+                <div key={`breadcrumb-${lineId}-${index}`} className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    className={`px-2 py-1 rounded-md text-xs font-medium transition-all duration-200 whitespace-nowrap ${
+                      isCurrentLine
+                        ? 'bg-blue-500 text-white shadow-sm'
+                        : 'bg-gray-100 hover:bg-gray-200 text-gray-700 hover:text-gray-900'
+                    }`}
+                    onClick={() => switchToLine(lineId)}
+                  >
+                    {line.name}
+                  </button>
+                  {!isLast && (
+                    <div className="text-gray-400 text-xs font-medium px-1">
+                      &gt;
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {/* 検索・フィルター */}
+          <div className="flex items-center gap-2 flex-shrink-0 mr-16 sm:mr-20">
+            {/* 検索キーワード */}
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="検索..."
+                value={searchKeyword}
+                onChange={(e) => setSearchKeyword(e.target.value)}
+                className="pl-7 text-xs h-7 w-32"
+              />
+            </div>
+
+            {/* タイプフィルター */}
+            <select
+              value={filterMessageType}
+              onChange={(e) => setFilterMessageType(e.target.value as 'text' | 'task' | 'document' | 'session' | 'all')}
+              className="text-xs border border-gray-200 rounded px-2 h-7 bg-white"
+            >
+              <option value="all">全て</option>
+              <option value="text">テキスト</option>
+              <option value="task">タスク</option>
+              <option value="document">ドキュメント</option>
+              <option value="session">セッション</option>
+            </select>
+
+            {/* タグフィルター */}
+            <div className="relative">
+              <Filter className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="タグ..."
+                value={filterTag}
+                onChange={(e) => setFilterTag(e.target.value)}
+                className="pl-7 text-xs h-7 w-24"
+              />
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -1443,6 +1543,7 @@ export function BranchingChatUI({
                   <Edit3 className="h-4 w-4" />
                 </Button>
               </div>
+
               {currentLineInfo.tagIds && currentLineInfo.tagIds.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
                   {currentLineInfo.tagIds.map((tagId, tagIndex) => {
@@ -1533,15 +1634,15 @@ export function BranchingChatUI({
       )}
 
       {/* Messages */}
-      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-2 sm:px-4 py-6 pb-80 space-y-8">
-        {completeTimeline.messages.map((message, index) => {
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto overflow-x-hidden px-2 sm:px-4 py-6 pb-80 space-y-8" style={{ width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}>
+        {filteredTimeline.messages.map((message, index) => {
           const branchingLines = getBranchingLines(message.id)
           const isSelected = selectedBaseMessage === message.id
-          const messageLineInfo = getMessageLineInfo(index, completeTimeline)
+          const messageLineInfo = getMessageLineInfo(index, filteredTimeline)
           const isLineTransition = messageLineInfo.isLineStart && index > 0
 
           // 日付が変わったかどうかをチェック
-          const previousMessage = index > 0 ? completeTimeline.messages[index - 1] : null
+          const previousMessage = index > 0 ? filteredTimeline.messages[index - 1] : null
           const shouldShowDateSeparator =
             index === 0 || // 最初のメッセージの場合は必ず表示
             (previousMessage && !isSameDay(previousMessage.timestamp, message.timestamp))
@@ -1864,9 +1965,9 @@ export function BranchingChatUI({
                         </div>
                       ) : (
                         /* 表示モード */
-                        <div className="flex-1 relative" style={{ minWidth: 0, maxWidth: '100%' }}>
+                        <div className="flex-1 min-w-0">
                           <div
-                            className={`break-words overflow-wrap-anywhere message-content ${
+                            className={`break-words message-content ${
                                 !messageLineInfo.isCurrentLine
                                   ? "text-gray-600"
                                   : isSelected
@@ -1877,10 +1978,7 @@ export function BranchingChatUI({
                               wordWrap: 'break-word',
                               overflowWrap: 'anywhere',
                               wordBreak: 'break-word',
-                              whiteSpace: 'pre-wrap',
-                              maxWidth: '100%',
-                              width: '100%',
-                              boxSizing: 'border-box'
+                              whiteSpace: 'pre-wrap'
                             }}
                           >
                             <MessageTypeRenderer
