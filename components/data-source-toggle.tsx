@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Database, FileText, Settings, RefreshCw } from 'lucide-react';
 import { dataSourceManager, DataSource } from '@/lib/data-source';
+import { EMOJI_FIRESTORE, EMOJI_SAMPLE, ERROR_PREFIX } from '@/lib/ui-strings';
 
 interface DataSourceToggleProps {
   onDataSourceChange?: (source: DataSource) => void;
@@ -120,15 +121,15 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
 
       <div className="mt-3 text-xs text-gray-500">
         {currentSource === 'firestore' ? (
-          <span>🔥 リアルタイムデータベースから読み込み中</span>
+          <span>{EMOJI_FIRESTORE} リアルタイムデータベースから読み込み中</span>
         ) : (
-          <span>📄 デバッグ用サンプルデータを使用中</span>
+          <span>{EMOJI_SAMPLE} デバッグ用サンプルデータを使用中</span>
         )}
       </div>
 
       {lastError && (
         <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-          <span className="font-medium">エラー:</span> {lastError}
+          <span className="font-medium">{ERROR_PREFIX}</span> {lastError}
           <br />
           <span className="text-red-500">手動でサンプルデータに切り替えるか、Firestoreの設定を確認してください。</span>
         </div>

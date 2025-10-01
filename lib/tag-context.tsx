@@ -5,6 +5,7 @@ import { dataSourceManager } from "@/lib/data-source"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { config } from "@/lib/config"
+import { CONVERSATIONS_COLLECTION, TAGS_SUBCOLLECTION, TAG_GROUPS_SUBCOLLECTION, LINES_SUBCOLLECTION } from "@/lib/firestore-constants"
 
 export interface Tag {
   id: string
@@ -295,7 +296,7 @@ export function TagProvider({ children }: TagProviderProps) {
     }
 
     // Tagsのリアルタイムリスナー
-    const tagsRef = collection(db, 'conversations', conversationId, 'tags')
+    const tagsRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, TAGS_SUBCOLLECTION)
     const unsubscribeTags = onSnapshot(tagsRef, (snapshot) => {
       // Tags updated
       // 変更があった場合のみリロード
@@ -308,7 +309,7 @@ export function TagProvider({ children }: TagProviderProps) {
     })
 
     // TagGroupsのリアルタイムリスナー
-    const tagGroupsRef = collection(db, 'conversations', conversationId, 'tagGroups')
+    const tagGroupsRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, TAG_GROUPS_SUBCOLLECTION)
     const unsubscribeTagGroups = onSnapshot(tagGroupsRef, (snapshot) => {
       // TagGroups updated
       // 変更があった場合のみリロード
@@ -321,7 +322,7 @@ export function TagProvider({ children }: TagProviderProps) {
     })
 
     // Linesのリアルタイムリスナー（タグカウント更新用）
-    const linesRef = collection(db, 'conversations', conversationId, 'lines')
+    const linesRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, LINES_SUBCOLLECTION)
     const unsubscribeLines = onSnapshot(linesRef, (snapshot) => {
       // Lines updated (for tag counts)
       // 変更があった場合のみリロード

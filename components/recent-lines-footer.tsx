@@ -3,6 +3,8 @@
 import { Badge } from "@/components/ui/badge"
 import { Message, Line, BranchPoint } from "@/lib/types"
 import { formatRelativeTime } from "@/lib/utils/date"
+import { MAIN_LINE_ID, TIMELINE_BRANCH_ID } from "@/lib/constants"
+import { TIMELINE_BRANCH_NAME, BADGE_TIMELINE, BADGE_MAIN, FOOTER_LABEL_RECENT_LINES } from "@/lib/ui-strings"
 
 interface RecentLinesFooterProps {
   lines: Record<string, Line>
@@ -19,12 +21,9 @@ export function RecentLinesFooter({
   branchPoints = {},
   onLineSelect
 }: RecentLinesFooterProps) {
-  // タイムライン仮想ブランチの定義
-  const TIMELINE_BRANCH_ID = '__timeline__'
-
   // メインブランチを取得
   const getMainLine = (): Line | null => {
-    return Object.values(lines).find(line => line.id === 'main') || null
+    return Object.values(lines).find(line => line.id === MAIN_LINE_ID) || null
   }
 
   // 最近更新されたラインを取得（現在のラインとメインラインとタイムラインを除く）
@@ -32,7 +31,7 @@ export function RecentLinesFooter({
     const allLines = Object.values(lines)
       .filter(line =>
         line.id !== currentLineId && // 現在のラインを除外
-        line.id !== 'main' && // メインラインを除外（別途固定表示）
+        line.id !== MAIN_LINE_ID && // メインラインを除外（別途固定表示）
         line.id !== TIMELINE_BRANCH_ID // タイムライン仮想ブランチを除外
       )
       .sort((a, b) => {
@@ -59,7 +58,7 @@ export function RecentLinesFooter({
         const parentLineId = branchFromMessage.lineId
         const parentAncestry = getLineAncestry(parentLineId)
         const parentLine = lines[parentLineId]
-        if (parentLine && parentLine.id !== 'main') { // メインライン（メインの流れ）は除外
+        if (parentLine && parentLine.id !== MAIN_LINE_ID) { // メインライン（メインの流れ）は除外
           ancestry = [...parentAncestry, parentLine.name]
         } else {
           ancestry = [...parentAncestry] // メインラインの場合は名前を追加せず祖先のみ
@@ -132,7 +131,7 @@ export function RecentLinesFooter({
           </span>
           {isMain && (
             <Badge variant="secondary" className="text-xs bg-blue-200 text-blue-800 px-1 py-0 flex-shrink-0">
-              Main
+              {BADGE_MAIN}
             </Badge>
           )}
         </div>
@@ -161,7 +160,7 @@ export function RecentLinesFooter({
     <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-40">
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-gray-600">
-          タイムライン・メインブランチ・最近の更新
+          {FOOTER_LABEL_RECENT_LINES}
         </span>
         <span className="text-xs text-gray-400">
           {`Timeline + Main + ${recentLines.length}件`}
@@ -186,10 +185,10 @@ export function RecentLinesFooter({
             <div className="flex items-center gap-2 mb-1">
               <div className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-purple-600"></div>
               <span className="text-sm font-medium text-gray-900 flex-1 truncate">
-                全メッセージ
+                {TIMELINE_BRANCH_NAME}
               </span>
               <Badge variant="secondary" className="text-xs bg-purple-200 text-purple-800 px-1 py-0 flex-shrink-0">
-                Timeline
+                {BADGE_TIMELINE}
               </Badge>
             </div>
             <div className="text-xs text-gray-500">

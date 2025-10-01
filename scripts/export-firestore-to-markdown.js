@@ -3,6 +3,11 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
+const {
+  CONVERSATIONS_COLLECTION,
+  MESSAGES_SUBCOLLECTION,
+  LINES_SUBCOLLECTION,
+} = require('../lib/firestore-constants');
 
 // Firebase Admin SDK 初期化
 const serviceAccount = require('../firebase-service-account.json');
@@ -17,14 +22,14 @@ async function exportFirestoreToMarkdown() {
   try {
     // コマンドライン引数から会話IDを取得（デフォルトは chat-minimal-conversation-1）
     const conversationId = process.argv[2] || 'chat-minimal-conversation-1';
-    const conversationRef = db.collection('conversations').doc(conversationId);
+    const conversationRef = db.collection(CONVERSATIONS_COLLECTION).doc(conversationId);
 
     console.log('🚀 Firestore からデータを取得中...');
 
     // データ取得
     const [messagesSnapshot, linesSnapshot] = await Promise.all([
-      conversationRef.collection('messages').get(),
-      conversationRef.collection('lines').get()
+      conversationRef.collection(MESSAGES_SUBCOLLECTION).get(),
+      conversationRef.collection(LINES_SUBCOLLECTION).get()
     ]);
 
     // データを変換

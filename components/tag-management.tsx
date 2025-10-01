@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight, Edit, Trash2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useTagContext, Tag } from "@/lib/tag-context"
 import { TagEditDialog } from "@/components/tag-edit-dialog"
+import { LOADING_TAGS, ERROR_PREFIX } from "@/lib/ui-strings"
 
 interface TagManagementProps {
   className?: string
@@ -21,7 +22,7 @@ export function TagManagement({ className }: TagManagementProps) {
     return (
       <div className={`bg-white ${className || ''}`}>
         <div className="flex items-center justify-center p-8">
-          <div className="text-gray-500">タグを読み込み中...</div>
+          <div className="text-gray-500">{LOADING_TAGS}</div>
         </div>
       </div>
     )
@@ -31,7 +32,7 @@ export function TagManagement({ className }: TagManagementProps) {
     return (
       <div className={`bg-white ${className || ''}`}>
         <div className="flex items-center justify-center p-8">
-          <div className="text-red-500">エラー: {state.error}</div>
+          <div className="text-red-500">{ERROR_PREFIX}{state.error}</div>
         </div>
       </div>
     )

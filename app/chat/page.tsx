@@ -7,11 +7,14 @@ import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { ChatLayout } from "@/components/layouts/ChatLayout"
 import { useChatData } from "@/hooks/use-chat-data"
+import { MAIN_LINE_ID } from "@/lib/constants"
+import { LOADING_CHAT_DATA, LOADING_GENERIC } from "@/lib/ui-strings"
+import { ROUTE_BRANCHES, ROUTE_MANAGEMENT } from "@/lib/routes"
 
 function ChatPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const lineName = searchParams.get('line') || 'main'
+  const lineName = searchParams.get('line') || MAIN_LINE_ID
   const decodedLineName = decodeURIComponent(lineName)
 
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
@@ -32,7 +35,7 @@ function ChatPageContent() {
         setLineNotFound(false)
       } else {
         // ラインが見つからない場合、メインラインにフォールバック
-        const mainLine = data.lines.main || Object.values(data.lines)[0]
+        const mainLine = data.lines[MAIN_LINE_ID] || Object.values(data.lines)[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
         }
@@ -73,9 +76,9 @@ function ChatPageContent() {
 
     // ビューに応じてルーティング
     if (newView === 'branches') {
-      router.push('/branch_list')
+      router.push(ROUTE_BRANCHES)
     } else if (newView === 'management') {
-      router.push('/management')
+      router.push(ROUTE_MANAGEMENT)
     }
     // chatの場合は現在のページに留まる
   }
@@ -85,7 +88,7 @@ function ChatPageContent() {
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">チャットデータを読み込み中...</p>
+          <p className="text-gray-600">{LOADING_CHAT_DATA}</p>
         </div>
       </div>
     )
@@ -133,7 +136,7 @@ export default function ChatPage() {
       <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">読み込み中...</p>
+          <p className="text-gray-600">{LOADING_GENERIC}</p>
         </div>
       </div>
     }>

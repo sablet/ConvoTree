@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import { TagProvider } from "@/lib/tag-context";
+import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -15,8 +16,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "ConvoTree",
-  description: "Branching conversation tree with timeline navigation",
+  title: APP_TITLE,
+  description: APP_DESCRIPTION,
   manifest: "/manifest.json",
   icons: {
     icon: "/icon-192.png",

@@ -1,8 +1,9 @@
 // スラッシュコマンドの解析とメッセージタイプの判定
+import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from '@/lib/constants'
 
 export interface ParsedMessage {
   content: string // コマンドを除いた実際のメッセージ内容
-  type: 'text' | 'task' | 'document' | 'session'
+  type: MessageType
   metadata?: Record<string, unknown>
 }
 
@@ -16,7 +17,7 @@ export interface SlashCommandPattern {
 const COMMAND_PATTERNS: SlashCommandPattern[] = [
   {
     pattern: /^\/task_high\s+([\s\S]*)$/,
-    type: 'task',
+    type: MESSAGE_TYPE_TASK,
     metadata: {
       priority: 'high',
       completed: false,
@@ -25,7 +26,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   },
   {
     pattern: /^\/task_medium\s+([\s\S]*)$/,
-    type: 'task',
+    type: MESSAGE_TYPE_TASK,
     metadata: {
       priority: 'medium',
       completed: false,
@@ -34,7 +35,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   },
   {
     pattern: /^\/task_low\s+([\s\S]*)$/,
-    type: 'task',
+    type: MESSAGE_TYPE_TASK,
     metadata: {
       priority: 'low',
       completed: false,
@@ -43,7 +44,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   },
   {
     pattern: /^\/task\s+([\s\S]*)$/,
-    type: 'task',
+    type: MESSAGE_TYPE_TASK,
     metadata: {
       priority: 'medium',
       completed: false,
@@ -52,7 +53,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   },
   {
     pattern: /^\/document\s+([\s\S]*)$/,
-    type: 'document',
+    type: MESSAGE_TYPE_DOCUMENT,
     metadata: {
       isCollapsed: false,
       wordCount: 0, // 後で設定
@@ -62,7 +63,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   },
   {
     pattern: /^\/session\s+([\s\S]*)$/,
-    type: 'session',
+    type: MESSAGE_TYPE_SESSION,
     metadata: {
       timeSpent: 0,
       autoStart: true
@@ -83,7 +84,7 @@ export function parseSlashCommand(input: string): ParsedMessage {
       const content = match[1]?.trim() || ''
 
       // ドキュメントの場合、文字数とタイトルを設定
-      if (type === 'document' && metadata) {
+      if (type === MESSAGE_TYPE_DOCUMENT && metadata) {
         const lines = content.split('\n')
         const title = lines[0]?.trim() || ''
 
@@ -111,7 +112,7 @@ export function parseSlashCommand(input: string): ParsedMessage {
   // スラッシュコマンドが見つからない場合は通常のテキストメッセージ
   return {
     content: trimmedInput,
-    type: 'text'
+    type: MESSAGE_TYPE_TEXT
   }
 }
 

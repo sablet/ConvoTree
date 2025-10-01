@@ -3,6 +3,7 @@
 import { TaskMessage } from "./task-message"
 import { DocumentMessage } from "./document-message"
 import { SessionMessage } from "./session-message"
+import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from '@/lib/constants'
 
 interface Message {
   id: string
@@ -16,7 +17,7 @@ interface Message {
   hasBookmark?: boolean
   author?: string
   images?: string[]
-  type?: 'text' | 'task' | 'document' | 'session'
+  type?: MessageType
   metadata?: Record<string, unknown>
 }
 
@@ -71,9 +72,9 @@ export function MessageTypeRenderer({
   }
 
   // メッセージタイプに応じたレンダリング（デフォルトはtext）
-  const messageType = message.type || 'text';
+  const messageType = message.type || MESSAGE_TYPE_TEXT;
   switch (messageType) {
-    case 'task':
+    case MESSAGE_TYPE_TASK:
       const taskData = message.metadata as {
         priority: 'low' | 'medium' | 'high' | 'urgent'
         completed: boolean
@@ -89,7 +90,7 @@ export function MessageTypeRenderer({
         />
       )
 
-    case 'document':
+    case MESSAGE_TYPE_DOCUMENT:
       return (
         <DocumentMessage
           messageId={message.id}
@@ -105,7 +106,7 @@ export function MessageTypeRenderer({
         />
       )
 
-    case 'session':
+    case MESSAGE_TYPE_SESSION:
       return (
         <SessionMessage
           messageId={message.id}
@@ -122,7 +123,7 @@ export function MessageTypeRenderer({
         />
       )
 
-    case 'text':
+    case MESSAGE_TYPE_TEXT:
     default:
       // 通常のテキストメッセージ
       return (

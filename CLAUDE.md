@@ -83,6 +83,13 @@ chat-line/
 - `<img>` タグ禁止 → `next/image` の `<Image>` コンポーネント使用
 - Static generation 優先
 
+### 定数管理
+- **ハードコード禁止**: ID・文字列は必ず定数ファイルから参照する
+- `lib/constants.ts` - メッセージタイプ、優先度、アプリメタデータ
+- `lib/firestore-constants.ts` - Firestoreコレクション名
+- `lib/routes.ts` - ルートパス
+- `lib/ui-strings.ts` - UI表示文字列(日本語)
+
 ### 品質保証
 - ESLint ルールに従う
 - **開発完了前に必ず `npx next build` でエラー0を確認**

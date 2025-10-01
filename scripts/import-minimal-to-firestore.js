@@ -3,6 +3,13 @@
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
+const {
+  CONVERSATIONS_COLLECTION,
+  MESSAGES_SUBCOLLECTION,
+  LINES_SUBCOLLECTION,
+  BRANCH_POINTS_SUBCOLLECTION,
+  TAGS_SUBCOLLECTION,
+} = require('../lib/firestore-constants');
 
 // Firebase Admin SDK 初期化
 const serviceAccount = require('../firebase-service-account.json');
@@ -24,11 +31,11 @@ async function importMinimalChatData() {
 
     // 会話ID（ミニマル用）
     const conversationId = 'minimal-conversation-1';
-    const conversationRef = db.collection('conversations').doc(conversationId);
+    const conversationRef = db.collection(CONVERSATIONS_COLLECTION).doc(conversationId);
 
     // 1. Messages サブコレクションにインポート
     console.log('📝 Messages をインポート中...');
-    const messagesCollection = conversationRef.collection('messages');
+    const messagesCollection = conversationRef.collection(MESSAGES_SUBCOLLECTION);
 
     for (const [messageId, messageData] of Object.entries(chatData.messages)) {
       await messagesCollection.doc(messageId).set({
@@ -40,7 +47,7 @@ async function importMinimalChatData() {
 
     // 2. Lines サブコレクションにインポート
     console.log('📋 Lines をインポート中...');
-    const linesCollection = conversationRef.collection('lines');
+    const linesCollection = conversationRef.collection(LINES_SUBCOLLECTION);
 
     for (const line of chatData.lines) {
       await linesCollection.doc(line.id).set({
@@ -52,7 +59,7 @@ async function importMinimalChatData() {
 
     // 3. Branch Points サブコレクションにインポート (空の場合もあり)
     console.log('🌿 Branch Points をインポート中...');
-    const branchPointsCollection = conversationRef.collection('branchPoints');
+    const branchPointsCollection = conversationRef.collection(BRANCH_POINTS_SUBCOLLECTION);
 
     for (const [branchPointId, branchPointData] of Object.entries(chatData.branchPoints)) {
       await branchPointsCollection.doc(branchPointId).set({
@@ -65,7 +72,7 @@ async function importMinimalChatData() {
 
     // 4. Tags サブコレクションにインポート
     console.log('🏷️ Tags をインポート中...');
-    const tagsCollection = conversationRef.collection('tags');
+    const tagsCollection = conversationRef.collection(TAGS_SUBCOLLECTION);
 
     for (const [tagId, tagData] of Object.entries(chatData.tags)) {
       await tagsCollection.doc(tagId).set({

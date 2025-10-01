@@ -3,6 +3,8 @@
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { config } from '@/lib/config';
+import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION, BRANCH_POINTS_SUBCOLLECTION, TAGS_SUBCOLLECTION, TAG_GROUPS_SUBCOLLECTION } from '@/lib/firestore-constants';
+import { type MessageType } from '@/lib/constants';
 
 
 interface Message {
@@ -18,7 +20,7 @@ interface Message {
   author?: string;
   images?: string[];
   // 🟢 メッセージタイプとメタデータ拡張
-  type?: 'text' | 'task' | 'document' | 'session';
+  type?: MessageType;
   metadata?: Record<string, unknown>;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
@@ -108,7 +110,7 @@ class DataSourceManager {
 
       // Loading data from Firestore
 
-      const conversationRef = doc(db, 'conversations', this.conversationId);
+      const conversationRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId);
 
       // Check if conversation exists
       const conversationDoc = await getDoc(conversationRef);
@@ -265,7 +267,7 @@ class DataSourceManager {
       this.validateMessageUpdates(updates);
 
 
-      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+      const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, id);
 
       // メッセージ存在確認
       const messageDoc = await getDoc(messageRef);
@@ -313,7 +315,7 @@ class DataSourceManager {
       this.validateMessageId(id);
 
 
-      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', id);
+      const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, id);
 
       // メッセージ存在確認
       const messageDoc = await getDoc(messageRef);
@@ -415,7 +417,7 @@ class DataSourceManager {
       this.validateTagGroupUpdates(updates);
 
 
-      const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
+      const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, id);
 
       // タググループ存在確認
       const tagGroupDoc = await getDoc(tagGroupRef);
@@ -453,7 +455,7 @@ class DataSourceManager {
       this.validateTagGroupId(id);
 
 
-      const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', id);
+      const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, id);
 
       // タググループ存在確認
       const tagGroupDoc = await getDoc(tagGroupRef);
@@ -486,7 +488,7 @@ class DataSourceManager {
 
       for (let i = 0; i < orderedIds.length; i++) {
         const tagGroupId = orderedIds[i];
-        const tagGroupRef = doc(db, 'conversations', this.conversationId, 'tagGroups', tagGroupId);
+        const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, tagGroupId);
 
         // 存在確認
         const tagGroupDoc = await getDoc(tagGroupRef);
@@ -617,7 +619,7 @@ class DataSourceManager {
 
         // 開始メッセージの存在確認
         if (line.startMessageId) {
-          const startMessageRef = doc(db, 'conversations', this.conversationId, 'messages', line.startMessageId);
+          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.startMessageId);
           const startMessageDoc = await transaction.get(startMessageRef);
           if (!startMessageDoc.exists()) {
             throw new Error(`Start message with ID ${line.startMessageId} not found`);
@@ -626,7 +628,7 @@ class DataSourceManager {
 
         // 分岐元メッセージの存在確認
         if (line.branchFromMessageId) {
-          const branchMessageRef = doc(db, 'conversations', this.conversationId, 'messages', line.branchFromMessageId);
+          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.branchFromMessageId);
           const branchMessageDoc = await transaction.get(branchMessageRef);
           if (!branchMessageDoc.exists()) {
             throw new Error(`Branch from message with ID ${line.branchFromMessageId} not found`);
@@ -659,7 +661,7 @@ class DataSourceManager {
 
 
       await runTransaction(db, async (transaction) => {
-        const lineRef = doc(db, 'conversations', this.conversationId, 'lines', id);
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
 
         // Line存在確認
         const lineDoc = await transaction.get(lineRef);
@@ -674,7 +676,7 @@ class DataSourceManager {
 
         // 開始メッセージの存在確認（変更される場合）
         if (updates.startMessageId) {
-          const startMessageRef = doc(db, 'conversations', this.conversationId, 'messages', updates.startMessageId);
+          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.startMessageId);
           const startMessageDoc = await transaction.get(startMessageRef);
           if (!startMessageDoc.exists()) {
             throw new Error(`Start message with ID ${updates.startMessageId} not found`);
@@ -683,7 +685,7 @@ class DataSourceManager {
 
         // 分岐元メッセージの存在確認（変更される場合）
         if (updates.branchFromMessageId) {
-          const branchMessageRef = doc(db, 'conversations', this.conversationId, 'messages', updates.branchFromMessageId);
+          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.branchFromMessageId);
           const branchMessageDoc = await transaction.get(branchMessageRef);
           if (!branchMessageDoc.exists()) {
             throw new Error(`Branch from message with ID ${updates.branchFromMessageId} not found`);
@@ -713,7 +715,7 @@ class DataSourceManager {
 
 
       await runTransaction(db, async (transaction) => {
-        const lineRef = doc(db, 'conversations', this.conversationId, 'lines', id);
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
 
         // Line存在確認
         const lineDoc = await transaction.get(lineRef);
@@ -726,7 +728,7 @@ class DataSourceManager {
         // 関連メッセージの処理 - メッセージのlineIdをnullに設定
         if (lineData.messageIds && lineData.messageIds.length > 0) {
           for (const messageId of lineData.messageIds) {
-            const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+            const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
             const messageDoc = await transaction.get(messageRef);
             if (messageDoc.exists()) {
               transaction.update(messageRef, {
@@ -839,14 +841,14 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
         const messageDoc = await transaction.get(messageRef);
         if (!messageDoc.exists()) {
           throw new Error(`Message with ID ${messageId} not found`);
         }
 
         // 既存のBranchPointチェック
-        const branchPointRef = doc(db, 'conversations', this.conversationId, 'branchPoints', messageId);
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
         const existingBranchPoint = await transaction.get(branchPointRef);
         if (existingBranchPoint.exists()) {
           throw new Error(`BranchPoint for message ${messageId} already exists`);
@@ -879,21 +881,21 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
         const messageDoc = await transaction.get(messageRef);
         if (!messageDoc.exists()) {
           throw new Error(`Message with ID ${messageId} not found`);
         }
 
         // Line存在確認
-        const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
         const lineDoc = await transaction.get(lineRef);
         if (!lineDoc.exists()) {
           throw new Error(`Line with ID ${lineId} not found`);
         }
 
         // BranchPoint存在確認と作成
-        const branchPointRef = doc(db, 'conversations', this.conversationId, 'branchPoints', messageId);
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
         const branchPointDoc = await transaction.get(branchPointRef);
 
         let branchPointData: BranchPoint;
@@ -941,7 +943,7 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // BranchPoint存在確認
-        const branchPointRef = doc(db, 'conversations', this.conversationId, 'branchPoints', messageId);
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
         const branchPointDoc = await transaction.get(branchPointRef);
         if (!branchPointDoc.exists()) {
           throw new Error(`BranchPoint for message ${messageId} not found`);
@@ -983,7 +985,7 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // BranchPoint存在確認
-        const branchPointRef = doc(db, 'conversations', this.conversationId, 'branchPoints', messageId);
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
         const branchPointDoc = await transaction.get(branchPointRef);
         if (!branchPointDoc.exists()) {
           throw new Error(`BranchPoint for message ${messageId} not found`);
@@ -994,7 +996,7 @@ class DataSourceManager {
         // 関連するLineの処理（branchFromMessageIdをクリア）
         if (branchPointData.lines && branchPointData.lines.length > 0) {
           for (const lineId of branchPointData.lines) {
-            const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
+            const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
             const lineDoc = await transaction.get(lineRef);
             if (lineDoc.exists()) {
               const lineData = lineDoc.data() as Line;
@@ -1034,8 +1036,8 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // 両方のメッセージの存在確認
-        const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
-        const nextMessageRef = doc(db, 'conversations', this.conversationId, 'messages', nextMessageId);
+        const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
+        const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, nextMessageId);
 
         const [prevMessageDoc, nextMessageDoc] = await Promise.all([
           transaction.get(prevMessageRef),
@@ -1091,7 +1093,7 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
         const messageDoc = await transaction.get(messageRef);
 
         if (!messageDoc.exists()) {
@@ -1102,7 +1104,7 @@ class DataSourceManager {
 
         // 前のメッセージのnextInLineをクリア
         if (messageData.prevInLine) {
-          const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.prevInLine);
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
           const prevMessageDoc = await transaction.get(prevMessageRef);
           if (prevMessageDoc.exists()) {
             transaction.update(prevMessageRef, {
@@ -1114,7 +1116,7 @@ class DataSourceManager {
 
         // 次のメッセージのprevInLineをクリア
         if (messageData.nextInLine) {
-          const nextMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.nextInLine);
+          const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
           const nextMessageDoc = await transaction.get(nextMessageRef);
           if (nextMessageDoc.exists()) {
             transaction.update(nextMessageRef, {
@@ -1153,7 +1155,7 @@ class DataSourceManager {
 
       await runTransaction(db, async (transaction) => {
         // メッセージ存在確認
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
         const messageDoc = await transaction.get(messageRef);
 
         if (!messageDoc.exists()) {
@@ -1161,7 +1163,7 @@ class DataSourceManager {
         }
 
         // ターゲットLine存在確認
-        const targetLineRef = doc(db, 'conversations', this.conversationId, 'lines', targetLineId);
+        const targetLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, targetLineId);
         const targetLineDoc = await transaction.get(targetLineRef);
 
         if (!targetLineDoc.exists()) {
@@ -1215,7 +1217,7 @@ class DataSourceManager {
         throw new Error('Linking these messages would create a circular reference');
       }
 
-      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', currentId);
+      const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, currentId);
       const messageDoc = await transaction.get(messageRef);
 
       if (!messageDoc.exists()) {
@@ -1242,7 +1244,7 @@ class DataSourceManager {
     // メッセージチェーンを辿って正しい順序を構築
     const orderedIds = this.buildMessageChain(messagesMap);
 
-    const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
+    const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
     transaction.update(lineRef, {
       messageIds: orderedIds,
       updated_at: new Date().toISOString(),
@@ -1284,7 +1286,7 @@ class DataSourceManager {
   }
 
   private async unlinkMessageFromCurrentPosition(messageId: string, transaction: Transaction): Promise<void> {
-    const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+    const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
     const messageDoc = await transaction.get(messageRef);
 
     if (!messageDoc.exists()) {
@@ -1295,8 +1297,8 @@ class DataSourceManager {
 
     // 前のメッセージと次のメッセージを直接リンク
     if (messageData.prevInLine && messageData.nextInLine) {
-      const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.prevInLine);
-      const nextMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.nextInLine);
+      const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
+      const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
 
       transaction.update(prevMessageRef, {
         nextInLine: messageData.nextInLine,
@@ -1309,14 +1311,14 @@ class DataSourceManager {
       });
     } else if (messageData.prevInLine) {
       // 前のメッセージのnextInLineをクリア
-      const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.prevInLine);
+      const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
       transaction.update(prevMessageRef, {
         nextInLine: null,
         updatedAt: serverTimestamp()
       });
     } else if (messageData.nextInLine) {
       // 次のメッセージのprevInLineをクリア
-      const nextMessageRef = doc(db, 'conversations', this.conversationId, 'messages', messageData.nextInLine);
+      const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
       transaction.update(nextMessageRef, {
         prevInLine: null,
         updatedAt: serverTimestamp()
@@ -1343,8 +1345,8 @@ class DataSourceManager {
       // 末尾に追加
       if (orderedIds.length > 0) {
         const lastMessageId = orderedIds[orderedIds.length - 1];
-        const lastMessageRef = doc(db, 'conversations', this.conversationId, 'messages', lastMessageId);
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const lastMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, lastMessageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
 
         transaction.update(lastMessageRef, {
           nextInLine: messageId,
@@ -1361,8 +1363,8 @@ class DataSourceManager {
       // 先頭に挿入
       if (orderedIds.length > 0) {
         const firstMessageId = orderedIds[0];
-        const firstMessageRef = doc(db, 'conversations', this.conversationId, 'messages', firstMessageId);
-        const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+        const firstMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, firstMessageId);
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
 
         transaction.update(firstMessageRef, {
           prevInLine: messageId,
@@ -1382,7 +1384,7 @@ class DataSourceManager {
 
       const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
       const nextMessageRef = doc(db, 'conversations', this.conversationId, 'messages', nextMessageId);
-      const messageRef = doc(db, 'conversations', this.conversationId, 'messages', messageId);
+      const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
 
       transaction.update(prevMessageRef, {
         nextInLine: messageId,
@@ -1446,7 +1448,7 @@ class DataSourceManager {
       this.validateTagUpdates(updates);
 
 
-      const tagRef = doc(db, 'conversations', this.conversationId, 'tags', id);
+      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
 
       // タグ存在確認
       const tagDoc = await getDoc(tagRef);
@@ -1490,7 +1492,7 @@ class DataSourceManager {
       this.validateTagId(id);
 
 
-      const tagRef = doc(db, 'conversations', this.conversationId, 'tags', id);
+      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
 
       // タグ存在確認
       const tagDoc = await getDoc(tagRef);
@@ -1609,12 +1611,12 @@ class DataSourceManager {
     try {
       return await runTransaction(db, async (transaction) => {
         // 🔵 全ての読み取り操作を最初に実行
-        const lineRef = doc(db, 'conversations', this.conversationId, 'lines', lineId);
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
         const lineDoc = await transaction.get(lineRef);
 
         let prevMessageDoc = null;
         if (prevMessageId) {
-          const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
           prevMessageDoc = await transaction.get(prevMessageRef);
         }
 
@@ -1640,7 +1642,7 @@ class DataSourceManager {
 
         // 前のメッセージのnextInLineを更新
         if (prevMessageId && prevMessageDoc && prevMessageDoc.exists()) {
-          const prevMessageRef = doc(db, 'conversations', this.conversationId, 'messages', prevMessageId);
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
           transaction.update(prevMessageRef, {
             nextInLine: newMessageRef.id,
             updatedAt: serverTimestamp()

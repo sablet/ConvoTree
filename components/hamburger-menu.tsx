@@ -4,6 +4,17 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Menu, X, MessageSquare, Tags, GitBranch, Bug } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
+import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_DEBUG } from "@/lib/routes"
+import {
+  NAV_CHAT,
+  NAV_BRANCHES,
+  NAV_TAGS,
+  NAV_DEBUG,
+  NAV_CHAT_DESC,
+  NAV_BRANCHES_DESC,
+  NAV_TAGS_DESC,
+  NAV_DEBUG_DESC
+} from "@/lib/ui-strings"
 
 interface HamburgerMenuProps {
   children: React.ReactNode
@@ -23,31 +34,31 @@ export function HamburgerMenu({ children, position = { top: '1rem', right: '1rem
   const navItems = [
     {
       id: 'chat' as const,
-      label: 'チャット',
+      label: NAV_CHAT,
       icon: MessageSquare,
-      description: 'ブランチングチャット',
-      path: '/'
+      description: NAV_CHAT_DESC,
+      path: ROUTE_HOME
     },
     {
       id: 'branches' as const,
-      label: 'ブランチリスト',
+      label: NAV_BRANCHES,
       icon: GitBranch,
-      description: 'ブランチ構造',
-      path: '/branch_list'
+      description: NAV_BRANCHES_DESC,
+      path: ROUTE_BRANCHES
     },
     {
       id: 'management' as const,
-      label: 'タグリスト',
+      label: NAV_TAGS,
       icon: Tags,
-      description: 'タグ管理',
-      path: '/management'
+      description: NAV_TAGS_DESC,
+      path: ROUTE_MANAGEMENT
     },
     {
       id: 'debug' as const,
-      label: 'デバッグ',
+      label: NAV_DEBUG,
       icon: Bug,
-      description: 'デバッグツール',
-      path: '/debug'
+      description: NAV_DEBUG_DESC,
+      path: ROUTE_DEBUG
     }
   ]
 

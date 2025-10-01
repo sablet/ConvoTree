@@ -2,6 +2,17 @@
 
 import { MessageSquare, Tags, GitBranch, Bug } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
+import { ROUTE_DEBUG } from "@/lib/routes"
+import {
+  NAV_CHAT,
+  NAV_BRANCHES,
+  NAV_TAGS,
+  NAV_DEBUG,
+  NAV_CHAT_DESC,
+  NAV_BRANCHES_DESC,
+  NAV_TAGS_DESC,
+  NAV_DEBUG_DESC
+} from "@/lib/ui-strings"
 
 interface FooterNavigationProps {
   currentView: 'chat' | 'management' | 'branches'
@@ -15,27 +26,27 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
   const navItems = [
     {
       id: 'chat' as const,
-      label: 'チャット',
+      label: NAV_CHAT,
       icon: MessageSquare,
-      description: 'ブランチングチャット'
+      description: NAV_CHAT_DESC
     },
     {
       id: 'branches' as const,
-      label: 'ブランチ',
+      label: NAV_BRANCHES,
       icon: GitBranch,
-      description: 'ブランチ構造'
+      description: NAV_BRANCHES_DESC
     },
     {
       id: 'management' as const,
-      label: 'タグ',
+      label: NAV_TAGS,
       icon: Tags,
-      description: 'タグ管理'
+      description: NAV_TAGS_DESC
     },
     {
       id: 'debug' as const,
-      label: 'デバッグ',
+      label: NAV_DEBUG,
       icon: Bug,
-      description: 'デバッグツール'
+      description: NAV_DEBUG_DESC
     }
   ]
 
@@ -57,7 +68,7 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
                 if (item.id === 'chat' || item.id === 'management' || item.id === 'branches') {
                   onViewChange(item.id)
                 } else if (item.id === 'debug') {
-                  router.push('/debug')
+                  router.push(ROUTE_DEBUG)
                 }
               }}
               className={`

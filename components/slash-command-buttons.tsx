@@ -3,6 +3,20 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { CheckSquare, FileText, Timer, AlertTriangle, Zap } from "lucide-react"
+import {
+  SLASH_COMMAND_TASK_HIGH,
+  SLASH_COMMAND_TASK_MEDIUM,
+  SLASH_COMMAND_TASK_LOW,
+  SLASH_COMMAND_DOCUMENT,
+  SLASH_COMMAND_SESSION
+} from "@/lib/constants"
+import {
+  LABEL_TASK_HIGH,
+  LABEL_TASK_MEDIUM,
+  LABEL_TASK_LOW,
+  LABEL_DOCUMENT,
+  LABEL_SESSION
+} from "@/lib/ui-strings"
 
 interface SlashCommandButtonsProps {
   onCommandSelect: (command: string) => void
@@ -18,36 +32,36 @@ interface SlashCommand {
 
 const SLASH_COMMANDS: SlashCommand[] = [
   {
-    command: "/task_high ",
-    label: "高優先度タスク",
+    command: `${SLASH_COMMAND_TASK_HIGH} `,
+    label: LABEL_TASK_HIGH,
     icon: <AlertTriangle className="h-3 w-3" />,
     description: "緊急度の高いタスクを作成",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
   },
   {
-    command: "/task_medium ",
-    label: "通常タスク",
+    command: `${SLASH_COMMAND_TASK_MEDIUM} `,
+    label: LABEL_TASK_MEDIUM,
     icon: <CheckSquare className="h-3 w-3" />,
     description: "通常の優先度のタスクを作成",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
   },
   {
-    command: "/task_low ",
-    label: "低優先度タスク",
+    command: `${SLASH_COMMAND_TASK_LOW} `,
+    label: LABEL_TASK_LOW,
     icon: <CheckSquare className="h-3 w-3" />,
     description: "優先度の低いタスクを作成",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
   },
   {
-    command: "/document ",
-    label: "ドキュメント",
+    command: `${SLASH_COMMAND_DOCUMENT} `,
+    label: LABEL_DOCUMENT,
     icon: <FileText className="h-3 w-3" />,
     description: "長文ドキュメントを作成",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
   },
   {
-    command: "/session ",
-    label: "作業セッション",
+    command: `${SLASH_COMMAND_SESSION} `,
+    label: LABEL_SESSION,
     icon: <Timer className="h-3 w-3" />,
     description: "作業時間を記録するセッションを開始",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"

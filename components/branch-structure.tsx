@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { Message, Line, Tag, BranchPoint, TagGroup } from "@/lib/types"
 import { formatRelativeTime } from "@/lib/utils/date"
+import { MAIN_LINE_ID } from "@/lib/constants"
 
 interface BranchStructureProps {
   messages: Record<string, Message>
@@ -126,8 +127,8 @@ export function BranchStructure({
 
     // 'main'ラインを常に最初に表示
     roots.sort((a, b) => {
-      if (a.line.id === 'main') return -1;
-      if (b.line.id === 'main') return 1;
+      if (a.line.id === MAIN_LINE_ID) return -1;
+      if (b.line.id === MAIN_LINE_ID) return 1;
       return new Date(a.line.created_at).getTime() - new Date(b.line.created_at).getTime();
     });
 
@@ -260,7 +261,7 @@ export function BranchStructure({
 
   const canDeleteLine = (line: Line): boolean => {
     // mainラインは削除不可
-    if (line.id === 'main') {
+    if (line.id === MAIN_LINE_ID) {
       return false
     }
     // 削除可能

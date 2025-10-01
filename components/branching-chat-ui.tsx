@@ -12,6 +12,8 @@ import { RecentLinesFooter } from "@/components/recent-lines-footer"
 import { SlashCommandButtons } from "@/components/slash-command-buttons"
 import { parseSlashCommand } from "@/lib/slash-command-parser"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
+import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from "@/lib/constants"
+import { FILTER_ALL, FILTER_TEXT, FILTER_TASK, FILTER_DOCUMENT, FILTER_SESSION, RELATIVE_TIME_NOW, DATE_TODAY, DATE_YESTERDAY, WEEKDAY_NAMES } from "@/lib/ui-strings"
 
 interface Message {
   id: string
@@ -25,7 +27,7 @@ interface Message {
   hasBookmark?: boolean
   author?: string
   images?: string[]
-  type?: 'text' | 'task' | 'document' | 'session'
+  type?: MessageType
   metadata?: Record<string, unknown>
 }
 
@@ -117,7 +119,7 @@ export function BranchingChatUI({
   // メッセージ編集・削除関連の状態
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState("")
-  const [editingMessageType, setEditingMessageType] = useState<'text' | 'task' | 'document' | 'session' | null>(null)
+  const [editingMessageType, setEditingMessageType] = useState<MessageType | null>(null)
   const [editingMetadata, setEditingMetadata] = useState<Record<string, unknown>>({})
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
@@ -132,7 +134,7 @@ export function BranchingChatUI({
   const [copySuccessMessageId, setCopySuccessMessageId] = useState<string | null>(null)
 
   // フィルター・検索関連の状態
-  const [filterMessageType, setFilterMessageType] = useState<'text' | 'task' | 'document' | 'session' | 'all'>('all')
+  const [filterMessageType, setFilterMessageType] = useState<MessageType | 'all'>('all')
   const [filterTag, setFilterTag] = useState<string>('')
   const [searchKeyword, setSearchKeyword] = useState<string>('')
 
@@ -178,7 +180,7 @@ export function BranchingChatUI({
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-    if (diffMinutes < 1) return "今"
+    if (diffMinutes < 1) return RELATIVE_TIME_NOW
     if (diffMinutes < 60) return `${diffMinutes}分前`
     if (diffHours < 24) return `${diffHours}時間前`
     if (diffDays < 30) return `${diffDays}日前`
@@ -197,19 +199,18 @@ export function BranchingChatUI({
 
     // 今日の場合
     if (messageDate.toDateString() === today.toDateString()) {
-      return "今日"
+      return DATE_TODAY
     }
 
     // 昨日の場合
     if (messageDate.toDateString() === yesterday.toDateString()) {
-      return "昨日"
+      return DATE_YESTERDAY
     }
 
     // その他の場合は "M/D(曜日)" 形式
     const month = messageDate.getMonth() + 1
     const day = messageDate.getDate()
-    const weekdays = ["日", "月", "火", "水", "木", "金", "土"]
-    const weekday = weekdays[messageDate.getDay()]
+    const weekday = WEEKDAY_NAMES[messageDate.getDay()]
 
     return `${month}/${day}(${weekday})`
   }
@@ -941,27 +942,27 @@ export function BranchingChatUI({
   }
 
   // メッセージタイプに応じたデフォルトメタデータを生成
-  const getDefaultMetadataForType = (type: 'text' | 'task' | 'document' | 'session', content: string = ''): Record<string, unknown> | undefined => {
+  const getDefaultMetadataForType = (type: MessageType, content: string = ''): Record<string, unknown> | undefined => {
     switch (type) {
-      case 'task':
+      case MESSAGE_TYPE_TASK:
         return {
           priority: 'medium' as const,
           completed: false,
           tags: []
         }
-      case 'document':
+      case MESSAGE_TYPE_DOCUMENT:
         const wordCount = content.trim().length
         return {
           isCollapsed: false,
           wordCount,
           originalLength: wordCount
         }
-      case 'session':
+      case MESSAGE_TYPE_SESSION:
         return {
           timeSpent: 0
           // checkedInAt, checkedOutAtは意図的に省略（undefinedを避ける）
         }
-      case 'text':
+      case MESSAGE_TYPE_TEXT:
       default:
         return undefined
     }
@@ -1490,14 +1491,14 @@ export function BranchingChatUI({
             {/* タイプフィルター */}
             <select
               value={filterMessageType}
-              onChange={(e) => setFilterMessageType(e.target.value as 'text' | 'task' | 'document' | 'session' | 'all')}
+              onChange={(e) => setFilterMessageType(e.target.value as MessageType | 'all')}
               className="text-xs border border-gray-200 rounded px-2 h-7 bg-white"
             >
-              <option value="all">全て</option>
-              <option value="text">テキスト</option>
-              <option value="task">タスク</option>
-              <option value="document">ドキュメント</option>
-              <option value="session">セッション</option>
+              <option value="all">{FILTER_ALL}</option>
+              <option value={MESSAGE_TYPE_TEXT}>{FILTER_TEXT}</option>
+              <option value={MESSAGE_TYPE_TASK}>{FILTER_TASK}</option>
+              <option value={MESSAGE_TYPE_DOCUMENT}>{FILTER_DOCUMENT}</option>
+              <option value={MESSAGE_TYPE_SESSION}>{FILTER_SESSION}</option>
             </select>
 
             {/* タグフィルター */}
@@ -1746,13 +1747,13 @@ export function BranchingChatUI({
                             <label className="text-xs font-medium text-gray-600">タイプ:</label>
                             <select
                               value={editingMessageType || message.type || 'text'}
-                              onChange={(e) => setEditingMessageType(e.target.value as 'text' | 'task' | 'document' | 'session')}
+                              onChange={(e) => setEditingMessageType(e.target.value as MessageType)}
                               className="text-xs border border-gray-300 rounded px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
                             >
-                              <option value="text">テキスト</option>
-                              <option value="task">タスク</option>
-                              <option value="document">ドキュメント</option>
-                              <option value="session">セッション</option>
+                              <option value={MESSAGE_TYPE_TEXT}>{FILTER_TEXT}</option>
+                              <option value={MESSAGE_TYPE_TASK}>{FILTER_TASK}</option>
+                              <option value={MESSAGE_TYPE_DOCUMENT}>{FILTER_DOCUMENT}</option>
+                              <option value={MESSAGE_TYPE_SESSION}>{FILTER_SESSION}</option>
                             </select>
                           </div>
 
@@ -1805,7 +1806,7 @@ export function BranchingChatUI({
                           </div>
 
                           {/* タイプ別プロパティ編集 */}
-                          {(editingMessageType === 'task' || (editingMessageType === null && message.type === 'task')) && (
+                          {(editingMessageType === MESSAGE_TYPE_TASK || (editingMessageType === null && message.type === MESSAGE_TYPE_TASK)) && (
                             <div className="bg-orange-50 p-3 rounded-md border border-orange-200">
                               <h4 className="text-xs font-medium text-orange-800 mb-2">タスクプロパティ</h4>
                               <div>
@@ -1834,7 +1835,7 @@ export function BranchingChatUI({
                             </div>
                           )}
 
-                          {(editingMessageType === 'session' || (editingMessageType === null && message.type === 'session')) && (
+                          {(editingMessageType === MESSAGE_TYPE_SESSION || (editingMessageType === null && message.type === MESSAGE_TYPE_SESSION)) && (
                             <div className="bg-purple-50 p-3 rounded-md border border-purple-200">
                               <h4 className="text-xs font-medium text-purple-800 mb-2">セッションプロパティ</h4>
                               <div className="space-y-2">
@@ -1945,7 +1946,7 @@ export function BranchingChatUI({
                             </div>
                           )}
 
-                          {(editingMessageType === 'document' || (editingMessageType === null && message.type === 'document')) && (
+                          {(editingMessageType === MESSAGE_TYPE_DOCUMENT || (editingMessageType === null && message.type === MESSAGE_TYPE_DOCUMENT)) && (
                             <div className="bg-blue-50 p-3 rounded-md border border-blue-200">
                               <h4 className="text-xs font-medium text-blue-800 mb-2">ドキュメントプロパティ</h4>
                               <div>

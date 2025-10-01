@@ -5,6 +5,7 @@ import { BranchingChatUI } from "@/components/branching-chat-ui"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
+import { MAIN_LINE_ID } from "@/lib/constants"
 
 export default function Home() {
   const [currentLineId, setCurrentLineId] = useState<string>('')
@@ -29,7 +30,7 @@ export default function Home() {
 
       // デフォルトライン設定（現在のラインIDが空の場合のみ）
       if (!currentLineId) {
-        const mainLine = data.lines.main || Object.values(data.lines)[0]
+        const mainLine = data.lines[MAIN_LINE_ID] || Object.values(data.lines)[0]
         if (mainLine) {
           setCurrentLineId(mainLine.id)
         }

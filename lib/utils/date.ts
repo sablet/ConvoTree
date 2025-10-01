@@ -1,3 +1,5 @@
+import { RELATIVE_TIME_NOW, RELATIVE_TIME_MINUTES, RELATIVE_TIME_HOURS, RELATIVE_TIME_DAYS, RELATIVE_TIME_MONTHS } from "@/lib/ui-strings"
+
 /**
  * 日付文字列を相対時間表記に変換
  * @param dateString - 変換対象の日付文字列（updatedAt優先）
@@ -19,11 +21,11 @@ export function formatRelativeTime(dateString: string, fallbackDateString?: stri
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-  if (diffMinutes < 1) return "今"
-  if (diffMinutes < 60) return `${diffMinutes}分前`
-  if (diffHours < 24) return `${diffHours}時間前`
-  if (diffDays < 30) return `${diffDays}日前`
+  if (diffMinutes < 1) return RELATIVE_TIME_NOW
+  if (diffMinutes < 60) return `${diffMinutes}${RELATIVE_TIME_MINUTES}`
+  if (diffHours < 24) return `${diffHours}${RELATIVE_TIME_HOURS}`
+  if (diffDays < 30) return `${diffDays}${RELATIVE_TIME_DAYS}`
 
   const diffMonths = Math.floor(diffDays / 30)
-  return `${diffMonths}ヶ月前`
+  return `${diffMonths}${RELATIVE_TIME_MONTHS}`
 }
