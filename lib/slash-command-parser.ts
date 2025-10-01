@@ -56,7 +56,8 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
     metadata: {
       isCollapsed: false,
       wordCount: 0, // 後で設定
-      originalLength: 0 // 後で設定
+      originalLength: 0, // 後で設定
+      title: '' // タイトル（最初の行）
     }
   },
   {
@@ -81,12 +82,16 @@ export function parseSlashCommand(input: string): ParsedMessage {
     if (match) {
       const content = match[1]?.trim() || ''
 
-      // ドキュメントの場合、文字数を設定
+      // ドキュメントの場合、文字数とタイトルを設定
       if (type === 'document' && metadata) {
+        const lines = content.split('\n')
+        const title = lines[0]?.trim() || ''
+
         const updatedMetadata = {
           ...metadata,
           wordCount: content.length,
-          originalLength: content.length
+          originalLength: content.length,
+          title
         }
         return {
           content,

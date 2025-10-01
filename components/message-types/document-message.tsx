@@ -8,6 +8,7 @@ interface DocumentMessageData {
   summary?: string
   wordCount: number
   originalLength: number
+  title?: string
 }
 
 interface DocumentMessageProps {
@@ -32,6 +33,11 @@ export function DocumentMessage({
     }
   }
 
+  // タイトルがある場合、本文からタイトル行を除外
+  const bodyContent = data.title
+    ? content.split('\n').slice(1).join('\n').trim()
+    : content
+
   const generateSummary = (content: string, maxLength: number = 100): string => {
     if (content.length <= maxLength) return content
 
@@ -49,7 +55,7 @@ export function DocumentMessage({
     return summary || `${content.slice(0, maxLength)}...`
   }
 
-  const displaySummary = data.summary || generateSummary(content)
+  const displaySummary = data.summary || generateSummary(bodyContent)
 
   return (
     <div className="border border-blue-200 rounded-lg p-4 bg-blue-50">
@@ -57,12 +63,25 @@ export function DocumentMessage({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-blue-600" />
-          <span className="text-sm font-medium text-blue-800">
-            ドキュメント
-          </span>
-          <span className="text-xs text-blue-600">
-            ({data.wordCount}文字)
-          </span>
+          {data.title ? (
+            <>
+              <span className="text-sm font-medium text-blue-800">
+                {data.title}
+              </span>
+              <span className="text-xs text-blue-600">
+                ({data.wordCount}文字)
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-blue-800">
+                ドキュメント
+              </span>
+              <span className="text-xs text-blue-600">
+                ({data.wordCount}文字)
+              </span>
+            </>
+          )}
         </div>
 
         <Button
@@ -98,7 +117,7 @@ export function DocumentMessage({
       ) : (
         <div className="space-y-2">
           <div className="text-sm text-gray-700 bg-white rounded p-3 border border-blue-200 max-h-96 overflow-y-auto">
-            <div className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{content}</div>
+            <div className="whitespace-pre font-mono overflow-x-auto">{bodyContent}</div>
           </div>
           <div className="flex items-center justify-between text-xs text-blue-600">
             <span>全文表示中</span>
