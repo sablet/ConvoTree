@@ -554,7 +554,7 @@ export function BranchingChatUI({
   // useMemoでメモ化されたタイムラインを取得（messagesの変更も監視）
   const completeTimeline = useMemo(() => {
     return getCompleteTimeline()
-  }, [currentLineId, lines, messages, pathCache, lineAncestryCache, getCompleteTimeline])
+  }, [getCompleteTimeline])
 
   // 初回データ読み込み時とメッセージ投稿時に最下部にスクロール
   useEffect(() => {
@@ -671,12 +671,18 @@ export function BranchingChatUI({
 
     if (!inputValue.trim() && pendingImages.length === 0) return
 
-    // タイムライン仮想ブランチでは投稿不可
+    // タイムライン仮想ブランチの場合はメインラインに投稿
+    let targetLineId = currentLineId
     if (currentLineId === TIMELINE_BRANCH_ID) {
-      return
+      const mainLine = Object.values(lines).find(line => line.id === 'main')
+      if (!mainLine) {
+        alert('メインラインが見つかりません')
+        return
+      }
+      targetLineId = mainLine.id
     }
 
-    const currentLine = lines[currentLineId]
+    const currentLine = lines[targetLineId]
     if (!currentLine) {
       return
     }
@@ -775,7 +781,7 @@ export function BranchingChatUI({
         const messageData = {
           content: parsedMessage.content,
           timestamp: currentTimestamp.toISOString(),
-          lineId: currentLineId,
+          lineId: targetLineId,
           prevInLine: baseMessageId,
           author: "User",
           type: parsedMessage.type,
@@ -786,7 +792,7 @@ export function BranchingChatUI({
         // アトミックなメッセージ作成（トランザクション）
         const newMessageId = await dataSourceManager.createMessageWithLineUpdate(
           messageData,
-          currentLineId,
+          targetLineId,
           baseMessageId
         )
 
@@ -795,7 +801,7 @@ export function BranchingChatUI({
           id: newMessageId,
           content: parsedMessage.content,
           timestamp: currentTimestamp,
-          lineId: currentLineId,
+          lineId: targetLineId,
           prevInLine: baseMessageId,
           author: "User",
           type: parsedMessage.type,
@@ -820,12 +826,12 @@ export function BranchingChatUI({
 
         setLines((prev) => {
           const updated = { ...prev }
-          if (updated[currentLineId]) {
-            const updatedMessageIds = [...updated[currentLineId].messageIds, newMessageId]
-            const isFirstMessage = updated[currentLineId].messageIds.length === 0
+          if (updated[targetLineId]) {
+            const updatedMessageIds = [...updated[targetLineId].messageIds, newMessageId]
+            const isFirstMessage = updated[targetLineId].messageIds.length === 0
 
-            updated[currentLineId] = {
-              ...updated[currentLineId],
+            updated[targetLineId] = {
+              ...updated[targetLineId],
               messageIds: updatedMessageIds,
               endMessageId: newMessageId,
               ...(isFirstMessage && { startMessageId: newMessageId }),

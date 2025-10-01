@@ -2,6 +2,9 @@
 .gemini-clipboard
 .mcp.json
 
+
+doc/tickets/
+
 # dependencies
 /node_modules
 /.pnp
