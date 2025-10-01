@@ -103,6 +103,9 @@ export function BranchingChatUI({
   const [lineAncestryCache, setLineAncestryCache] = useState<Map<string, string[]>>(new Map())
   const [inputValue, setInputValue] = useState("")
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [showMoveDialog, setShowMoveDialog] = useState(false)
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [isEditingBranch, setIsEditingBranch] = useState(false)
   const [editingBranchData, setEditingBranchData] = useState<{
@@ -457,6 +460,13 @@ export function BranchingChatUI({
     const ancestry = getLineAncestry(lineId)
     const fullLineChain = [...ancestry, lineId]
 
+    console.log('[Debug] getOptimizedPath:', {
+      lineId,
+      ancestry,
+      fullLineChain,
+      lineData: lines[lineId]
+    })
+
     const allMessages: Message[] = []
     const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
 
@@ -515,8 +525,14 @@ export function BranchingChatUI({
 
   // useMemoでメモ化されたタイムラインを取得（messagesの変更も監視）
   const completeTimeline = useMemo(() => {
-    return getCompleteTimeline()
-  }, [getCompleteTimeline])
+    const timeline = getCompleteTimeline()
+    console.log('[Debug] completeTimeline:', {
+      currentLineId,
+      totalMessages: timeline.messages.length,
+      messageLineIds: timeline.messages.map(m => ({ id: m.id, content: m.content.slice(0, 10), lineId: m.lineId }))
+    })
+    return timeline
+  }, [getCompleteTimeline, currentLineId])
 
   // 初回データ読み込み時とメッセージ投稿時に最下部にスクロール
   useEffect(() => {
@@ -1048,12 +1064,169 @@ export function BranchingChatUI({
   }
 
   const handleMessageTap = (messageId: string) => {
-    // If the clicked message is already selected, deselect it
-    if (selectedBaseMessage === messageId) {
-      setSelectedBaseMessage(null)
+    if (isSelectionMode) {
+      // 複数選択モード
+      setSelectedMessages(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(messageId)) {
+          newSet.delete(messageId)
+        } else {
+          newSet.add(messageId)
+        }
+        return newSet
+      })
     } else {
-      // Otherwise, select it
-      setSelectedBaseMessage(messageId)
+      // 通常の分岐作成モード
+      if (selectedBaseMessage === messageId) {
+        setSelectedBaseMessage(null)
+      } else {
+        setSelectedBaseMessage(messageId)
+      }
+    }
+  }
+
+  const handleToggleSelectionMode = () => {
+    setIsSelectionMode(!isSelectionMode)
+    if (isSelectionMode) {
+      // 選択モードを終了する際は選択をクリア
+      setSelectedMessages(new Set())
+    } else {
+      // 選択モードに入る際は分岐作成を無効化
+      setSelectedBaseMessage(null)
+    }
+  }
+
+  const handleMoveMessages = () => {
+    if (selectedMessages.size > 0) {
+      setShowMoveDialog(true)
+    }
+  }
+
+  const handleConfirmMove = async (targetLineId: string) => {
+    if (selectedMessages.size === 0) return
+
+    setIsUpdating(true)
+    try {
+      // 選択されたメッセージIDを配列として取得
+      const selectedMessageIds = Array.from(selectedMessages)
+      const updateTimestamp = new Date().toISOString()
+
+      // 元のライン別にメッセージをグループ化
+      const messagesByOldLine = new Map<string, string[]>()
+      for (const messageId of selectedMessageIds) {
+        const message = messages[messageId]
+        if (message) {
+          const oldLineId = message.lineId
+          if (!messagesByOldLine.has(oldLineId)) {
+            messagesByOldLine.set(oldLineId, [])
+          }
+          messagesByOldLine.get(oldLineId)?.push(messageId)
+        }
+      }
+
+      // 一括更新用のPromise配列を準備
+      const updatePromises: Promise<unknown>[] = []
+
+      // 全メッセージのlineIdを一括更新
+      for (const messageId of selectedMessageIds) {
+        updatePromises.push(
+          dataSourceManager.updateMessage(messageId, {
+            lineId: targetLineId
+          })
+        )
+      }
+
+      // 各元ラインからメッセージIDを一括削除
+      for (const [oldLineId, messageIds] of Array.from(messagesByOldLine.entries())) {
+        if (lines[oldLineId]) {
+          const updatedMessageIds = lines[oldLineId].messageIds.filter(id => !messageIds.includes(id))
+          updatePromises.push(
+            dataSourceManager.updateLine(oldLineId, {
+              messageIds: updatedMessageIds,
+              updated_at: updateTimestamp
+            })
+          )
+        }
+      }
+
+      // ターゲットラインに全メッセージIDを一括追加
+      if (lines[targetLineId]) {
+        const currentMessageIds = lines[targetLineId].messageIds
+        const newMessageIds = [...currentMessageIds, ...selectedMessageIds.filter(id => !currentMessageIds.includes(id))]
+        updatePromises.push(
+          dataSourceManager.updateLine(targetLineId, {
+            messageIds: newMessageIds,
+            updated_at: updateTimestamp
+          })
+        )
+      }
+
+      // 全ての更新を並列実行
+      await Promise.all(updatePromises)
+
+      // ローカル状態を更新
+      setMessages(prev => {
+        const updated = { ...prev }
+        Array.from(selectedMessages).forEach(messageId => {
+          if (updated[messageId]) {
+            updated[messageId] = {
+              ...updated[messageId],
+              lineId: targetLineId
+            }
+          }
+        })
+        return updated
+      })
+
+      setLines(prev => {
+        const updated = { ...prev }
+
+        // 各メッセージの元のラインから削除
+        Array.from(selectedMessages).forEach(messageId => {
+          const message = messages[messageId]
+          if (message && updated[message.lineId]) {
+            updated[message.lineId] = {
+              ...updated[message.lineId],
+              messageIds: updated[message.lineId].messageIds.filter(id => id !== messageId),
+              updated_at: updateTimestamp
+            }
+          }
+        })
+
+        // ターゲットラインに追加
+        if (updated[targetLineId]) {
+          const newMessageIds = [...updated[targetLineId].messageIds]
+          Array.from(selectedMessages).forEach(messageId => {
+            if (!newMessageIds.includes(messageId)) {
+              newMessageIds.push(messageId)
+            }
+          })
+          updated[targetLineId] = {
+            ...updated[targetLineId],
+            messageIds: newMessageIds,
+            updated_at: updateTimestamp
+          }
+        }
+
+        return updated
+      })
+
+      // キャッシュをクリア
+      setPathCache(new Map())
+      setLineAncestryCache(new Map())
+
+      // 選択をクリアしてダイアログを閉じる
+      const movedCount = selectedMessages.size
+      setSelectedMessages(new Set())
+      setShowMoveDialog(false)
+
+      alert(`${movedCount}件のメッセージを移動しました`)
+
+    } catch (error) {
+      console.error('Failed to move messages:', error)
+      alert('メッセージの移動に失敗しました')
+    } finally {
+      setIsUpdating(false)
     }
   }
 
@@ -1144,8 +1317,7 @@ export function BranchingChatUI({
   const currentLineInfo = getCurrentLine()
   // completeTimelineは既にuseMemoで定義済み
 
-
-  const renderTimelineMinimap = () => {
+  const renderTimelineMinimap = (): JSX.Element | null => {
     if (!completeTimeline.messages.length) return null
 
     // 現在のラインの祖先チェーンを取得
@@ -1357,13 +1529,42 @@ export function BranchingChatUI({
                 className={`group relative transition-all duration-200 ${
                   isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
                 } ${
+                  selectedMessages.has(message.id) ? "bg-blue-100 -mx-2 px-2 py-2 rounded-lg border-2 border-blue-500" : ""
+                } ${
                   !messageLineInfo.isCurrentLine ? "border-l-2 border-blue-200 pl-3 ml-1" : ""
                 }`}
                 onMouseEnter={() => setHoveredMessageId(message.id)}
                 onMouseLeave={() => setHoveredMessageId(null)}
-                onDoubleClick={() => handleMessageTap(message.id)}
+                onClick={() => {
+                  if (isSelectionMode) {
+                    handleMessageTap(message.id)
+                  }
+                }}
+                onDoubleClick={() => {
+                  if (!isSelectionMode) {
+                    handleMessageTap(message.id)
+                  }
+                }}
               >
                 <div className="flex gap-3">
+                  {/* 選択チェックボックス（選択モード時のみ表示） */}
+                  {isSelectionMode && (
+                    <div
+                      className="flex items-center pt-0.5 cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleMessageTap(message.id)
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedMessages.has(message.id)}
+                        onChange={() => {}}
+                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 pointer-events-none"
+                      />
+                    </div>
+                  )}
+
                   {/* 時刻表示 */}
                   <div className={`text-xs font-mono min-w-[35px] pt-0.5 leading-relaxed ${
                     !messageLineInfo.isCurrentLine ? 'text-blue-400' : 'text-gray-400'
@@ -1845,6 +2046,43 @@ export function BranchingChatUI({
       {/* Hamburger Menu - 右上に配置 */}
       <HamburgerMenu>
         <div className="space-y-4">
+          {/* メッセージ選択ツール */}
+          <div>
+            <h3 className="text-sm font-medium text-gray-700 mb-2">メッセージ操作</h3>
+            <div className="space-y-2">
+              <Button
+                onClick={handleToggleSelectionMode}
+                variant={isSelectionMode ? "default" : "outline"}
+                size="sm"
+                className="w-full justify-start"
+                disabled={isUpdating}
+              >
+                {isSelectionMode ? '選択モード終了' : 'メッセージ選択モード'}
+              </Button>
+              {selectedMessages.size > 0 && (
+                <div className="space-y-1">
+                  <Button
+                    onClick={handleMoveMessages}
+                    size="sm"
+                    className="w-full justify-start bg-blue-500 hover:bg-blue-600 text-white"
+                    disabled={isUpdating}
+                  >
+                    {selectedMessages.size}件を別ラインに移動
+                  </Button>
+                  <Button
+                    onClick={() => setSelectedMessages(new Set())}
+                    size="sm"
+                    variant="outline"
+                    className="w-full justify-start"
+                    disabled={isUpdating}
+                  >
+                    選択解除
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-2">ライン管理</h3>
             <div className="space-y-1 max-h-60 overflow-y-auto">
@@ -1872,130 +2110,176 @@ export function BranchingChatUI({
         </div>
       </HamburgerMenu>
 
-      {/* Composer */}
+      {/* Composer または メッセージ選択・移動ツールバー */}
       <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
-        {selectedBaseMessage ? (
-          <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex-shrink-0">
-                  🌿 新しい分岐を作成
+        {(isSelectionMode || selectedMessages.size > 0) ? (
+          /* メッセージ選択・移動ツールバー */
+          <div className="bg-yellow-50 -m-2 sm:-m-4 p-2 sm:p-4 border-t border-yellow-200">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-medium text-gray-700">
+                  {selectedMessages.size > 0 ? `${selectedMessages.size}件選択中` : '選択モード'}
                 </span>
-                <span className="text-xs text-gray-400">
-                  {(() => {
-                    const message = messages[selectedBaseMessage]
-                    if (!message) return ""
-                    return getRelativeTime(message.timestamp.toISOString())
-                  })()}
-                </span>
-                <span className="font-medium text-gray-800 truncate">
-                  {(() => {
-                    const message = messages[selectedBaseMessage]
-                    if (!message) return ""
-                    const content = message.content.slice(0, 18)
-                    return `${content}${message.content.length > 18 ? "..." : ""}`
-                  })()}
-                </span>
+                {selectedMessages.size > 0 && (
+                  <Button
+                    onClick={handleMoveMessages}
+                    size="sm"
+                    className="bg-blue-500 hover:bg-blue-600 text-white"
+                    disabled={isUpdating}
+                  >
+                    別ラインに移動
+                  </Button>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100 flex-shrink-0"
-                onClick={() => setSelectedBaseMessage(null)}
-              >
-                ✕
-              </Button>
+              <div className="flex gap-2">
+                {selectedMessages.size > 0 && (
+                  <Button
+                    onClick={() => setSelectedMessages(new Set())}
+                    size="sm"
+                    variant="outline"
+                    disabled={isUpdating}
+                  >
+                    選択解除
+                  </Button>
+                )}
+                <Button
+                  onClick={handleToggleSelectionMode}
+                  size="sm"
+                  variant={isSelectionMode ? "default" : "outline"}
+                  disabled={isUpdating}
+                >
+                  {isSelectionMode ? '選択完了' : '選択モード'}
+                </Button>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="mb-3 p-3 bg-gray-50 rounded-lg text-sm border border-gray-200">
-            <div className="flex items-center gap-2">
-              <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-700">
-                📝 現在のラインに追加
-              </span>
-              <span className="text-gray-500">
-                {currentLineInfo?.name || "メインの流れ"}
-              </span>
-            </div>
-          </div>
-        )}
+          <>
 
-        {/* 添付画像プレビュー */}
-        {pendingImages.length > 0 && (
-          <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-blue-800">画像 ({pendingImages.length})</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 px-2 text-blue-400 hover:text-blue-600 hover:bg-blue-100"
-                onClick={() => setPendingImages([])}
-              >
-                すべて削除
-              </Button>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {pendingImages.map((imageUrl, index) => (
-                <div key={index} className="relative group">
-                  <Image
-                    src={imageUrl}
-                    alt={`Preview ${index + 1}`}
-                    width={60}
-                    height={60}
-                    className="w-15 h-15 object-cover rounded border border-blue-300"
-                  />
-                  <button
-                    onClick={() => setPendingImages(prev => prev.filter((_, i) => i !== index))}
-                    className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+            {selectedBaseMessage ? (
+              <div className="mb-3 p-3 bg-emerald-50 rounded-lg text-sm border border-emerald-200">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 flex-shrink-0">
+                      🌿 新しい分岐を作成
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {(() => {
+                        const message = messages[selectedBaseMessage]
+                        if (!message) return ""
+                        return getRelativeTime(message.timestamp.toISOString())
+                      })()}
+                    </span>
+                    <span className="font-medium text-gray-800 truncate">
+                      {(() => {
+                        const message = messages[selectedBaseMessage]
+                        if (!message) return ""
+                        const content = message.content.slice(0, 18)
+                        return `${content}${message.content.length > 18 ? "..." : ""}`
+                      })()}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-gray-400 hover:text-gray-600 hover:bg-emerald-100 flex-shrink-0"
+                    onClick={() => setSelectedBaseMessage(null)}
                   >
                     ✕
-                  </button>
+                  </Button>
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
+              </div>
+            ) : (
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg text-sm border border-gray-200">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-1 rounded bg-gray-200 text-gray-700">
+                    📝 現在のラインに追加
+                  </span>
+                  <span className="text-gray-500">
+                    {currentLineInfo?.name || "メインの流れ"}
+                  </span>
+                </div>
+              </div>
+            )}
 
-        <div className="flex gap-3">
-          <div className="flex-1">
-            <textarea
-              ref={textareaRef}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onInput={adjustTextareaHeight}
-              placeholder="メッセージを入力... (/task_high, /document, /session などのコマンドが使用できます)"
-              className="min-h-[80px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full overflow-y-auto"
-              style={{ height: '80px' }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault()
-                  handleSendMessage()
-                }
-              }}
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <SlashCommandButtons
-              onCommandSelect={(command) => {
-                setInputValue(prevValue => {
-                  // カーソル位置に挿入するか、先頭に追加
-                  if (prevValue.trim() === '') {
-                    return command
-                  }
-                  return command + prevValue
-                })
-              }}
-            />
-            <Button
-              onClick={handleSendMessage}
-              disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
-              className="h-9 px-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 [&_svg]:!size-3"
-            >
-              <Send className="h-3 w-3" />
-              {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
-            </Button>
-          </div>
-        </div>
+            {/* 添付画像プレビュー */}
+            {pendingImages.length > 0 && (
+              <div className="mb-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-800">画像 ({pendingImages.length})</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-blue-400 hover:text-blue-600 hover:bg-blue-100"
+                    onClick={() => setPendingImages([])}
+                  >
+                    すべて削除
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {pendingImages.map((imageUrl, index) => (
+                    <div key={index} className="relative group">
+                      <Image
+                        src={imageUrl}
+                        alt={`Preview ${index + 1}`}
+                        width={60}
+                        height={60}
+                        className="w-15 h-15 object-cover rounded border border-blue-300"
+                      />
+                      <button
+                        onClick={() => setPendingImages(prev => prev.filter((_, i) => i !== index))}
+                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full text-xs hover:bg-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <textarea
+                  ref={textareaRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onInput={adjustTextareaHeight}
+                  placeholder="メッセージを入力... (/task_high, /document, /session などのコマンドが使用できます)"
+                  className="min-h-[80px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full overflow-y-auto"
+                  style={{ height: '80px' }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault()
+                      handleSendMessage()
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <SlashCommandButtons
+                  onCommandSelect={(command) => {
+                    setInputValue(prevValue => {
+                      // カーソル位置に挿入するか、先頭に追加
+                      if (prevValue.trim() === '') {
+                        return command
+                      }
+                      return command + prevValue
+                    })
+                  }}
+                />
+                <Button
+                  onClick={handleSendMessage}
+                  disabled={(!inputValue.trim() && pendingImages.length === 0) || isUpdating}
+                  className="h-9 px-3 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 [&_svg]:!size-3"
+                >
+                  <Send className="h-3 w-3" />
+                  {isUpdating && <span className="ml-2 text-xs">送信中...</span>}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Recent Lines Footer */}
@@ -2007,6 +2291,60 @@ export function BranchingChatUI({
         branchPoints={branchPoints}
         onLineSelect={switchToLine}
       />
+
+      {/* メッセージ移動ダイアログ */}
+      {showMoveDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+            <div className="p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <GitBranch className="h-6 w-6 text-blue-600" />
+                <h3 className="text-lg font-semibold text-gray-900">メッセージを移動</h3>
+              </div>
+
+              <p className="text-gray-600 mb-4">
+                {selectedMessages.size}件のメッセージを移動先のラインを選択してください：
+              </p>
+
+              <div className="max-h-60 overflow-y-auto space-y-2 mb-4">
+                {Object.values(lines)
+                  .filter(line => line.id !== currentLineId) // 現在のラインは除外
+                  .map(line => (
+                    <button
+                      key={line.id}
+                      onClick={() => handleConfirmMove(line.id)}
+                      disabled={isUpdating}
+                      className="w-full text-left p-3 border border-gray-200 rounded-md hover:bg-gray-50 hover:border-gray-300 transition-colors disabled:opacity-50"
+                    >
+                      <div className="font-medium text-gray-900">{line.name}</div>
+                      <div className="text-sm text-gray-500">
+                        {line.messageIds.length}件のメッセージ
+                        {line.tagIds && line.tagIds.length > 0 && (
+                          <span className="ml-2">
+                            {line.tagIds.slice(0, 2).map(tagId => {
+                              const tag = tags[tagId]
+                              return tag ? `#${tag.name}` : ''
+                            }).filter(Boolean).join(' ')}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  onClick={() => setShowMoveDialog(false)}
+                  variant="outline"
+                  disabled={isUpdating}
+                >
+                  キャンセル
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 削除確認ダイアログ */}
       {deleteConfirmation && (
