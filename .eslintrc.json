@@ -3,6 +3,7 @@
     "next/core-web-vitals",
     "next/typescript"
   ],
+  "plugins": ["sonarjs"],
   "rules": {
     // --- 実行時エラーを防ぐ可能性が高いルール ---
     "no-use-before-define": ["error", {
@@ -92,6 +93,27 @@
     "no-useless-return": "warn",
     "yoda": "error",
 
+    // --- コード品質メトリクス ---
+    "complexity": ["warn", 15],
+    "max-depth": ["warn", 4],
+    "max-lines": ["warn", {
+      "max": 500,
+      "skipBlankLines": true,
+      "skipComments": true
+    }],
+    "max-lines-per-function": [
+      "warn",
+      {
+        "max": 150,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "max-statements": ["warn", 50],
+    "max-nested-callbacks": ["warn", 3],
+    "max-params": ["warn", 5],
+    "sonarjs/cognitive-complexity": ["warn", 15],
+
     // --- 開発時の利便性を考慮した緩和 ---
     "no-empty": ["warn", { "allowEmptyCatch": true }],
     "@typescript-eslint/no-non-null-assertion": "warn",
@@ -112,5 +134,20 @@
     "ecmaFeatures": {
       "jsx": true
     }
-  }
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+      "rules": {
+        "max-lines-per-function": [
+          "error",
+          {
+            "max": 300,
+            "skipBlankLines": true,
+            "skipComments": true
+          }
+        ]
+      }
+    }
+  ]
 }
