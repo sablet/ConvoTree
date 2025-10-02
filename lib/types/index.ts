@@ -1,3 +1,5 @@
+import type { MessageType } from '@/lib/constants'
+
 export interface Message {
   id: string
   content: string
@@ -10,6 +12,8 @@ export interface Message {
   hasBookmark?: boolean
   author?: string
   images?: string[]
+  type?: MessageType
+  metadata?: Record<string, unknown>
 }
 
 export interface Line {

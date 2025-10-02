@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { BranchingChatUI } from "@/components/branching-chat-ui"
+import { ChatContainer } from "@/components/chat"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
@@ -73,7 +73,7 @@ export default function Home() {
   return (
     <TagProvider>
       <PageLayout>
-        <BranchingChatUI
+        <ChatContainer
           initialMessages={messages}
           initialLines={lines}
           initialBranchPoints={branchPoints}

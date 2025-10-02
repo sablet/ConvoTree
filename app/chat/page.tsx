@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { BranchingChatUI } from "@/components/branching-chat-ui"
+import { ChatContainer } from "@/components/chat"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { ChatLayout } from "@/components/layouts/ChatLayout"
@@ -116,7 +116,7 @@ function ChatPageContent() {
           </div>
         )}
 
-        <BranchingChatUI
+        <ChatContainer
           initialMessages={messages}
           initialLines={lines}
           initialBranchPoints={branchPoints}
