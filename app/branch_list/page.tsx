@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { BranchStructure } from "@/components/branch-structure"
+import { BranchStructure } from "@/components/branch"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
 import { dataSourceManager } from "@/lib/data-source"
