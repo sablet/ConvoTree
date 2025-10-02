@@ -2,123 +2,42 @@
 
 import { collection, getDocs, doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch, query, where, runTransaction, Transaction, FieldValue, deleteField } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { config } from '@/lib/config';
 import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION, BRANCH_POINTS_SUBCOLLECTION, TAGS_SUBCOLLECTION, TAG_GROUPS_SUBCOLLECTION } from '@/lib/firestore-constants';
-import { type MessageType } from '@/lib/constants';
+import type { Message, Line, Tag, TagGroup, BranchPoint } from '@/lib/types';
+import type { IDataSource, ChatData, MessageInput } from './base';
 
-
-interface Message {
-  id: string;
-  content: string;
-  timestamp: string;
-  lineId: string;
-  prevInLine?: string;
-  nextInLine?: string;
-  branchFromMessageId?: string;
-  tags?: string[];
-  hasBookmark?: boolean;
-  author?: string;
-  images?: string[];
-  // 🟢 メッセージタイプとメタデータ拡張
-  type?: MessageType;
-  metadata?: Record<string, unknown>;
+interface MessageWithTimestamp extends Omit<Message, 'id'> {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
 
-interface Line {
-  id: string;
-  name: string;
-  messageIds: string[];
-  startMessageId: string;
-  endMessageId?: string;
-  branchFromMessageId?: string;
-  tagIds?: string[];
-  created_at: string;
-  updated_at: string;
-}
-
-interface BranchPoint {
+interface BranchPointWithTimestamp {
   messageId: string;
   lines: string[];
   createdAt?: Timestamp | FieldValue;
   updatedAt?: Timestamp | FieldValue;
 }
 
-interface Tag {
-  id: string;
-  name: string;
-  color?: string;
-  groupId?: string;
-}
+export class FirestoreDataSource implements IDataSource {
+  private conversationId: string;
 
-interface TagGroup {
-  id: string;
-  name: string;
-  color: string;
-  order: number;
-}
-
-
-interface ChatData {
-  messages: Record<string, Message>;
-  lines: Line[];
-  branchPoints: Record<string, BranchPoint>;
-  tags: Record<string, Tag>;
-  tagGroups: Record<string, TagGroup>;
-}
-
-export type DataSource = 'firestore' | 'sample';
-
-class DataSourceManager {
-  // eslint-disable-next-line no-use-before-define
-  private static instance: DataSourceManager | undefined;
-  private currentSource: DataSource = config.defaultDataSource;
-  private conversationId = config.conversationId;
-
-  private constructor() {
-    console.log(`🚀 DataSource initialized: ${this.currentSource}, Conversation: ${this.conversationId}`);
-  }
-
-  static getInstance(): DataSourceManager {
-    if (!this.instance) {
-      this.instance = new DataSourceManager();
-    }
-    return this.instance;
-  }
-
-  setDataSource(source: DataSource): void {
-    this.currentSource = source;
-  }
-
-  getCurrentSource(): DataSource {
-    return this.currentSource;
+  constructor(conversationId: string) {
+    this.conversationId = conversationId;
   }
 
   async loadChatData(): Promise<ChatData> {
-    if (this.currentSource === 'firestore') {
-      return this.loadFromFirestore();
-    }
-    return this.loadFromSample();
-  }
-
-  private async loadFromFirestore(): Promise<ChatData> {
     try {
       if (!this.conversationId) {
         throw new Error('NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません');
       }
 
-      // Loading data from Firestore
-
       const conversationRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId);
 
-      // Check if conversation exists
       const conversationDoc = await getDoc(conversationRef);
       if (!conversationDoc.exists()) {
         throw new Error(`Conversation ${this.conversationId} not found in Firestore`);
       }
 
-      // Load messages
       const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
       const messagesSnapshot = await getDocs(messagesRef);
       const messages: Record<string, Message> = {};
@@ -141,7 +60,6 @@ class DataSourceManager {
         };
       });
 
-      // Load lines
       const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
       const linesSnapshot = await getDocs(linesRef);
       const lines: Line[] = [];
@@ -160,7 +78,6 @@ class DataSourceManager {
         });
       });
 
-      // Load branch points
       const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
       const branchPointsSnapshot = await getDocs(branchPointsRef);
       const branchPoints: Record<string, BranchPoint> = {};
@@ -172,7 +89,6 @@ class DataSourceManager {
         };
       });
 
-      // Load tags
       const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
       const tagsSnapshot = await getDocs(tagsRef);
       const tags: Record<string, Tag> = {};
@@ -186,7 +102,6 @@ class DataSourceManager {
         };
       });
 
-      // Load tag groups
       const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
       const tagGroupsSnapshot = await getDocs(tagGroupsRef);
       const tagGroups: Record<string, TagGroup> = {};
@@ -199,8 +114,6 @@ class DataSourceManager {
           order: data.order || 0
         };
       });
-
-      // Data loaded successfully
 
       return {
         messages,
@@ -216,31 +129,9 @@ class DataSourceManager {
     }
   }
 
-  private async loadFromSample(): Promise<ChatData> {
+  async createMessage(message: MessageInput): Promise<string> {
     try {
-      const response = await fetch('/data/chat-sample.json');
-      const data = await response.json();
-
-
-      return {
-        messages: data.messages || {},
-        lines: data.lines || [],
-        branchPoints: data.branchPoints || {},
-        tags: data.tags || {},
-        tagGroups: data.tagGroups || {},
-      };
-    } catch (error) {
-      console.error('❌ Failed to load sample data:', error);
-      throw error;
-    }
-  }
-
-  // Message CRUD Operations
-  async createMessage(message: Omit<Message, 'id'>): Promise<string> {
-    try {
-      // バリデーション
       this.validateMessage(message);
-
 
       const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
 
@@ -262,20 +153,16 @@ class DataSourceManager {
 
   async updateMessage(id: string, updates: Partial<Message>): Promise<void> {
     try {
-      // バリデーション
       this.validateMessageId(id);
       this.validateMessageUpdates(updates);
 
-
       const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, id);
 
-      // メッセージ存在確認
       const messageDoc = await getDoc(messageRef);
       if (!messageDoc.exists()) {
         throw new Error(`Message with ID ${id} not found`);
       }
 
-      // nullの値をdeleteField()に変換し、undefinedを除去
       const updateData: Record<string, unknown> = {
         updatedAt: serverTimestamp()
       };
@@ -284,7 +171,6 @@ class DataSourceManager {
         if (value === null) {
           updateData[key] = deleteField();
         } else if (value !== undefined) {
-          // metadataオブジェクト内のundefinedも除去
           if (key === 'metadata' && typeof value === 'object' && value !== null) {
             const cleanedMetadata: Record<string, unknown> = {};
             for (const [metaKey, metaValue] of Object.entries(value as Record<string, unknown>)) {
@@ -297,11 +183,9 @@ class DataSourceManager {
             updateData[key] = value;
           }
         }
-        // undefinedの場合は何もしない（フィールドは更新されない）
       }
 
       await updateDoc(messageRef, updateData);
-
 
     } catch (error) {
       console.error(`❌ Failed to update message ${id}:`, error);
@@ -311,13 +195,10 @@ class DataSourceManager {
 
   async deleteMessage(id: string): Promise<void> {
     try {
-      // バリデーション
       this.validateMessageId(id);
-
 
       const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, id);
 
-      // メッセージ存在確認
       const messageDoc = await getDoc(messageRef);
       if (!messageDoc.exists()) {
         throw new Error(`Message with ID ${id} not found`);
@@ -325,72 +206,19 @@ class DataSourceManager {
 
       await deleteDoc(messageRef);
 
-
     } catch (error) {
       console.error(`❌ Failed to delete message ${id}:`, error);
       throw error;
     }
   }
 
-  // バリデーション関数
-  private validateMessage(message: Omit<Message, 'id'>): void {
-    if (!message.content || message.content.trim() === '') {
-      throw new Error('Message content is required');
-    }
-
-    if (!message.lineId || message.lineId.trim() === '') {
-      throw new Error('LineId is required');
-    }
-
-    if (!message.timestamp) {
-      throw new Error('Timestamp is required');
-    }
-
-    // タイムスタンプ形式チェック
-    if (isNaN(Date.parse(message.timestamp))) {
-      throw new Error('Invalid timestamp format');
-    }
-  }
-
-  private validateMessageId(id: string): void {
-    if (!id || id.trim() === '') {
-      throw new Error('Message ID is required');
-    }
-  }
-
-  private validateMessageUpdates(updates: Partial<Message>): void {
-    if (Object.keys(updates).length === 0) {
-      throw new Error('No updates provided');
-    }
-
-    // contentが空文字列でないことをチェック
-    if (updates.content !== undefined && updates.content.trim() === '') {
-      throw new Error('Message content cannot be empty');
-    }
-
-    // lineIdが空文字列でないことをチェック
-    if (updates.lineId !== undefined && updates.lineId.trim() === '') {
-      throw new Error('LineId cannot be empty');
-    }
-
-    // timestampの形式チェック
-    if (updates.timestamp !== undefined && isNaN(Date.parse(updates.timestamp))) {
-      throw new Error('Invalid timestamp format');
-    }
-  }
-
-  // TagGroup CRUD Operations
   async createTagGroup(tagGroup: Omit<TagGroup, 'id'>): Promise<string> {
     try {
-      // バリデーション
       this.validateTagGroup(tagGroup);
 
-      // 名前の重複チェック
       await this.checkTagGroupNameDuplicate(tagGroup.name);
 
-      // order の重複チェック
       await this.checkTagGroupOrderDuplicate(tagGroup.order);
-
 
       const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
 
@@ -412,25 +240,20 @@ class DataSourceManager {
 
   async updateTagGroup(id: string, updates: Partial<TagGroup>): Promise<void> {
     try {
-      // バリデーション
       this.validateTagGroupId(id);
       this.validateTagGroupUpdates(updates);
 
-
       const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, id);
 
-      // タググループ存在確認
       const tagGroupDoc = await getDoc(tagGroupRef);
       if (!tagGroupDoc.exists()) {
         throw new Error(`TagGroup with ID ${id} not found`);
       }
 
-      // 名前の重複チェック（変更される場合）
       if (updates.name) {
         await this.checkTagGroupNameDuplicate(updates.name, id);
       }
 
-      // order の重複チェック（変更される場合）
       if (updates.order !== undefined) {
         await this.checkTagGroupOrderDuplicate(updates.order, id);
       }
@@ -442,7 +265,6 @@ class DataSourceManager {
 
       await updateDoc(tagGroupRef, updateData);
 
-
     } catch (error) {
       console.error(`❌ Failed to update tag group ${id}:`, error);
       throw error;
@@ -451,24 +273,18 @@ class DataSourceManager {
 
   async deleteTagGroup(id: string, tagHandlingOption: 'delete' | 'unlink' = 'unlink'): Promise<void> {
     try {
-      // バリデーション
       this.validateTagGroupId(id);
-
 
       const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, id);
 
-      // タググループ存在確認
       const tagGroupDoc = await getDoc(tagGroupRef);
       if (!tagGroupDoc.exists()) {
         throw new Error(`TagGroup with ID ${id} not found`);
       }
 
-      // 関連Tagの処理
       await this.handleRelatedTagsForDeletion(id, tagHandlingOption);
 
-      // タググループ削除
       await deleteDoc(tagGroupRef);
-
 
     } catch (error) {
       console.error(`❌ Failed to delete tag group ${id}:`, error);
@@ -478,19 +294,16 @@ class DataSourceManager {
 
   async reorderTagGroups(orderedIds: string[]): Promise<void> {
     try {
-
       if (orderedIds.length === 0) {
         throw new Error('Ordered IDs array cannot be empty');
       }
 
-      // バッチ処理で順序を更新
       const batch = writeBatch(db);
 
       for (let i = 0; i < orderedIds.length; i++) {
         const tagGroupId = orderedIds[i];
         const tagGroupRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAG_GROUPS_SUBCOLLECTION, tagGroupId);
 
-        // 存在確認
         const tagGroupDoc = await getDoc(tagGroupRef);
         if (!tagGroupDoc.exists()) {
           throw new Error(`TagGroup with ID ${tagGroupId} not found`);
@@ -504,14 +317,681 @@ class DataSourceManager {
 
       await batch.commit();
 
-
     } catch (error) {
       console.error('❌ Failed to reorder tag groups:', error);
       throw error;
     }
   }
 
-  // バリデーション関数（TagGroup）
+  async createLine(line: Omit<Line, 'id'>): Promise<string> {
+    try {
+      this.validateLine(line);
+
+      return await runTransaction(db, async (transaction) => {
+        const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
+
+        await this.checkLineNameDuplicate(line.name);
+
+        if (line.startMessageId) {
+          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.startMessageId);
+          const startMessageDoc = await transaction.get(startMessageRef);
+          if (!startMessageDoc.exists()) {
+            throw new Error(`Start message with ID ${line.startMessageId} not found`);
+          }
+        }
+
+        if (line.branchFromMessageId) {
+          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.branchFromMessageId);
+          const branchMessageDoc = await transaction.get(branchMessageRef);
+          if (!branchMessageDoc.exists()) {
+            throw new Error(`Branch from message with ID ${line.branchFromMessageId} not found`);
+          }
+        }
+
+        const lineData = {
+          ...line,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        const docRef = doc(linesRef);
+        transaction.set(docRef, lineData);
+
+        return docRef.id;
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to create line:', error);
+      throw error;
+    }
+  }
+
+  async updateLine(id: string, updates: Partial<Line>): Promise<void> {
+    try {
+      this.validateLineId(id);
+      this.validateLineUpdates(updates);
+
+      await runTransaction(db, async (transaction) => {
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
+
+        const lineDoc = await transaction.get(lineRef);
+        if (!lineDoc.exists()) {
+          throw new Error(`Line with ID ${id} not found`);
+        }
+
+        if (updates.name) {
+          await this.checkLineNameDuplicate(updates.name, id);
+        }
+
+        if (updates.startMessageId) {
+          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.startMessageId);
+          const startMessageDoc = await transaction.get(startMessageRef);
+          if (!startMessageDoc.exists()) {
+            throw new Error(`Start message with ID ${updates.startMessageId} not found`);
+          }
+        }
+
+        if (updates.branchFromMessageId) {
+          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.branchFromMessageId);
+          const branchMessageDoc = await transaction.get(branchMessageRef);
+          if (!branchMessageDoc.exists()) {
+            throw new Error(`Branch from message with ID ${updates.branchFromMessageId} not found`);
+          }
+        }
+
+        const updateData = {
+          ...updates,
+          updated_at: new Date().toISOString(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.update(lineRef, updateData);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to update line ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteLine(id: string): Promise<void> {
+    try {
+      this.validateLineId(id);
+
+      await runTransaction(db, async (transaction) => {
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
+
+        const lineDoc = await transaction.get(lineRef);
+        if (!lineDoc.exists()) {
+          throw new Error(`Line with ID ${id} not found`);
+        }
+
+        const lineData = lineDoc.data() as Line;
+
+        if (lineData.messageIds && lineData.messageIds.length > 0) {
+          for (const messageId of lineData.messageIds) {
+            const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+            const messageDoc = await transaction.get(messageRef);
+            if (messageDoc.exists()) {
+              transaction.update(messageRef, {
+                lineId: null,
+                updatedAt: serverTimestamp()
+              });
+            }
+          }
+        }
+
+        const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
+        const branchPointsSnapshot = await getDocs(query(branchPointsRef, where('lines', 'array-contains', id)));
+
+        branchPointsSnapshot.forEach((branchPointDoc) => {
+          const branchPointData = branchPointDoc.data() as BranchPointWithTimestamp;
+          const updatedLines = branchPointData.lines.filter(lineId => lineId !== id);
+
+          if (updatedLines.length === 0) {
+            transaction.delete(branchPointDoc.ref);
+          } else {
+            transaction.update(branchPointDoc.ref, {
+              lines: updatedLines,
+              updatedAt: serverTimestamp()
+            });
+          }
+        });
+
+        transaction.delete(lineRef);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to delete line ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async createBranchPoint(messageId: string): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+
+      await runTransaction(db, async (transaction) => {
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+        const messageDoc = await transaction.get(messageRef);
+        if (!messageDoc.exists()) {
+          throw new Error(`Message with ID ${messageId} not found`);
+        }
+
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
+        const existingBranchPoint = await transaction.get(branchPointRef);
+        if (existingBranchPoint.exists()) {
+          throw new Error(`BranchPoint for message ${messageId} already exists`);
+        }
+
+        const branchPointData: BranchPointWithTimestamp = {
+          messageId,
+          lines: [],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.set(branchPointRef, branchPointData);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to create branch point for message ${messageId}:`, error);
+      throw error;
+    }
+  }
+
+  async addLineToBranchPoint(messageId: string, lineId: string): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+      this.validateLineId(lineId);
+
+      await runTransaction(db, async (transaction) => {
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+        const messageDoc = await transaction.get(messageRef);
+        if (!messageDoc.exists()) {
+          throw new Error(`Message with ID ${messageId} not found`);
+        }
+
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
+        const lineDoc = await transaction.get(lineRef);
+        if (!lineDoc.exists()) {
+          throw new Error(`Line with ID ${lineId} not found`);
+        }
+
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
+        const branchPointDoc = await transaction.get(branchPointRef);
+
+        let branchPointData: BranchPoint;
+
+        if (!branchPointDoc.exists()) {
+          const newBranchPointData: BranchPointWithTimestamp = {
+            messageId,
+            lines: [],
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          };
+          transaction.set(branchPointRef, newBranchPointData);
+          branchPointData = {
+            messageId,
+            lines: []
+          };
+        } else {
+          branchPointData = branchPointDoc.data() as BranchPoint;
+        }
+
+        if (branchPointData.lines.includes(lineId)) {
+          throw new Error(`Line ${lineId} is already in branch point ${messageId}`);
+        }
+
+        const updatedLines = [...branchPointData.lines, lineId];
+
+        transaction.update(branchPointRef, {
+          lines: updatedLines,
+          updatedAt: serverTimestamp()
+        });
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to add line ${lineId} to branch point ${messageId}:`, error);
+      throw error;
+    }
+  }
+
+  async removeLineFromBranchPoint(messageId: string, lineId: string): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+      this.validateLineId(lineId);
+
+      await runTransaction(db, async (transaction) => {
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
+        const branchPointDoc = await transaction.get(branchPointRef);
+        if (!branchPointDoc.exists()) {
+          throw new Error(`BranchPoint for message ${messageId} not found`);
+        }
+
+        const branchPointData = branchPointDoc.data() as BranchPoint;
+
+        if (!branchPointData.lines.includes(lineId)) {
+          throw new Error(`Line ${lineId} is not in branch point ${messageId}`);
+        }
+
+        const updatedLines = branchPointData.lines.filter(id => id !== lineId);
+
+        if (updatedLines.length === 0) {
+          transaction.delete(branchPointRef);
+        } else {
+          transaction.update(branchPointRef, {
+            lines: updatedLines,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to remove line ${lineId} from branch point ${messageId}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteBranchPoint(messageId: string): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+
+      await runTransaction(db, async (transaction) => {
+        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
+        const branchPointDoc = await transaction.get(branchPointRef);
+        if (!branchPointDoc.exists()) {
+          throw new Error(`BranchPoint for message ${messageId} not found`);
+        }
+
+        const branchPointData = branchPointDoc.data() as BranchPoint;
+
+        if (branchPointData.lines && branchPointData.lines.length > 0) {
+          for (const lineId of branchPointData.lines) {
+            const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
+            const lineDoc = await transaction.get(lineRef);
+            if (lineDoc.exists()) {
+              const lineData = lineDoc.data() as Line;
+              if (lineData.branchFromMessageId === messageId) {
+                transaction.update(lineRef, {
+                  branchFromMessageId: null,
+                  updated_at: new Date().toISOString(),
+                  updatedAt: serverTimestamp()
+                });
+              }
+            }
+          }
+        }
+
+        transaction.delete(branchPointRef);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to delete branch point ${messageId}:`, error);
+      throw error;
+    }
+  }
+
+  async linkMessages(prevMessageId: string, nextMessageId: string): Promise<void> {
+    try {
+      this.validateMessageId(prevMessageId);
+      this.validateMessageId(nextMessageId);
+
+      if (prevMessageId === nextMessageId) {
+        throw new Error('Cannot link a message to itself');
+      }
+
+      await runTransaction(db, async (transaction) => {
+        const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
+        const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, nextMessageId);
+
+        const [prevMessageDoc, nextMessageDoc] = await Promise.all([
+          transaction.get(prevMessageRef),
+          transaction.get(nextMessageRef)
+        ]);
+
+        if (!prevMessageDoc.exists()) {
+          throw new Error(`Previous message with ID ${prevMessageId} not found`);
+        }
+        if (!nextMessageDoc.exists()) {
+          throw new Error(`Next message with ID ${nextMessageId} not found`);
+        }
+
+        const prevMessageData = prevMessageDoc.data() as MessageWithTimestamp;
+        const nextMessageData = nextMessageDoc.data() as MessageWithTimestamp;
+
+        await this.checkForCircularReference(prevMessageId, nextMessageId, transaction);
+
+        if (prevMessageData.lineId !== nextMessageData.lineId) {
+          throw new Error('Messages must be in the same line to be linked');
+        }
+
+        transaction.update(prevMessageRef, {
+          nextInLine: nextMessageId,
+          updatedAt: serverTimestamp()
+        });
+
+        transaction.update(nextMessageRef, {
+          prevInLine: prevMessageId,
+          updatedAt: serverTimestamp()
+        });
+
+        await this.updateLineMessageIds(prevMessageData.lineId, transaction);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to link messages ${prevMessageId} -> ${nextMessageId}:`, error);
+      throw error;
+    }
+  }
+
+  async unlinkMessages(messageId: string): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+
+      await runTransaction(db, async (transaction) => {
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+        const messageDoc = await transaction.get(messageRef);
+
+        if (!messageDoc.exists()) {
+          throw new Error(`Message with ID ${messageId} not found`);
+        }
+
+        const messageData = messageDoc.data() as MessageWithTimestamp;
+
+        if (messageData.prevInLine) {
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
+          const prevMessageDoc = await transaction.get(prevMessageRef);
+          if (prevMessageDoc.exists()) {
+            transaction.update(prevMessageRef, {
+              nextInLine: null,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+
+        if (messageData.nextInLine) {
+          const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
+          const nextMessageDoc = await transaction.get(nextMessageRef);
+          if (nextMessageDoc.exists()) {
+            transaction.update(nextMessageRef, {
+              prevInLine: null,
+              updatedAt: serverTimestamp()
+            });
+          }
+        }
+
+        transaction.update(messageRef, {
+          prevInLine: null,
+          nextInLine: null,
+          updatedAt: serverTimestamp()
+        });
+
+        if (messageData.lineId) {
+          await this.updateLineMessageIds(messageData.lineId, transaction);
+        }
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to unlink message ${messageId}:`, error);
+      throw error;
+    }
+  }
+
+  async moveMessageToLine(messageId: string, targetLineId: string, position?: number): Promise<void> {
+    try {
+      this.validateMessageId(messageId);
+      this.validateLineId(targetLineId);
+
+      await runTransaction(db, async (transaction) => {
+        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+        const messageDoc = await transaction.get(messageRef);
+
+        if (!messageDoc.exists()) {
+          throw new Error(`Message with ID ${messageId} not found`);
+        }
+
+        const targetLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, targetLineId);
+        const targetLineDoc = await transaction.get(targetLineRef);
+
+        if (!targetLineDoc.exists()) {
+          throw new Error(`Target line with ID ${targetLineId} not found`);
+        }
+
+        const messageData = messageDoc.data() as MessageWithTimestamp;
+        const oldLineId = messageData.lineId;
+
+        if (oldLineId) {
+          await this.unlinkMessageFromCurrentPosition(messageId, transaction);
+        }
+
+        transaction.update(messageRef, {
+          lineId: targetLineId,
+          prevInLine: null,
+          nextInLine: null,
+          updatedAt: serverTimestamp()
+        });
+
+        if (position !== undefined) {
+          await this.insertMessageAtPosition(messageId, targetLineId, position, transaction);
+        }
+
+        if (oldLineId && oldLineId !== targetLineId) {
+          await this.updateLineMessageIds(oldLineId, transaction);
+        }
+        await this.updateLineMessageIds(targetLineId, transaction);
+      });
+
+    } catch (error) {
+      console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
+      throw error;
+    }
+  }
+
+  async createTag(tag: Omit<Tag, 'id'>): Promise<string> {
+    try {
+      this.validateTag(tag);
+
+      await this.checkTagNameDuplicate(tag.name);
+
+      const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
+
+      const tagData: Record<string, unknown> = {
+        name: tag.name,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      if (tag.color !== undefined) {
+        tagData.color = tag.color;
+      }
+      if (tag.groupId !== undefined) {
+        tagData.groupId = tag.groupId;
+      }
+
+      const docRef = await addDoc(tagsRef, tagData);
+
+      return docRef.id;
+
+    } catch (error) {
+      console.error('❌ Failed to create tag:', error);
+      throw error;
+    }
+  }
+
+  async updateTag(id: string, updates: Partial<Tag>): Promise<void> {
+    try {
+      this.validateTagId(id);
+      this.validateTagUpdates(updates);
+
+      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
+
+      const tagDoc = await getDoc(tagRef);
+      if (!tagDoc.exists()) {
+        throw new Error(`Tag with ID ${id} not found`);
+      }
+
+      if (updates.name) {
+        await this.checkTagNameDuplicate(updates.name, id);
+      }
+
+      const updateData: Record<string, unknown> = {
+        updatedAt: serverTimestamp()
+      };
+
+      if (updates.name !== undefined) {
+        updateData.name = updates.name;
+      }
+      if (updates.color !== undefined) {
+        updateData.color = updates.color;
+      }
+      if (updates.groupId !== undefined) {
+        updateData.groupId = updates.groupId;
+      }
+
+      await updateDoc(tagRef, updateData);
+
+    } catch (error) {
+      console.error(`❌ Failed to update tag ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async deleteTag(id: string): Promise<void> {
+    try {
+      this.validateTagId(id);
+
+      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
+
+      const tagDoc = await getDoc(tagRef);
+      if (!tagDoc.exists()) {
+        throw new Error(`Tag with ID ${id} not found`);
+      }
+
+      await this.removeTagFromAllMessages(id);
+
+      await this.removeTagFromAllLines(id);
+
+      await deleteDoc(tagRef);
+
+    } catch (error) {
+      console.error(`❌ Failed to delete tag ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async createMessageWithLineUpdate(
+    messageData: MessageInput,
+    lineId: string,
+    prevMessageId?: string
+  ): Promise<string> {
+    try {
+      return await runTransaction(db, async (transaction) => {
+        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
+        const lineDoc = await transaction.get(lineRef);
+
+        let prevMessageDoc = null;
+        if (prevMessageId) {
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
+          prevMessageDoc = await transaction.get(prevMessageRef);
+        }
+
+        if (!lineDoc.exists()) {
+          throw new Error(`Line with ID ${lineId} not found`);
+        }
+
+        const lineData = lineDoc.data() as Line;
+
+        const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
+        const newMessageRef = doc(messagesRef);
+
+        const newMessageData = {
+          ...messageData,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.set(newMessageRef, newMessageData);
+
+        if (prevMessageId && prevMessageDoc && prevMessageDoc.exists()) {
+          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
+          transaction.update(prevMessageRef, {
+            nextInLine: newMessageRef.id,
+            updatedAt: serverTimestamp()
+          });
+        }
+
+        const updatedMessageIds = [...lineData.messageIds, newMessageRef.id];
+        const isFirstMessage = lineData.messageIds.length === 0;
+
+        const lineUpdateData: Record<string, unknown> = {
+          messageIds: updatedMessageIds,
+          endMessageId: newMessageRef.id,
+          updated_at: new Date().toISOString(),
+          updatedAt: serverTimestamp()
+        };
+
+        if (isFirstMessage) {
+          lineUpdateData.startMessageId = newMessageRef.id;
+        }
+
+        transaction.update(lineRef, lineUpdateData);
+
+        return newMessageRef.id;
+      });
+
+    } catch (error) {
+      console.error('❌ Failed to create message with line update:', error);
+      throw error;
+    }
+  }
+
+  private validateMessage(message: MessageInput): void {
+    if (!message.content || message.content.trim() === '') {
+      throw new Error('Message content is required');
+    }
+
+    if (!message.lineId || message.lineId.trim() === '') {
+      throw new Error('LineId is required');
+    }
+
+    if (!message.timestamp) {
+      throw new Error('Timestamp is required');
+    }
+
+    const timestampString = message.timestamp instanceof Date ? message.timestamp.toISOString() : message.timestamp;
+    if (isNaN(Date.parse(timestampString))) {
+      throw new Error('Invalid timestamp format');
+    }
+  }
+
+  private validateMessageId(id: string): void {
+    if (!id || id.trim() === '') {
+      throw new Error('Message ID is required');
+    }
+  }
+
+  private validateMessageUpdates(updates: Partial<Omit<Message, 'timestamp'>> & { timestamp?: string | Date }): void {
+    if (Object.keys(updates).length === 0) {
+      throw new Error('No updates provided');
+    }
+
+    if (updates.content !== undefined && updates.content.trim() === '') {
+      throw new Error('Message content cannot be empty');
+    }
+
+    if (updates.lineId !== undefined && updates.lineId.trim() === '') {
+      throw new Error('LineId cannot be empty');
+    }
+
+    if (updates.timestamp !== undefined) {
+      const timestampString = updates.timestamp instanceof Date ? updates.timestamp.toISOString() : updates.timestamp;
+      if (isNaN(Date.parse(timestampString))) {
+        throw new Error('Invalid timestamp format');
+      }
+    }
+  }
+
   private validateTagGroup(tagGroup: Omit<TagGroup, 'id'>): void {
     if (!tagGroup.name || tagGroup.name.trim() === '') {
       throw new Error('TagGroup name is required');
@@ -550,7 +1030,6 @@ class DataSourceManager {
     }
   }
 
-  // 制約チェック関数
   private async checkTagGroupNameDuplicate(name: string, excludeId?: string): Promise<void> {
     const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
     const q = query(tagGroupsRef, where('name', '==', name));
@@ -575,7 +1054,6 @@ class DataSourceManager {
     }
   }
 
-  // 関連Tag処理
   private async handleRelatedTagsForDeletion(tagGroupId: string, option: 'delete' | 'unlink'): Promise<void> {
     const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
     const q = query(tagsRef, where('groupId', '==', tagGroupId));
@@ -589,10 +1067,8 @@ class DataSourceManager {
 
     querySnapshot.forEach((tagDoc) => {
       if (option === 'delete') {
-        // 関連Tagも削除
         batch.delete(tagDoc.ref);
       } else {
-        // 関連TagのgroupIdをnullに設定
         batch.update(tagDoc.ref, {
           groupId: null,
           updatedAt: serverTimestamp()
@@ -601,185 +1077,12 @@ class DataSourceManager {
     });
 
     await batch.commit();
-
   }
 
-  // Line CRUD Operations
-  async createLine(line: Omit<Line, 'id'>): Promise<string> {
-    try {
-      // バリデーション
-      this.validateLine(line);
-
-
-      return await runTransaction(db, async (transaction) => {
-        const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
-
-        // Line名の重複チェック
-        await this.checkLineNameDuplicate(line.name);
-
-        // 開始メッセージの存在確認
-        if (line.startMessageId) {
-          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.startMessageId);
-          const startMessageDoc = await transaction.get(startMessageRef);
-          if (!startMessageDoc.exists()) {
-            throw new Error(`Start message with ID ${line.startMessageId} not found`);
-          }
-        }
-
-        // 分岐元メッセージの存在確認
-        if (line.branchFromMessageId) {
-          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.branchFromMessageId);
-          const branchMessageDoc = await transaction.get(branchMessageRef);
-          if (!branchMessageDoc.exists()) {
-            throw new Error(`Branch from message with ID ${line.branchFromMessageId} not found`);
-          }
-        }
-
-        const lineData = {
-          ...line,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-
-        const docRef = doc(linesRef);
-        transaction.set(docRef, lineData);
-
-        return docRef.id;
-      });
-
-    } catch (error) {
-      console.error('❌ Failed to create line:', error);
-      throw error;
-    }
-  }
-
-  async updateLine(id: string, updates: Partial<Line>): Promise<void> {
-    try {
-      // バリデーション
-      this.validateLineId(id);
-      this.validateLineUpdates(updates);
-
-
-      await runTransaction(db, async (transaction) => {
-        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
-
-        // Line存在確認
-        const lineDoc = await transaction.get(lineRef);
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${id} not found`);
-        }
-
-        // 名前の重複チェック（変更される場合）
-        if (updates.name) {
-          await this.checkLineNameDuplicate(updates.name, id);
-        }
-
-        // 開始メッセージの存在確認（変更される場合）
-        if (updates.startMessageId) {
-          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.startMessageId);
-          const startMessageDoc = await transaction.get(startMessageRef);
-          if (!startMessageDoc.exists()) {
-            throw new Error(`Start message with ID ${updates.startMessageId} not found`);
-          }
-        }
-
-        // 分岐元メッセージの存在確認（変更される場合）
-        if (updates.branchFromMessageId) {
-          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.branchFromMessageId);
-          const branchMessageDoc = await transaction.get(branchMessageRef);
-          if (!branchMessageDoc.exists()) {
-            throw new Error(`Branch from message with ID ${updates.branchFromMessageId} not found`);
-          }
-        }
-
-        const updateData = {
-          ...updates,
-          updated_at: new Date().toISOString(),
-          updatedAt: serverTimestamp()
-        };
-
-        transaction.update(lineRef, updateData);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to update line ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteLine(id: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateLineId(id);
-
-
-      await runTransaction(db, async (transaction) => {
-        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
-
-        // Line存在確認
-        const lineDoc = await transaction.get(lineRef);
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${id} not found`);
-        }
-
-        const lineData = lineDoc.data() as Line;
-
-        // 関連メッセージの処理 - メッセージのlineIdをnullに設定
-        if (lineData.messageIds && lineData.messageIds.length > 0) {
-          for (const messageId of lineData.messageIds) {
-            const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-            const messageDoc = await transaction.get(messageRef);
-            if (messageDoc.exists()) {
-              transaction.update(messageRef, {
-                lineId: null,
-                updatedAt: serverTimestamp()
-              });
-            }
-          }
-        }
-
-        // BranchPointからLineを削除
-        const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
-        const branchPointsSnapshot = await getDocs(query(branchPointsRef, where('lines', 'array-contains', id)));
-
-        branchPointsSnapshot.forEach((branchPointDoc) => {
-          const branchPointData = branchPointDoc.data() as BranchPoint;
-          const updatedLines = branchPointData.lines.filter(lineId => lineId !== id);
-
-          if (updatedLines.length === 0) {
-            // BranchPointにLineが残っていない場合は削除
-            transaction.delete(branchPointDoc.ref);
-          } else {
-            // 他のLineが残っている場合は更新
-            transaction.update(branchPointDoc.ref, {
-              lines: updatedLines,
-              updatedAt: serverTimestamp()
-            });
-          }
-        });
-
-        // Line削除
-        transaction.delete(lineRef);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to delete line ${id}:`, error);
-      throw error;
-    }
-  }
-
-  // Line バリデーション関数
   private validateLine(line: Omit<Line, 'id'>): void {
     if (!line.name || line.name.trim() === '') {
       throw new Error('Line name is required');
     }
-
-    // startMessageIdは新規ライン作成時は空でも良い（メッセージが追加された時に設定される）
-    // if (!line.startMessageId || line.startMessageId.trim() === '') {
-    //   throw new Error('Start message ID is required');
-    // }
 
     if (!line.messageIds || !Array.isArray(line.messageIds)) {
       throw new Error('Message IDs array is required');
@@ -809,17 +1112,11 @@ class DataSourceManager {
       throw new Error('Line name cannot be empty');
     }
 
-    // startMessageIdは空文字列でも良い（新規ライン作成時や初期状態）
-    // if (updates.startMessageId !== undefined && updates.startMessageId.trim() === '') {
-    //   throw new Error('Start message ID cannot be empty');
-    // }
-
     if (updates.messageIds !== undefined && (!Array.isArray(updates.messageIds))) {
       throw new Error('Message IDs must be an array');
     }
   }
 
-  // Line制約チェック関数
   private async checkLineNameDuplicate(name: string, excludeId?: string): Promise<void> {
     const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
     const q = query(linesRef, where('name', '==', name));
@@ -832,380 +1129,6 @@ class DataSourceManager {
     }
   }
 
-  // BranchPoint CRUD Operations
-  async createBranchPoint(messageId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // メッセージ存在確認
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
-
-        // 既存のBranchPointチェック
-        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const existingBranchPoint = await transaction.get(branchPointRef);
-        if (existingBranchPoint.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} already exists`);
-        }
-
-        // BranchPoint作成
-        const branchPointData = {
-          messageId,
-          lines: [],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-
-        transaction.set(branchPointRef, branchPointData);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to create branch point for message ${messageId}:`, error);
-      throw error;
-    }
-  }
-
-  async addLineToBranchPoint(messageId: string, lineId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-      this.validateLineId(lineId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // メッセージ存在確認
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
-
-        // Line存在確認
-        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
-        const lineDoc = await transaction.get(lineRef);
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${lineId} not found`);
-        }
-
-        // BranchPoint存在確認と作成
-        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const branchPointDoc = await transaction.get(branchPointRef);
-
-        let branchPointData: BranchPoint;
-
-        if (!branchPointDoc.exists()) {
-          // BranchPointが存在しない場合は作成
-          branchPointData = {
-            messageId,
-            lines: [],
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-          };
-          transaction.set(branchPointRef, branchPointData);
-        } else {
-          branchPointData = branchPointDoc.data() as BranchPoint;
-        }
-
-        // 既にLineが追加されているかチェック
-        if (branchPointData.lines.includes(lineId)) {
-          throw new Error(`Line ${lineId} is already in branch point ${messageId}`);
-        }
-
-        // Lineを追加
-        const updatedLines = [...branchPointData.lines, lineId];
-
-        transaction.update(branchPointRef, {
-          lines: updatedLines,
-          updatedAt: serverTimestamp()
-        });
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to add line ${lineId} to branch point ${messageId}:`, error);
-      throw error;
-    }
-  }
-
-  async removeLineFromBranchPoint(messageId: string, lineId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-      this.validateLineId(lineId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // BranchPoint存在確認
-        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const branchPointDoc = await transaction.get(branchPointRef);
-        if (!branchPointDoc.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} not found`);
-        }
-
-        const branchPointData = branchPointDoc.data() as BranchPoint;
-
-        // Lineが存在するかチェック
-        if (!branchPointData.lines.includes(lineId)) {
-          throw new Error(`Line ${lineId} is not in branch point ${messageId}`);
-        }
-
-        // Lineを削除
-        const updatedLines = branchPointData.lines.filter(id => id !== lineId);
-
-        if (updatedLines.length === 0) {
-          // Lineが残っていない場合はBranchPoint自体を削除
-          transaction.delete(branchPointRef);
-        } else {
-          // 他のLineが残っている場合は更新
-          transaction.update(branchPointRef, {
-            lines: updatedLines,
-            updatedAt: serverTimestamp()
-          });
-        }
-      });
-
-    } catch (error) {
-      console.error(`❌ Failed to remove line ${lineId} from branch point ${messageId}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteBranchPoint(messageId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // BranchPoint存在確認
-        const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const branchPointDoc = await transaction.get(branchPointRef);
-        if (!branchPointDoc.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} not found`);
-        }
-
-        const branchPointData = branchPointDoc.data() as BranchPoint;
-
-        // 関連するLineの処理（branchFromMessageIdをクリア）
-        if (branchPointData.lines && branchPointData.lines.length > 0) {
-          for (const lineId of branchPointData.lines) {
-            const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
-            const lineDoc = await transaction.get(lineRef);
-            if (lineDoc.exists()) {
-              const lineData = lineDoc.data() as Line;
-              if (lineData.branchFromMessageId === messageId) {
-                transaction.update(lineRef, {
-                  branchFromMessageId: null,
-                  updated_at: new Date().toISOString(),
-                  updatedAt: serverTimestamp()
-                });
-              }
-            }
-          }
-        }
-
-        // BranchPoint削除
-        transaction.delete(branchPointRef);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to delete branch point ${messageId}:`, error);
-      throw error;
-    }
-  }
-
-  // Message Linking Management
-  async linkMessages(prevMessageId: string, nextMessageId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(prevMessageId);
-      this.validateMessageId(nextMessageId);
-
-      if (prevMessageId === nextMessageId) {
-        throw new Error('Cannot link a message to itself');
-      }
-
-
-      await runTransaction(db, async (transaction) => {
-        // 両方のメッセージの存在確認
-        const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
-        const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, nextMessageId);
-
-        const [prevMessageDoc, nextMessageDoc] = await Promise.all([
-          transaction.get(prevMessageRef),
-          transaction.get(nextMessageRef)
-        ]);
-
-        if (!prevMessageDoc.exists()) {
-          throw new Error(`Previous message with ID ${prevMessageId} not found`);
-        }
-        if (!nextMessageDoc.exists()) {
-          throw new Error(`Next message with ID ${nextMessageId} not found`);
-        }
-
-        const prevMessageData = prevMessageDoc.data() as Message;
-        const nextMessageData = nextMessageDoc.data() as Message;
-
-        // 循環参照チェック
-        await this.checkForCircularReference(prevMessageId, nextMessageId, transaction);
-
-        // 同じLine内のメッセージか確認
-        if (prevMessageData.lineId !== nextMessageData.lineId) {
-          throw new Error('Messages must be in the same line to be linked');
-        }
-
-        // 前のメッセージの nextInLine を更新
-        transaction.update(prevMessageRef, {
-          nextInLine: nextMessageId,
-          updatedAt: serverTimestamp()
-        });
-
-        // 次のメッセージの prevInLine を更新
-        transaction.update(nextMessageRef, {
-          prevInLine: prevMessageId,
-          updatedAt: serverTimestamp()
-        });
-
-        // Line の messageIds を更新
-        await this.updateLineMessageIds(prevMessageData.lineId, transaction);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to link messages ${prevMessageId} -> ${nextMessageId}:`, error);
-      throw error;
-    }
-  }
-
-  async unlinkMessages(messageId: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // メッセージ存在確認
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
-
-        const messageData = messageDoc.data() as Message;
-
-        // 前のメッセージのnextInLineをクリア
-        if (messageData.prevInLine) {
-          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
-          const prevMessageDoc = await transaction.get(prevMessageRef);
-          if (prevMessageDoc.exists()) {
-            transaction.update(prevMessageRef, {
-              nextInLine: null,
-              updatedAt: serverTimestamp()
-            });
-          }
-        }
-
-        // 次のメッセージのprevInLineをクリア
-        if (messageData.nextInLine) {
-          const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
-          const nextMessageDoc = await transaction.get(nextMessageRef);
-          if (nextMessageDoc.exists()) {
-            transaction.update(nextMessageRef, {
-              prevInLine: null,
-              updatedAt: serverTimestamp()
-            });
-          }
-        }
-
-        // 現在のメッセージのリンクをクリア
-        transaction.update(messageRef, {
-          prevInLine: null,
-          nextInLine: null,
-          updatedAt: serverTimestamp()
-        });
-
-        // Line の messageIds を更新
-        if (messageData.lineId) {
-          await this.updateLineMessageIds(messageData.lineId, transaction);
-        }
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to unlink message ${messageId}:`, error);
-      throw error;
-    }
-  }
-
-  async moveMessageToLine(messageId: string, targetLineId: string, position?: number): Promise<void> {
-    try {
-      // バリデーション
-      this.validateMessageId(messageId);
-      this.validateLineId(targetLineId);
-
-
-      await runTransaction(db, async (transaction) => {
-        // メッセージ存在確認
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
-
-        // ターゲットLine存在確認
-        const targetLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, targetLineId);
-        const targetLineDoc = await transaction.get(targetLineRef);
-
-        if (!targetLineDoc.exists()) {
-          throw new Error(`Target line with ID ${targetLineId} not found`);
-        }
-
-        const messageData = messageDoc.data() as Message;
-        const oldLineId = messageData.lineId;
-
-        // 現在のLineから切断
-        if (oldLineId) {
-          await this.unlinkMessageFromCurrentPosition(messageId, transaction);
-        }
-
-        // 新しいLineに移動
-        transaction.update(messageRef, {
-          lineId: targetLineId,
-          prevInLine: null,
-          nextInLine: null,
-          updatedAt: serverTimestamp()
-        });
-
-        // 指定された位置に挿入
-        if (position !== undefined) {
-          await this.insertMessageAtPosition(messageId, targetLineId, position, transaction);
-        }
-
-        // 両方のLineのmessageIdsを更新
-        if (oldLineId && oldLineId !== targetLineId) {
-          await this.updateLineMessageIds(oldLineId, transaction);
-        }
-        await this.updateLineMessageIds(targetLineId, transaction);
-      });
-
-
-    } catch (error) {
-      console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
-      throw error;
-    }
-  }
-
-  // Helper functions for message linking
   private async checkForCircularReference(prevMessageId: string, nextMessageId: string, transaction: Transaction): Promise<void> {
     const visited = new Set<string>();
     let currentId: string | null = nextMessageId;
@@ -1224,7 +1147,7 @@ class DataSourceManager {
         break;
       }
 
-      const messageData = messageDoc.data() as Message;
+      const messageData = messageDoc.data() as MessageWithTimestamp;
       currentId = messageData.nextInLine || null;
     }
   }
@@ -1234,14 +1157,13 @@ class DataSourceManager {
     const q = query(messagesRef, where('lineId', '==', lineId));
     const messagesSnapshot = await getDocs(q);
 
-    const messagesMap = new Map<string, Message>();
+    const messagesMap = new Map<string, MessageWithTimestamp>();
 
     messagesSnapshot.forEach((doc) => {
-      const messageData = doc.data() as Message;
+      const messageData = doc.data() as MessageWithTimestamp;
       messagesMap.set(doc.id, messageData);
     });
 
-    // メッセージチェーンを辿って正しい順序を構築
     const orderedIds = this.buildMessageChain(messagesMap);
 
     const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
@@ -1252,11 +1174,10 @@ class DataSourceManager {
     });
   }
 
-  private buildMessageChain(messagesMap: Map<string, Message>): string[] {
+  private buildMessageChain(messagesMap: Map<string, MessageWithTimestamp>): string[] {
     const orderedIds: string[] = [];
     const visited = new Set<string>();
 
-    // 開始メッセージを見つける（prevInLineがnullのもの）
     let startMessageId: string | null = null;
     for (const [id, message] of Array.from(messagesMap.entries())) {
       if (!message.prevInLine) {
@@ -1265,7 +1186,6 @@ class DataSourceManager {
       }
     }
 
-    // チェーンを辿る
     let currentId: string | null = startMessageId;
     while (currentId && !visited.has(currentId)) {
       visited.add(currentId);
@@ -1275,7 +1195,6 @@ class DataSourceManager {
       currentId = currentMessage?.nextInLine || null;
     }
 
-    // 訪問されていないメッセージを追加（孤立したメッセージ）
     for (const [id] of Array.from(messagesMap.entries())) {
       if (!visited.has(id)) {
         orderedIds.push(id);
@@ -1293,9 +1212,8 @@ class DataSourceManager {
       return;
     }
 
-    const messageData = messageDoc.data() as Message;
+    const messageData = messageDoc.data() as MessageWithTimestamp;
 
-    // 前のメッセージと次のメッセージを直接リンク
     if (messageData.prevInLine && messageData.nextInLine) {
       const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
       const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
@@ -1310,14 +1228,12 @@ class DataSourceManager {
         updatedAt: serverTimestamp()
       });
     } else if (messageData.prevInLine) {
-      // 前のメッセージのnextInLineをクリア
       const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
       transaction.update(prevMessageRef, {
         nextInLine: null,
         updatedAt: serverTimestamp()
       });
     } else if (messageData.nextInLine) {
-      // 次のメッセージのprevInLineをクリア
       const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
       transaction.update(nextMessageRef, {
         prevInLine: null,
@@ -1331,10 +1247,10 @@ class DataSourceManager {
     const q = query(messagesRef, where('lineId', '==', lineId));
     const messagesSnapshot = await getDocs(q);
 
-    const messagesMap = new Map<string, Message>();
+    const messagesMap = new Map<string, MessageWithTimestamp>();
     messagesSnapshot.forEach((doc) => {
-      if (doc.id !== messageId) { // 移動中のメッセージは除外
-        const messageData = doc.data() as Message;
+      if (doc.id !== messageId) {
+        const messageData = doc.data() as MessageWithTimestamp;
         messagesMap.set(doc.id, messageData);
       }
     });
@@ -1342,7 +1258,6 @@ class DataSourceManager {
     const orderedIds = this.buildMessageChain(messagesMap);
 
     if (position >= orderedIds.length) {
-      // 末尾に追加
       if (orderedIds.length > 0) {
         const lastMessageId = orderedIds[orderedIds.length - 1];
         const lastMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, lastMessageId);
@@ -1360,7 +1275,6 @@ class DataSourceManager {
         });
       }
     } else if (position === 0) {
-      // 先頭に挿入
       if (orderedIds.length > 0) {
         const firstMessageId = orderedIds[0];
         const firstMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, firstMessageId);
@@ -1378,7 +1292,6 @@ class DataSourceManager {
         });
       }
     } else {
-      // 中間に挿入
       const prevMessageId = orderedIds[position - 1];
       const nextMessageId = orderedIds[position];
 
@@ -1404,119 +1317,6 @@ class DataSourceManager {
     }
   }
 
-  // Tag CRUD Operations
-  async createTag(tag: Omit<Tag, 'id'>): Promise<string> {
-    try {
-      // バリデーション
-      this.validateTag(tag);
-
-      // 名前の重複チェック
-      await this.checkTagNameDuplicate(tag.name);
-
-
-      const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
-
-      // Firestoreに送信するデータからundefinedを除去
-      const tagData: Record<string, unknown> = {
-        name: tag.name,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      // オプションフィールドをundefinedでない場合のみ追加
-      if (tag.color !== undefined) {
-        tagData.color = tag.color;
-      }
-      if (tag.groupId !== undefined) {
-        tagData.groupId = tag.groupId;
-      }
-
-      const docRef = await addDoc(tagsRef, tagData);
-
-      return docRef.id;
-
-    } catch (error) {
-      console.error('❌ Failed to create tag:', error);
-      throw error;
-    }
-  }
-
-  async updateTag(id: string, updates: Partial<Tag>): Promise<void> {
-    try {
-      // バリデーション
-      this.validateTagId(id);
-      this.validateTagUpdates(updates);
-
-
-      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
-
-      // タグ存在確認
-      const tagDoc = await getDoc(tagRef);
-      if (!tagDoc.exists()) {
-        throw new Error(`Tag with ID ${id} not found`);
-      }
-
-      // 名前の重複チェック（変更される場合）
-      if (updates.name) {
-        await this.checkTagNameDuplicate(updates.name, id);
-      }
-
-      // Firestoreに送信するデータからundefinedを除去
-      const updateData: Record<string, unknown> = {
-        updatedAt: serverTimestamp()
-      };
-
-      // 実際に更新されるフィールドのみ追加
-      if (updates.name !== undefined) {
-        updateData.name = updates.name;
-      }
-      if (updates.color !== undefined) {
-        updateData.color = updates.color;
-      }
-      if (updates.groupId !== undefined) {
-        updateData.groupId = updates.groupId;
-      }
-
-      await updateDoc(tagRef, updateData);
-
-
-    } catch (error) {
-      console.error(`❌ Failed to update tag ${id}:`, error);
-      throw error;
-    }
-  }
-
-  async deleteTag(id: string): Promise<void> {
-    try {
-      // バリデーション
-      this.validateTagId(id);
-
-
-      const tagRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, TAGS_SUBCOLLECTION, id);
-
-      // タグ存在確認
-      const tagDoc = await getDoc(tagRef);
-      if (!tagDoc.exists()) {
-        throw new Error(`Tag with ID ${id} not found`);
-      }
-
-      // 関連するメッセージからタグを削除
-      await this.removeTagFromAllMessages(id);
-
-      // 関連するラインからタグを削除
-      await this.removeTagFromAllLines(id);
-
-      // タグ削除
-      await deleteDoc(tagRef);
-
-
-    } catch (error) {
-      console.error(`❌ Failed to delete tag ${id}:`, error);
-      throw error;
-    }
-  }
-
-  // Tag バリデーション関数
   private validateTag(tag: Omit<Tag, 'id'>): void {
     if (!tag.name || tag.name.trim() === '') {
       throw new Error('Tag name is required');
@@ -1539,7 +1339,6 @@ class DataSourceManager {
     }
   }
 
-  // Tag制約チェック関数
   private async checkTagNameDuplicate(name: string, excludeId?: string): Promise<void> {
     const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
     const q = query(tagsRef, where('name', '==', name));
@@ -1552,7 +1351,6 @@ class DataSourceManager {
     }
   }
 
-  // 関連データ処理
   private async removeTagFromAllMessages(tagId: string): Promise<void> {
     const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
     const q = query(messagesRef, where('tags', 'array-contains', tagId));
@@ -1565,7 +1363,7 @@ class DataSourceManager {
     const batch = writeBatch(db);
 
     querySnapshot.forEach((messageDoc) => {
-      const messageData = messageDoc.data() as Message;
+      const messageData = messageDoc.data() as MessageWithTimestamp;
       const updatedTags = (messageData.tags || []).filter(id => id !== tagId);
 
       batch.update(messageDoc.ref, {
@@ -1601,81 +1399,4 @@ class DataSourceManager {
 
     await batch.commit();
   }
-
-  // アトミックなメッセージ作成（トランザクション）
-  async createMessageWithLineUpdate(
-    messageData: Omit<Message, 'id'>,
-    lineId: string,
-    prevMessageId?: string
-  ): Promise<string> {
-    try {
-      return await runTransaction(db, async (transaction) => {
-        // 🔵 全ての読み取り操作を最初に実行
-        const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
-        const lineDoc = await transaction.get(lineRef);
-
-        let prevMessageDoc = null;
-        if (prevMessageId) {
-          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
-          prevMessageDoc = await transaction.get(prevMessageRef);
-        }
-
-        // 読み取り結果のバリデーション
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${lineId} not found`);
-        }
-
-        const lineData = lineDoc.data() as Line;
-
-        // 🔵 ここから書き込み操作のみ実行
-        // メッセージ作成
-        const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
-        const newMessageRef = doc(messagesRef);
-
-        const newMessageData = {
-          ...messageData,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-
-        transaction.set(newMessageRef, newMessageData);
-
-        // 前のメッセージのnextInLineを更新
-        if (prevMessageId && prevMessageDoc && prevMessageDoc.exists()) {
-          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
-          transaction.update(prevMessageRef, {
-            nextInLine: newMessageRef.id,
-            updatedAt: serverTimestamp()
-          });
-        }
-
-        // LineのmessageIds、startMessageId、endMessageIdを更新
-        const updatedMessageIds = [...lineData.messageIds, newMessageRef.id];
-        const isFirstMessage = lineData.messageIds.length === 0;
-
-        const lineUpdateData: Record<string, unknown> = {
-          messageIds: updatedMessageIds,
-          endMessageId: newMessageRef.id,
-          updated_at: new Date().toISOString(),
-          updatedAt: serverTimestamp()
-        };
-
-        if (isFirstMessage) {
-          lineUpdateData.startMessageId = newMessageRef.id;
-        }
-
-        transaction.update(lineRef, lineUpdateData);
-
-        return newMessageRef.id;
-      });
-
-    } catch (error) {
-      console.error('❌ Failed to create message with line update:', error);
-      throw error;
-    }
-  }
 }
-
-export { DataSourceManager };
-export const dataSourceManager = DataSourceManager.getInstance();
-

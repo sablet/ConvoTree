@@ -53,23 +53,23 @@ export function MessageInput({
           {selectedBaseMessage ? (
             <div className="mb-3 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
               <div className="flex items-center justify-between gap-2">
-                <div className="flex flex-col gap-1 flex-1 min-w-0">
-                  <span className="text-xs px-2 py-1 rounded bg-emerald-500 text-white self-start">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="text-xs px-2 py-1 rounded bg-emerald-500 text-white flex-shrink-0">
                     🌿 新しい分岐を作成
                   </span>
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-gray-400 flex-shrink-0">
                     {(() => {
                       const message = messages[selectedBaseMessage]
                       if (!message) return ""
                       return getRelativeTime(message.timestamp.toISOString())
                     })()}
                   </span>
-                  <span className="font-medium text-gray-800 truncate">
-                    {(() => {
+                  <span className="text-xs text-gray-500 truncate">
+                    分岐元: {(() => {
                       const message = messages[selectedBaseMessage]
                       if (!message) return ""
-                      const content = message.content.slice(0, 18)
-                      return `${content}${message.content.length > 18 ? "..." : ""}`
+                      const content = message.content.slice(0, 30)
+                      return `${content}${message.content.length > 30 ? "..." : ""}`
                     })()}
                   </span>
                 </div>
