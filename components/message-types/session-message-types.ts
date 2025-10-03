@@ -3,8 +3,8 @@
  */
 
 export interface SessionMessageData {
-  checkedInAt?: string
-  checkedOutAt?: string
+  checkedInAt?: string | null
+  checkedOutAt?: string | null
   timeSpent?: number // 分単位
   autoStart?: boolean // 自動開始フラグ
 }

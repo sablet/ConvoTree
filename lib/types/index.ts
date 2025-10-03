@@ -1,5 +1,7 @@
 import type { MessageType } from '@/lib/constants'
 
+export type { MessageType }
+
 export interface Message {
   id: string
   content: string

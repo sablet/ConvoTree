@@ -3,8 +3,8 @@
 import { formatTime, formatDuration, calculateDuration, parseDateTime } from "../session-message-helpers"
 
 interface SessionMessageSessionTimesProps {
-  checkedInAt?: string
-  checkedOutAt?: string
+  checkedInAt?: string | null
+  checkedOutAt?: string | null
   isEditMode: boolean
   editCheckedInAt: string
   editCheckedOutAt: string
@@ -13,8 +13,8 @@ interface SessionMessageSessionTimesProps {
 }
 
 function SessionTimesDisplay({ checkedInAt, checkedOutAt }: {
-  checkedInAt?: string
-  checkedOutAt?: string
+  checkedInAt?: string | null
+  checkedOutAt?: string | null
 }) {
   return (
     <div>

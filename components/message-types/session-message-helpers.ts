@@ -115,8 +115,8 @@ export interface ValidationError {
 
 export interface ValidationSuccess {
   isValid: true
-  checkedInAt?: string
-  checkedOutAt?: string
+  checkedInAt?: string | null
+  checkedOutAt?: string | null
 }
 
 export type ValidationResult = ValidationError | ValidationSuccess
@@ -164,10 +164,10 @@ export function validateSessionTimes(
  */
 export function calculateNewTimeSpent(
   currentTimeSpent: number,
-  newCheckedInAt: string | undefined,
-  newCheckedOutAt: string | undefined,
-  oldCheckedInAt: string | undefined,
-  oldCheckedOutAt: string | undefined
+  newCheckedInAt: string | null | undefined,
+  newCheckedOutAt: string | null | undefined,
+  oldCheckedInAt: string | null | undefined,
+  oldCheckedOutAt: string | null | undefined
 ): number {
   if (!newCheckedInAt || !newCheckedOutAt) {
     return currentTimeSpent

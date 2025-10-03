@@ -59,8 +59,8 @@ export function MessageTypeRenderer({
   }
 
   const handleSessionDataUpdate = (newSessionData: {
-    checkedInAt?: string
-    checkedOutAt?: string
+    checkedInAt?: string | null
+    checkedOutAt?: string | null
     timeSpent?: number
     autoStart?: boolean
   }) => {
@@ -112,8 +112,8 @@ export function MessageTypeRenderer({
           messageId={message.id}
           content={message.content}
           data={message.metadata as {
-            checkedInAt?: string
-            checkedOutAt?: string
+            checkedInAt?: string | null
+            checkedOutAt?: string | null
             timeSpent?: number
             notes?: string
             autoStart?: boolean
