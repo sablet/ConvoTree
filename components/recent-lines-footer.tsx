@@ -99,30 +99,38 @@ export function RecentLinesFooter({
     return null
   }
 
-  // ラインアイテムをレンダリングする共通関数
-  const renderLineItem = (line: Line, isMain: boolean = false) => {
+  // 最終メッセージのプレビューテキストを生成
+  const getLastMessagePreview = (line: Line): string => {
     const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
     const lastMessage = lastMessageId ? messages[lastMessageId] : null
-    const lastMessagePreview = lastMessage?.content
-      ? lastMessage.content.slice(0, 20) + (lastMessage.content.length > 20 ? "..." : "")
-      : ""
+    if (!lastMessage?.content) return ""
+    return lastMessage.content.slice(0, 20) + (lastMessage.content.length > 20 ? "..." : "")
+  }
+
+  // 最終メッセージと時刻の表示テキストを生成
+  const getMessageTimeText = (preview: string, time: string): string => {
+    if (preview && time) return `${preview} • ${time}`
+    return preview || time
+  }
+
+  // ラインアイテムをレンダリングする共通関数
+  const renderLineItem = (line: Line, isMain: boolean = false) => {
+    const lastMessagePreview = getLastMessagePreview(line)
     const relativeTime = line.updated_at ? formatRelativeTime(line.updated_at) : ""
     const displayInfo = getLineDisplayInfo(line)
+    const containerClass = isMain
+      ? 'bg-blue-50 hover:bg-blue-100 border-blue-200'
+      : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
+    const dotClass = isMain ? 'bg-blue-600' : 'bg-blue-500'
 
     return (
       <div
         key={line.id}
         onClick={() => onLineSelect(line.id)}
-        className={`flex-shrink-0 border rounded-lg p-2 cursor-pointer transition-colors min-w-[180px] max-w-[240px] ${
-          isMain
-            ? 'bg-blue-50 hover:bg-blue-100 border-blue-200'
-            : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
-        }`}
+        className={`flex-shrink-0 border rounded-lg p-2 cursor-pointer transition-colors min-w-[180px] max-w-[240px] ${containerClass}`}
       >
         <div className="flex items-center gap-2 mb-1">
-          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-            isMain ? 'bg-blue-600' : 'bg-blue-500'
-          }`}></div>
+          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotClass}`}></div>
           <span className="text-sm font-medium text-gray-900 flex-1 truncate">
             {displayInfo.name}
             {displayInfo.branchCount > 0 && (
@@ -136,19 +144,14 @@ export function RecentLinesFooter({
           )}
         </div>
         <div className="text-xs text-gray-500 space-y-1">
-          {/* パンくずリスト表示（親階層がある場合のみ） */}
           {displayInfo.ancestry && (
             <div className="opacity-75 truncate">
               {displayInfo.ancestry} &gt;
             </div>
           )}
-          {/* 最終メッセージと時刻 */}
           {(lastMessagePreview || relativeTime) && (
             <div className="truncate">
-              {lastMessagePreview && relativeTime
-                ? `${lastMessagePreview} • ${relativeTime}`
-                : lastMessagePreview || relativeTime
-              }
+              {getMessageTimeText(lastMessagePreview, relativeTime)}
             </div>
           )}
         </div>
