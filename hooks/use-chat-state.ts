@@ -46,6 +46,12 @@ export interface ChatState {
   // フィルター・検索
   filterMessageType: MessageType | 'all'
   setFilterMessageType: React.Dispatch<React.SetStateAction<MessageType | 'all'>>
+  filterTaskCompleted: 'all' | 'completed' | 'incomplete'
+  setFilterTaskCompleted: React.Dispatch<React.SetStateAction<'all' | 'completed' | 'incomplete'>>
+  filterDateStart: string
+  setFilterDateStart: React.Dispatch<React.SetStateAction<string>>
+  filterDateEnd: string
+  setFilterDateEnd: React.Dispatch<React.SetStateAction<string>>
   filterTag: string
   setFilterTag: React.Dispatch<React.SetStateAction<string>>
   searchKeyword: string
@@ -86,6 +92,9 @@ export function useChatState({
 
   // フィルター・検索
   const [filterMessageType, setFilterMessageType] = useState<MessageType | 'all'>('all')
+  const [filterTaskCompleted, setFilterTaskCompleted] = useState<'all' | 'completed' | 'incomplete'>('all')
+  const [filterDateStart, setFilterDateStart] = useState<string>('')
+  const [filterDateEnd, setFilterDateEnd] = useState<string>('')
   const [filterTag, setFilterTag] = useState<string>('')
   const [searchKeyword, setSearchKeyword] = useState<string>('')
 
@@ -138,6 +147,12 @@ export function useChatState({
     setLineAncestryCache,
     filterMessageType,
     setFilterMessageType,
+    filterTaskCompleted,
+    setFilterTaskCompleted,
+    filterDateStart,
+    setFilterDateStart,
+    filterDateEnd,
+    setFilterDateEnd,
     filterTag,
     setFilterTag,
     searchKeyword,

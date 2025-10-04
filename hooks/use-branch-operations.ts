@@ -99,6 +99,9 @@ export function useBranchOperations({
     lineAncestryCache,
     setLineAncestryCache,
     filterMessageType,
+    filterTaskCompleted,
+    filterDateStart,
+    filterDateEnd,
     filterTag,
     searchKeyword,
     clearAllCaches
@@ -291,6 +294,36 @@ export function useBranchOperations({
         return false
       }
 
+      // タスク完了フィルター
+      if (filterTaskCompleted !== 'all' && message.type === 'task') {
+        const isCompleted = message.metadata?.completed === true
+        if (filterTaskCompleted === 'completed' && !isCompleted) {
+          return false
+        }
+        if (filterTaskCompleted === 'incomplete' && isCompleted) {
+          return false
+        }
+      }
+
+      // 日時範囲フィルター
+      if (filterDateStart || filterDateEnd) {
+        const messageDate = new Date(message.timestamp)
+        if (filterDateStart) {
+          const startDate = new Date(filterDateStart)
+          startDate.setHours(0, 0, 0, 0)
+          if (messageDate < startDate) {
+            return false
+          }
+        }
+        if (filterDateEnd) {
+          const endDate = new Date(filterDateEnd)
+          endDate.setHours(23, 59, 59, 999)
+          if (messageDate > endDate) {
+            return false
+          }
+        }
+      }
+
       // タグフィルター（部分一致）
       if (filterTag) {
         const messageTags = message.tags || []
@@ -318,7 +351,7 @@ export function useBranchOperations({
       messages: filtered,
       transitions: completeTimeline.transitions
     }
-  }, [completeTimeline, filterMessageType, filterTag, searchKeyword])
+  }, [completeTimeline, filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword])
 
   /**
    * Save scroll position

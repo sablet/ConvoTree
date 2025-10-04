@@ -16,6 +16,9 @@ interface BranchSelectorProps {
   completeTimeline: Timeline
   currentLine: Line | null
   filterMessageType: MessageType | 'all'
+  filterTaskCompleted: 'all' | 'completed' | 'incomplete'
+  filterDateStart: string // eslint-disable-line @typescript-eslint/no-unused-vars
+  filterDateEnd: string // eslint-disable-line @typescript-eslint/no-unused-vars
   filterTag: string
   searchKeyword: string
   tags: Record<string, Tag> // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -23,6 +26,9 @@ interface BranchSelectorProps {
   getLineAncestry: (lineId: string) => string[]
   onSwitchLine: (lineId: string) => void
   onFilterTypeChange: (type: MessageType | 'all') => void
+  onFilterTaskCompletedChange: (status: 'all' | 'completed' | 'incomplete') => void
+  onFilterDateStartChange: (date: string) => void // eslint-disable-line @typescript-eslint/no-unused-vars
+  onFilterDateEndChange: (date: string) => void // eslint-disable-line @typescript-eslint/no-unused-vars
   onFilterTagChange: (tag: string) => void
   onSearchChange: (keyword: string) => void
 }
@@ -36,6 +42,9 @@ export function BranchSelector({
   completeTimeline,
   currentLine,
   filterMessageType,
+  filterTaskCompleted,
+  filterDateStart: _filterDateStart,
+  filterDateEnd: _filterDateEnd,
   filterTag,
   searchKeyword,
   tags: _tags,
@@ -43,6 +52,9 @@ export function BranchSelector({
   getLineAncestry,
   onSwitchLine,
   onFilterTypeChange,
+  onFilterTaskCompletedChange,
+  onFilterDateStartChange: _onFilterDateStartChange,
+  onFilterDateEndChange: _onFilterDateEndChange,
   onFilterTagChange,
   onSearchChange
 }: BranchSelectorProps) {
@@ -116,15 +128,29 @@ export function BranchSelector({
             />
           </div>
 
-          {/* タイプフィルター */}
+          {/* タイプフィルター (タスクは階層化) */}
           <select
-            value={filterMessageType}
-            onChange={(e) => onFilterTypeChange(e.target.value as MessageType | 'all')}
+            value={filterMessageType === MESSAGE_TYPE_TASK ? `${MESSAGE_TYPE_TASK}-${filterTaskCompleted}` : filterMessageType}
+            onChange={(e) => {
+              const value = e.target.value
+              if (value.startsWith('task-')) {
+                const status = value.split('-')[1] as 'all' | 'completed' | 'incomplete'
+                onFilterTypeChange(MESSAGE_TYPE_TASK)
+                onFilterTaskCompletedChange(status)
+              } else {
+                onFilterTypeChange(value as MessageType | 'all')
+                onFilterTaskCompletedChange('all')
+              }
+            }}
             className="text-xs border border-gray-200 rounded px-2 h-7 bg-white"
           >
             <option value="all">{FILTER_ALL}</option>
             <option value={MESSAGE_TYPE_TEXT}>{FILTER_TEXT}</option>
-            <option value={MESSAGE_TYPE_TASK}>{FILTER_TASK}</option>
+            <optgroup label={FILTER_TASK}>
+              <option value="task-all">全てのタスク</option>
+              <option value="task-incomplete">未完了タスク</option>
+              <option value="task-completed">完了タスク</option>
+            </optgroup>
             <option value={MESSAGE_TYPE_DOCUMENT}>{FILTER_DOCUMENT}</option>
             <option value={MESSAGE_TYPE_SESSION}>{FILTER_SESSION}</option>
           </select>

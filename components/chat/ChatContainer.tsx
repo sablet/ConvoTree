@@ -125,6 +125,9 @@ export function ChatContainer({
         completeTimeline={branchOps.completeTimeline}
         currentLine={currentLineInfo}
         filterMessageType={chatState.filterMessageType}
+        filterTaskCompleted={chatState.filterTaskCompleted}
+        filterDateStart={chatState.filterDateStart}
+        filterDateEnd={chatState.filterDateEnd}
         filterTag={chatState.filterTag}
         searchKeyword={chatState.searchKeyword}
         tags={chatState.tags}
@@ -132,6 +135,9 @@ export function ChatContainer({
         getLineAncestry={branchOps.getLineAncestry}
         onSwitchLine={branchOps.switchToLine}
         onFilterTypeChange={chatState.setFilterMessageType}
+        onFilterTaskCompletedChange={chatState.setFilterTaskCompleted}
+        onFilterDateStartChange={chatState.setFilterDateStart}
+        onFilterDateEndChange={chatState.setFilterDateEnd}
         onFilterTagChange={chatState.setFilterTag}
         onSearchChange={chatState.setSearchKeyword}
       />
