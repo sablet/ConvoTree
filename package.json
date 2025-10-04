@@ -8,8 +8,8 @@
     "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && next build",
     "start": "next start",
     "lint": "next lint",
-    "cpd-check": "jscpd --config .jscpd.json ./app ./components",
-    "cpd-report": "jscpd --config .jscpd.json ./app ./components",
+    "cpd-check": "jscpd --config .jscpd.json ./app ./components ./hooks ./lib",
+    "cpd-report": "jscpd --config .jscpd.json ./app ./components ./hooks ./lib",
     "serve": "firebase serve --only hosting",
     "build:serve": "rm -rf out && npm run build && npm run serve"
   },

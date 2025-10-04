@@ -1,9 +1,10 @@
 'use client';
 
-import { collection, getDocs, doc, serverTimestamp, query, where, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, doc, serverTimestamp, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
 import type { Line } from '@/lib/types';
+import type * as FirebaseFirestore from 'firebase/firestore';
 
 interface BranchPointWithTimestamp {
   messageId: string;
@@ -69,11 +70,7 @@ export class FirestoreLineOperations {
 
       await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
-
-        const lineDoc = await transaction.get(lineRef);
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${id} not found`);
-        }
+        await this.getAndValidateLineDoc(transaction, id);
 
         if (updates.name) {
           await this.checkLineNameDuplicate(updates.name, id);
@@ -116,12 +113,7 @@ export class FirestoreLineOperations {
 
       await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
-
-        const lineDoc = await transaction.get(lineRef);
-        if (!lineDoc.exists()) {
-          throw new Error(`Line with ID ${id} not found`);
-        }
-
+        const lineDoc = await this.getAndValidateLineDoc(transaction, id);
         const lineData = lineDoc.data() as Line;
 
         if (lineData.messageIds && lineData.messageIds.length > 0) {
@@ -185,6 +177,18 @@ export class FirestoreLineOperations {
     if (!line.updated_at) {
       throw new Error('Updated at timestamp is required');
     }
+  }
+
+  private async getAndValidateLineDoc(
+    transaction: Transaction,
+    lineId: string
+  ): Promise<FirebaseFirestore.DocumentSnapshot> {
+    const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
+    const lineDoc = await transaction.get(lineRef);
+    if (!lineDoc.exists()) {
+      throw new Error(`Line with ID ${lineId} not found`);
+    }
+    return lineDoc;
   }
 
   private validateLineUpdates(updates: Partial<Line>): void {

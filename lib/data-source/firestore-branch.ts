@@ -6,6 +6,7 @@ import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION, 
 import type { BranchPoint, Line, Message } from '@/lib/types';
 import type { FirestoreMessageOperations } from './firestore-message';
 import type { FirestoreLineOperations } from './firestore-line';
+import type * as FirebaseFirestore from 'firebase/firestore';
 
 interface BranchPointWithTimestamp {
   messageId: string;
@@ -30,16 +31,36 @@ export class FirestoreBranchOperations {
     this.lineOps = lineOps;
   }
 
+  private async getAndValidateMessageDoc(
+    transaction: Transaction,
+    messageId: string
+  ): Promise<FirebaseFirestore.DocumentSnapshot> {
+    const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
+    const messageDoc = await transaction.get(messageRef);
+    if (!messageDoc.exists()) {
+      throw new Error(`Message with ID ${messageId} not found`);
+    }
+    return messageDoc;
+  }
+
+  private async getAndValidateBranchPointDoc(
+    transaction: Transaction,
+    messageId: string
+  ): Promise<FirebaseFirestore.DocumentSnapshot> {
+    const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
+    const branchPointDoc = await transaction.get(branchPointRef);
+    if (!branchPointDoc.exists()) {
+      throw new Error(`BranchPoint for message ${messageId} not found`);
+    }
+    return branchPointDoc;
+  }
+
   async createBranchPoint(messageId: string): Promise<void> {
     try {
       this.messageOps.validateMessageId(messageId);
 
       await runTransaction(db, async (transaction) => {
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
+        await this.getAndValidateMessageDoc(transaction, messageId);
 
         const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
         const existingBranchPoint = await transaction.get(branchPointRef);
@@ -69,11 +90,7 @@ export class FirestoreBranchOperations {
       this.lineOps.validateLineId(lineId);
 
       await runTransaction(db, async (transaction) => {
-        const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
+        await this.getAndValidateMessageDoc(transaction, messageId);
 
         const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
         const lineDoc = await transaction.get(lineRef);
@@ -127,11 +144,7 @@ export class FirestoreBranchOperations {
 
       await runTransaction(db, async (transaction) => {
         const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const branchPointDoc = await transaction.get(branchPointRef);
-        if (!branchPointDoc.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} not found`);
-        }
-
+        const branchPointDoc = await this.getAndValidateBranchPointDoc(transaction, messageId);
         const branchPointData = branchPointDoc.data() as BranchPoint;
 
         if (!branchPointData.lines.includes(lineId)) {
@@ -162,11 +175,7 @@ export class FirestoreBranchOperations {
 
       await runTransaction(db, async (transaction) => {
         const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, messageId);
-        const branchPointDoc = await transaction.get(branchPointRef);
-        if (!branchPointDoc.exists()) {
-          throw new Error(`BranchPoint for message ${messageId} not found`);
-        }
-
+        const branchPointDoc = await this.getAndValidateBranchPointDoc(transaction, messageId);
         const branchPointData = branchPointDoc.data() as BranchPoint;
 
         if (branchPointData.lines && branchPointData.lines.length > 0) {
@@ -254,12 +263,7 @@ export class FirestoreBranchOperations {
 
       await runTransaction(db, async (transaction) => {
         const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
-
+        const messageDoc = await this.getAndValidateMessageDoc(transaction, messageId);
         const messageData = messageDoc.data() as MessageWithTimestamp;
 
         if (messageData.prevInLine) {
@@ -308,11 +312,7 @@ export class FirestoreBranchOperations {
 
       await runTransaction(db, async (transaction) => {
         const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-        const messageDoc = await transaction.get(messageRef);
-
-        if (!messageDoc.exists()) {
-          throw new Error(`Message with ID ${messageId} not found`);
-        }
+        const messageDoc = await this.getAndValidateMessageDoc(transaction, messageId);
 
         const targetLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, targetLineId);
         const targetLineDoc = await transaction.get(targetLineRef);
