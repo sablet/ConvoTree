@@ -32,6 +32,8 @@ kill 12345
 npx next build
 ```
 
+**重要**: `npx next build` は必ず上記のコマンドそのままで実行してください。`NODE_ENV=development` などの環境変数を付けて実行してはいけません。
+
 ### 開発完了の条件
 1. **ビルド成功**: `npx next build` がwarning・error無しで完了する
 2. **型チェック**: TypeScript型エラーが0件
