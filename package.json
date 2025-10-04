@@ -7,9 +7,9 @@
     "build": "(npm run cpd-check || echo '⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.') && next build",
     "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && next build",
     "start": "next start",
-    "lint": "next lint",
-    "cpd-check": "jscpd --config .jscpd.json ./app ./components ./hooks ./lib",
-    "cpd-report": "jscpd --config .jscpd.json ./app ./components ./hooks ./lib",
+    "lint": "next lint && eslint . --ext .ts,.tsx,.js,.jsx",
+    "cpd-check": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
+    "cpd-report": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "serve": "firebase serve --only hosting",
     "build:serve": "rm -rf out && npm run build && npm run serve"
   },

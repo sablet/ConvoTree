@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import { PROJECT_PATHS } from './project.config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -8,6 +9,9 @@ const nextConfig = {
     unoptimized: true
   },
   distDir: 'out',
+  eslint: {
+    dirs: PROJECT_PATHS.sourceArray,
+  },
   webpack: (config, { dev, isServer }) => {
     if (!dev && isServer) {
       // ビルド時にコード重複チェックを実行

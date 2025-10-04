@@ -1,21 +1,22 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { ChatContainer } from "@/components/chat"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { MAIN_LINE_ID } from "@/lib/constants"
+import { LoadingFallback } from "@/components/LoadingFallback"
 
-export default function Home() {
+function HomeContent() {
+  const searchParams = useSearchParams()
   const [currentLineId, setCurrentLineId] = useState<string>('')
 
   const { messages, lines, branchPoints, tags, loadChatData } = useChatData({
     onDataLoaded: (data) => {
-      // URLからライン名を取得（クライアントサイド）
-      const lineFromUrl = typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('line')
-        : null
+      // URLからライン名を取得
+      const lineFromUrl = searchParams.get('line')
 
       if (lineFromUrl && !currentLineId) {
         // URLで指定されたライン名に一致するラインを検索
@@ -58,16 +59,6 @@ export default function Home() {
     }
   }, [lines])
 
-  // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
-  const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
-    setCurrentLineId(lineId)
-    // 状態更新が完了してからURL更新を実行（200ms遅延）
-    setTimeout(() => {
-      const encodedLineName = encodeURIComponent(lineName)
-      // History APIを直接使用してNext.jsの再レンダリングを回避
-      window.history.replaceState(null, '', `/?line=${encodedLineName}`)
-    }, 200)
-  }, [])
 
 
   return (
@@ -80,9 +71,16 @@ export default function Home() {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
-          onNewLineCreated={handleNewLineCreated}
         />
       </PageLayout>
     </TagProvider>
+  )
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<LoadingFallback />}>
+      <HomeContent />
+    </Suspense>
   )
 }

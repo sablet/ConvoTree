@@ -1,0 +1,12 @@
+# Generated from project.config.mjs
+# Modify PROJECT_DIRS.output and PROJECT_DIRS.scripts there
+
+node_modules
+.next
+out
+output
+public
+scripts
+*.config.js
+*.config.mjs
+*.config.ts

@@ -52,12 +52,35 @@ npx next build
 ### ディレクトリ構成
 ```
 chat-line/
-├── components/          # React コンポーネント
 ├── app/                # Next.js App Router
+├── components/         # React コンポーネント
+├── hooks/              # カスタムフック
+├── lib/                # ユーティリティ・定数
 ├── public/             # 静的ファイル
 ├── data/               # サンプルデータ
+├── project.config.mjs  # プロジェクト共通設定（ディレクトリ定義）
 └── CLAUDE.md           # プロジェクト設定
 ```
+
+### プロジェクト共通設定
+
+**重要**: ソースディレクトリの定義は `project.config.mjs` で一元管理されています。
+
+```javascript
+// project.config.mjs
+export const PROJECT_DIRS = {
+  source: ['app', 'components', 'hooks', 'lib'],  // チェック対象
+  output: ['out', 'output', '.next', 'node_modules', 'public'],  // 除外
+  scripts: ['scripts'],
+}
+```
+
+この設定は以下で自動的に使用されます:
+- `next.config.mjs` - ESLintチェック対象
+- `package.json` - jscpdコマンド
+- `.eslintignore` - 除外ディレクトリ（手動同期）
+
+**新しいディレクトリを追加する場合**: `project.config.mjs` を更新するだけで、すべての設定に反映されます。
 
 ### 主要コンポーネント
 - `components/branching-chat-ui.tsx` - メインのチャットUI

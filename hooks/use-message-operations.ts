@@ -1,10 +1,14 @@
 import { useState, useCallback } from 'react'
 import { dataSourceManager } from '@/lib/data-source'
-import { parseSlashCommand } from '@/lib/slash-command-parser'
 import type { Message } from '@/lib/types'
 import type { MessageType } from '@/lib/constants'
-import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION } from '@/lib/constants'
+import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import type { ChatState } from './use-chat-state'
+import { isValidImageUrl } from './helpers/message-validation'
+import { getDefaultMetadataForType } from './helpers/message-metadata'
+import { createNewBranch, createNewMessage, updateLocalStateAfterMessage } from './helpers/message-send'
+import { saveMessageEdit, updateLocalMessageState } from './helpers/message-edit'
+import { deleteMessageFromFirestore, updateLocalStateAfterDelete } from './helpers/message-delete'
 
 interface MessageOperationsProps {
   chatState: ChatState
@@ -97,19 +101,6 @@ export function useMessageOperations({
 
   // 更新中フラグ
   const [isUpdating, setIsUpdating] = useState(false)
-
-  /**
-   * Check if image URL is valid
-   */
-  const isValidImageUrl = (url: string): boolean => {
-    if (!url || typeof url !== 'string') return false
-
-    // 空文字列やプレースホルダーをチェック
-    if (url.trim() === '' || url.includes('mockup_url') || url.includes('placeholder')) return false
-
-    // 絶対URL（http/https）または相対パス（/で始まる）、またはdata URLをチェック
-    return url.startsWith('http://') || url.startsWith('https://') || url.startsWith('/') || url.startsWith('data:')
-  }
 
   /**
    * Upload image file to Vercel Blob storage
@@ -236,34 +227,6 @@ export function useMessageOperations({
     }
   }, [messages, setMessages, deleteImageFromStorage, onCacheInvalidate])
 
-  /**
-   * Get default metadata for message type
-   */
-  const getDefaultMetadataForType = useCallback((type: MessageType, content: string = ''): Record<string, unknown> | undefined => {
-    switch (type) {
-      case MESSAGE_TYPE_TASK:
-        return {
-          priority: 'medium' as const,
-          completed: false,
-          tags: []
-        }
-      case MESSAGE_TYPE_DOCUMENT:
-        const wordCount = content.trim().length
-        return {
-          isCollapsed: false,
-          wordCount,
-          originalLength: wordCount
-        }
-      case MESSAGE_TYPE_SESSION:
-        return {
-          timeSpent: 0
-          // checkedInAt, checkedOutAtは意図的に省略（undefinedを避ける）
-        }
-      case MESSAGE_TYPE_TEXT:
-      default:
-        return undefined
-    }
-  }, [])
 
   /**
    * Send message or create branch
@@ -275,11 +238,8 @@ export function useMessageOperations({
     targetLineId: string,
     completeTimeline: { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }
   ) => {
-    const TIMELINE_BRANCH_ID = '__timeline__'
-
     if (!inputValue.trim() && pendingImages.length === 0) return
 
-    // タイムライン仮想ブランチの場合はメインラインに投稿
     let actualTargetLineId = targetLineId
     if (targetLineId === TIMELINE_BRANCH_ID) {
       const mainLine = Object.values(lines).find(line => line.id === 'main')
@@ -291,50 +251,22 @@ export function useMessageOperations({
     }
 
     const currentLine = lines[actualTargetLineId]
-    if (!currentLine) {
-      return
-    }
+    if (!currentLine) return
 
-    // 現在のタイムラインの最後のメッセージを取得
     const lastMessage = completeTimeline.messages[completeTimeline.messages.length - 1]
     const baseMessageId = selectedBaseMessage || lastMessage?.id
-
-    // ベースメッセージが選択されている場合は常に新しいラインを作成
     const shouldCreateNewLine = selectedBaseMessage !== null
 
     setIsUpdating(true)
     try {
       if (shouldCreateNewLine) {
-        // 新しい分岐を作成（テキストは分岐名として使用、メッセージは作成しない）
         const newLineName = inputValue.trim() || 'New Branch'
+        const newLineId = await createNewBranch(
+          { name: newLineName, branchFromMessageId: selectedBaseMessage },
+          chatState.setBranchPoints
+        )
+
         const currentTimestamp = new Date()
-
-        // 20文字以上の分岐名の場合は確認ダイアログを表示
-        if (newLineName.length >= 20) {
-          const confirmCreate = window.confirm(
-            `分岐名が20文字以上です（${newLineName.length}文字）。\n\n「${newLineName}」\n\nこの名前で分岐を作成しますか？`
-          )
-          if (!confirmCreate) {
-            setIsUpdating(false)
-            return
-          }
-        }
-
-        // 1. 新しいラインをFirestoreに作成（空の状態）
-        const newLineId = await dataSourceManager.createLine({
-          name: newLineName,
-          messageIds: [],
-          startMessageId: "",
-          branchFromMessageId: selectedBaseMessage,
-          tagIds: [],
-          created_at: currentTimestamp.toISOString(),
-          updated_at: currentTimestamp.toISOString()
-        })
-
-        // 2. 分岐点をFirestoreに作成/更新（自動で分岐点作成も含む）
-        await dataSourceManager.addLineToBranchPoint(selectedBaseMessage, newLineId)
-
-        // 3. ローカル状態を更新（空のライン）
         const newLine = {
           id: newLineId,
           name: newLineName,
@@ -352,95 +284,16 @@ export function useMessageOperations({
           [newLineId]: newLine
         }))
 
-        chatState.setBranchPoints((prev) => {
-          const updated = { ...prev }
-          if (updated[selectedBaseMessage]) {
-            updated[selectedBaseMessage] = {
-              ...updated[selectedBaseMessage],
-              lines: [...updated[selectedBaseMessage].lines, newLineId]
-            }
-          } else {
-            updated[selectedBaseMessage] = {
-              messageId: selectedBaseMessage,
-              lines: [newLineId]
-            }
-          }
-          return updated
-        })
-
-        // 新しいラインに切り替え
         chatState.setCurrentLineId(newLineId)
-
-        // Trigger onNewLineCreated callback if provided
-        // Note: This should be passed from the parent component
-
       } else {
-        // 既存のライン継続 - スラッシュコマンドを解析してメッセージを作成
-        const parsedMessage = parseSlashCommand(inputValue)
-        const currentTimestamp = new Date()
-
-        const messageData = {
-          content: parsedMessage.content,
-          timestamp: currentTimestamp.toISOString(),
-          lineId: actualTargetLineId,
-          prevInLine: baseMessageId,
-          author: "User",
-          type: parsedMessage.type,
-          ...(pendingImages.length > 0 && { images: [...pendingImages] }),
-          ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
-        }
-
-        // アトミックなメッセージ作成（トランザクション）
-        const newMessageId = await dataSourceManager.createMessageWithLineUpdate(
-          messageData,
-          actualTargetLineId,
+        const { messageId: newMessageId, message: newMessage } = await createNewMessage({
+          content: inputValue,
+          images: pendingImages,
+          targetLineId: actualTargetLineId,
           baseMessageId
-        )
-
-        // ローカル状態を更新（トランザクション成功後のため安全）
-        const newMessage: Message = {
-          id: newMessageId,
-          content: parsedMessage.content,
-          timestamp: currentTimestamp,
-          lineId: actualTargetLineId,
-          prevInLine: baseMessageId,
-          author: "User",
-          type: parsedMessage.type,
-          ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
-          ...(pendingImages.length > 0 && { images: [...pendingImages] }),
-        }
-
-        setMessages((prev) => {
-          const updated = { ...prev }
-          updated[newMessageId] = newMessage
-
-          // 前のメッセージのnextInLineを更新
-          if (baseMessageId && updated[baseMessageId]) {
-            updated[baseMessageId] = {
-              ...updated[baseMessageId],
-              nextInLine: newMessageId,
-            }
-          }
-
-          return updated
         })
 
-        setLines((prev) => {
-          const updated = { ...prev }
-          if (updated[actualTargetLineId]) {
-            const updatedMessageIds = [...updated[actualTargetLineId].messageIds, newMessageId]
-            const isFirstMessage = updated[actualTargetLineId].messageIds.length === 0
-
-            updated[actualTargetLineId] = {
-              ...updated[actualTargetLineId],
-              messageIds: updatedMessageIds,
-              endMessageId: newMessageId,
-              ...(isFirstMessage && { startMessageId: newMessageId }),
-              updated_at: currentTimestamp.toISOString()
-            }
-          }
-          return updated
-        })
+        updateLocalStateAfterMessage(newMessageId, newMessage, baseMessageId, setMessages, setLines)
       }
 
       // キャッシュをクリア（構造が変わった可能性があるため）
@@ -458,7 +311,7 @@ export function useMessageOperations({
     } finally {
       setIsUpdating(false)
     }
-  }, [messages, lines, setMessages, setLines, chatState, onCacheInvalidate, onScrollToBottom])
+  }, [lines, setMessages, setLines, chatState, onCacheInvalidate, onScrollToBottom])
 
   /**
    * Start editing message
@@ -482,69 +335,17 @@ export function useMessageOperations({
 
     setIsUpdating(true)
     try {
-      const currentMessage = messages[editingMessageId]
-      const newType = editingMessageType || 'text'
-      const typeChanged = currentMessage.type !== newType
-
-      const updateData: Partial<Message> = {
-        content: editingContent.trim()
-      }
-
-      // タイプが変更された場合
-      if (typeChanged) {
-        updateData.type = newType
-
-        // 新しいタイプに適したメタデータを設定
-        if (newType === 'text') {
-          // textタイプに変更する場合、メタデータを削除
-          updateData.metadata = null as unknown as Record<string, unknown>
-        } else {
-          // 他のタイプに変更する場合、編集されたメタデータまたはデフォルトメタデータを設定
-          updateData.metadata = Object.keys(editingMetadata).length > 0
-            ? editingMetadata
-            : getDefaultMetadataForType(newType, editingContent.trim())
-        }
-      } else {
-        // タイプが変更されていない場合、編集されたメタデータを使用
-        if (Object.keys(editingMetadata).length > 0) {
-          updateData.metadata = editingMetadata
-        }
-      }
-
-      // timestamp以外の更新データを作成（data-sourceとの型整合性のため）
-      const { timestamp, ...safeUpdateData } = updateData
-      const dataSourceUpdateData = {
-        ...safeUpdateData,
-        ...(timestamp && { timestamp: timestamp instanceof Date ? timestamp.toISOString() : timestamp })
-      }
-
-      await dataSourceManager.updateMessage(editingMessageId, dataSourceUpdateData)
-
-      // ローカル状態を強制的に更新（新しいオブジェクトを作成して確実に再レンダリング）
-      setMessages(prev => {
-        const newMessages = { ...prev }
-        const updatedMessage = {
-          ...prev[editingMessageId],
-          content: editingContent.trim(),
-          ...(typeChanged && { type: newType }),
-          ...(updateData.metadata !== undefined && {
-            metadata: updateData.metadata === null ? undefined : updateData.metadata
-          })
-        }
-
-        // メタデータがnullの場合は削除
-        if (updateData.metadata === null) {
-          delete updatedMessage.metadata
-        }
-
-        newMessages[editingMessageId] = updatedMessage
-        return newMessages
+      const updateData = await saveMessageEdit({
+        editingMessageId,
+        editingContent,
+        editingMessageType: editingMessageType || 'text',
+        editingMetadata,
+        messages
       })
 
-      // キャッシュをクリアして確実に再計算
+      updateLocalMessageState(editingMessageId, updateData, editingContent, setMessages)
       onCacheInvalidate()
 
-      // 編集状態をクリア
       setEditingMessageId(null)
       setEditingContent("")
       setEditingMessageType(null)
@@ -556,7 +357,8 @@ export function useMessageOperations({
     } finally {
       setIsUpdating(false)
     }
-  }, [editingMessageId, editingContent, editingMessageType, editingMetadata, messages, setMessages, getDefaultMetadataForType, onCacheInvalidate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMessageId, editingContent, editingMessageType, editingMetadata, setMessages, onCacheInvalidate])
 
   /**
    * Cancel message editing
@@ -593,64 +395,29 @@ export function useMessageOperations({
     setIsUpdating(true)
 
     try {
-      // 分岐の起点メッセージかどうかをチェック
-      const isBranchPoint = branchPoints[messageId] && branchPoints[messageId].lines.length > 0
-
-      if (isBranchPoint) {
-        const confirmBranchDelete = window.confirm(
-          'このメッセージは分岐の起点です。削除すると関連する分岐も影響を受けます。本当に削除しますか？'
-        )
-        if (!confirmBranchDelete) {
-          setDeleteConfirmation(null)
-          setIsUpdating(false)
-          return
-        }
-      }
-
-      // メッセージに関連する画像を削除
-      if (message.images && message.images.length > 0) {
-        const deletePromises = message.images
-          .filter(imageUrl => isValidImageUrl(imageUrl))
-          .map(imageUrl => deleteImageFromStorage(imageUrl))
-
-        await Promise.allSettled(deletePromises)
-      }
-
-      await dataSourceManager.deleteMessage(messageId)
-
-      // ローカル状態から削除
-      setMessages(prev => {
-        const updated = { ...prev }
-        delete updated[messageId]
-        return updated
+      await deleteMessageFromFirestore({
+        messageId,
+        message,
+        branchPoints,
+        deleteImageFromStorage,
+        isValidImageUrl
       })
 
-      // ラインからメッセージIDを削除
-      const deleteTimestamp = new Date()
-      setLines(prev => {
-        const updated = { ...prev }
-        const lineId = message.lineId
-        if (updated[lineId]) {
-          updated[lineId] = {
-            ...updated[lineId],
-            messageIds: updated[lineId].messageIds.filter(id => id !== messageId),
-            updated_at: deleteTimestamp.toISOString()
-          }
-        }
-        return updated
-      })
-
-      // キャッシュをクリア
+      updateLocalStateAfterDelete(messageId, message, setMessages, setLines)
       onCacheInvalidate()
-
       setDeleteConfirmation(null)
 
-    } catch {
-      alert('メッセージの削除に失敗しました')
+    } catch (error) {
+      if (error instanceof Error && error.message !== 'Delete cancelled') {
+        alert('メッセージの削除に失敗しました')
+      }
+      if (error instanceof Error && error.message === 'Delete cancelled') {
+        setDeleteConfirmation(null)
+      }
     } finally {
       setIsUpdating(false)
     }
-  }, [deleteConfirmation, messages, setMessages, setLines, branchPoints, isValidImageUrl, deleteImageFromStorage, onCacheInvalidate])
+  }, [deleteConfirmation, setMessages, setLines, branchPoints, deleteImageFromStorage, onCacheInvalidate])
 
   /**
    * Copy message to clipboard

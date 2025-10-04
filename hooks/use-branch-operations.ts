@@ -1,8 +1,11 @@
 import { useState, useCallback, useMemo } from 'react'
-import { dataSourceManager } from '@/lib/data-source'
-import type { Line, Message, Tag } from '@/lib/types'
+import type { Line } from '@/lib/types'
 import type { ChatState } from './use-chat-state'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
+import { calculateLineAncestry, calculateOptimizedPath, type LineAncestryResult } from './helpers/branch-ancestry'
+import { filterTimeline } from './helpers/timeline-filter'
+import { moveMessagesToLine, updateLocalStateAfterMove } from './helpers/message-move'
+import { saveLineEdit, updateLocalLineState, createNewTag, type LineEditData } from './helpers/line-edit'
 
 interface BranchOperationsProps {
   chatState: ChatState
@@ -10,12 +13,6 @@ interface BranchOperationsProps {
   selectedBaseMessage: string | null
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
   onLineChange?: (lineId: string) => void
-  onNewLineCreated?: (lineId: string, lineName: string) => void
-}
-
-interface LineAncestryResult {
-  messages: Message[]
-  transitions: Array<{ index: number; lineId: string; lineName: string }>
 }
 
 export interface BranchOperations {
@@ -81,8 +78,7 @@ export function useBranchOperations({
   messagesContainerRef,
   selectedBaseMessage,
   setSelectedBaseMessage,
-  onLineChange,
-  onNewLineCreated
+  onLineChange
 }: BranchOperationsProps): BranchOperations {
   const {
     messages,
@@ -90,7 +86,6 @@ export function useBranchOperations({
     lines,
     setLines,
     branchPoints,
-    tags,
     setTags,
     currentLineId,
     setCurrentLineId,
@@ -112,11 +107,7 @@ export function useBranchOperations({
 
   // ライン編集
   const [isEditingBranch, setIsEditingBranch] = useState(false)
-  const [editingBranchData, setEditingBranchData] = useState<{
-    name: string
-    tagIds: string[]
-    newTag: string
-  }>({ name: "", tagIds: [], newTag: "" })
+  const [editingBranchData, setEditingBranchData] = useState<LineEditData>({ name: "", tagIds: [], newTag: "" })
 
   // 複数選択・移動
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
@@ -148,24 +139,8 @@ export function useBranchOperations({
       if (cached) return cached
     }
 
-    const line = lines[lineId]
-    if (!line) {
-      return []
-    }
+    const ancestry = calculateLineAncestry(lineId, lines, messages, lineAncestryCache)
 
-    let ancestry: string[] = []
-
-    // 分岐元がある場合は親ラインの祖先を取得
-    if (line.branchFromMessageId) {
-      const branchFromMessage = messages[line.branchFromMessageId]
-      if (branchFromMessage) {
-        const parentLineId = branchFromMessage.lineId
-        const parentAncestry = getLineAncestry(parentLineId)
-        ancestry = [...parentAncestry, parentLineId]
-      }
-    }
-
-    // キャッシュに保存
     setLineAncestryCache(prev => {
       const newCache = new Map(prev)
       newCache.set(lineId, ancestry)
@@ -179,57 +154,13 @@ export function useBranchOperations({
    * Get optimized path (with cache)
    */
   const getOptimizedPath = useCallback((lineId: string): LineAncestryResult => {
-    // キャッシュチェック
     if (pathCache.has(lineId)) {
       const cached = pathCache.get(lineId)
       if (cached) return cached
     }
 
-    const ancestry = getLineAncestry(lineId)
-    const fullLineChain = [...ancestry, lineId]
+    const result = calculateOptimizedPath(lineId, lines, messages, lineAncestryCache)
 
-    const allMessages: Message[] = []
-    const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
-
-    for (let i = 0; i < fullLineChain.length; i++) {
-      const currentLineInChain = lines[fullLineChain[i]]
-      if (!currentLineInChain) continue
-
-      // ライン切り替えポイントを記録
-      if (i > 0) {
-        transitions.push({
-          index: allMessages.length,
-          lineId: currentLineInChain.id,
-          lineName: currentLineInChain.name
-        })
-      }
-
-      // メッセージを追加
-      if (i < fullLineChain.length - 1) {
-        // 中間ライン: 分岐点までのメッセージのみ
-        const nextLine = lines[fullLineChain[i + 1]]
-        if (nextLine?.branchFromMessageId) {
-          const branchPointIndex = currentLineInChain.messageIds.indexOf(nextLine.branchFromMessageId)
-          if (branchPointIndex >= 0) {
-            const segmentMessages = currentLineInChain.messageIds
-              .slice(0, branchPointIndex + 1)
-              .map(msgId => messages[msgId])
-              .filter(Boolean)
-            allMessages.push(...segmentMessages)
-          }
-        }
-      } else {
-        // 最終ライン: 全メッセージ
-        const lineMessages = currentLineInChain.messageIds
-          .map(msgId => messages[msgId])
-          .filter(Boolean)
-        allMessages.push(...lineMessages)
-      }
-    }
-
-    const result = { messages: allMessages, transitions }
-
-    // キャッシュに保存
     setPathCache(prev => {
       const newCache = new Map(prev)
       newCache.set(lineId, result)
@@ -237,7 +168,7 @@ export function useBranchOperations({
     })
 
     return result
-  }, [getLineAncestry, lines, messages, pathCache, setPathCache])
+  }, [lines, messages, lineAncestryCache, pathCache, setPathCache])
 
   /**
    * Get complete timeline
@@ -288,69 +219,14 @@ export function useBranchOperations({
    * Filtered timeline
    */
   const filteredTimeline = useMemo(() => {
-    const filtered = completeTimeline.messages.filter(message => {
-      // メッセージタイプフィルター
-      if (filterMessageType !== 'all' && message.type !== filterMessageType) {
-        return false
-      }
-
-      // タスク完了フィルター
-      if (filterTaskCompleted !== 'all' && message.type === 'task') {
-        const isCompleted = message.metadata?.completed === true
-        if (filterTaskCompleted === 'completed' && !isCompleted) {
-          return false
-        }
-        if (filterTaskCompleted === 'incomplete' && isCompleted) {
-          return false
-        }
-      }
-
-      // 日時範囲フィルター
-      if (filterDateStart || filterDateEnd) {
-        const messageDate = new Date(message.timestamp)
-        if (filterDateStart) {
-          const startDate = new Date(filterDateStart)
-          startDate.setHours(0, 0, 0, 0)
-          if (messageDate < startDate) {
-            return false
-          }
-        }
-        if (filterDateEnd) {
-          const endDate = new Date(filterDateEnd)
-          endDate.setHours(23, 59, 59, 999)
-          if (messageDate > endDate) {
-            return false
-          }
-        }
-      }
-
-      // タグフィルター（部分一致）
-      if (filterTag) {
-        const messageTags = message.tags || []
-        const hasMatchingTag = messageTags.some(tag =>
-          tag.toLowerCase().includes(filterTag.toLowerCase())
-        )
-        if (!hasMatchingTag) {
-          return false
-        }
-      }
-
-      // キーワード検索（部分一致）
-      if (searchKeyword) {
-        const contentMatch = message.content.toLowerCase().includes(searchKeyword.toLowerCase())
-        const authorMatch = message.author?.toLowerCase().includes(searchKeyword.toLowerCase()) || false
-        if (!contentMatch && !authorMatch) {
-          return false
-        }
-      }
-
-      return true
+    return filterTimeline(completeTimeline, {
+      filterMessageType,
+      filterTaskCompleted,
+      filterDateStart,
+      filterDateEnd,
+      filterTag,
+      searchKeyword
     })
-
-    return {
-      messages: filtered,
-      transitions: completeTimeline.transitions
-    }
   }, [completeTimeline, filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword])
 
   /**
@@ -443,64 +319,26 @@ export function useBranchOperations({
    * Save line edit
    */
   const handleSaveLineEdit = useCallback(async () => {
-    const currentLineInfo = getCurrentLine()
-    if (currentLineInfo) {
-      const currentTimestamp = new Date()
-      const updatedLineData = {
-        name: editingBranchData.name,
-        tagIds: editingBranchData.tagIds,
-        updated_at: currentTimestamp.toISOString()
-      }
-
-      setIsUpdating(true)
-      try {
-        // Firestoreのデータを更新
-        await dataSourceManager.updateLine(currentLineId, updatedLineData)
-
-        // ローカルのstateを更新
-        setLines((prev) => {
-          const updated = { ...prev }
-          if (updated[currentLineId]) {
-            updated[currentLineId] = {
-              ...updated[currentLineId],
-              ...updatedLineData
-            }
-          }
-          return updated
-        })
-
-        // キャッシュをクリアしてUIを更新
-        clearAllCaches()
-
-        setIsEditingBranch(false)
-      } catch (error) {
-        console.error("Failed to save line edit:", error)
-        alert("ラインの保存に失敗しました。")
-      } finally {
-        setIsUpdating(false)
-      }
+    setIsUpdating(true)
+    try {
+      await saveLineEdit(currentLineId, editingBranchData)
+      updateLocalLineState(currentLineId, editingBranchData, setLines)
+      clearAllCaches()
+      setIsEditingBranch(false)
+    } catch (error) {
+      console.error("Failed to save line edit:", error)
+      alert("ラインの保存に失敗しました。")
+    } finally {
+      setIsUpdating(false)
     }
-  }, [getCurrentLine, editingBranchData, currentLineId, setLines, clearAllCaches])
+  }, [editingBranchData, currentLineId, setLines, clearAllCaches])
 
   /**
    * Add tag
    */
   const handleAddTag = useCallback(() => {
     if (editingBranchData.newTag.trim()) {
-      // 新しいタグを作成
-      const newTagId = `tag_${Date.now()}`
-      const newTag: Tag = {
-        id: newTagId,
-        name: editingBranchData.newTag.trim()
-      }
-
-      // タグを追加
-      setTags(prev => ({
-        ...prev,
-        [newTagId]: newTag
-      }))
-
-      // 編集データを更新
+      const newTagId = createNewTag(editingBranchData.newTag, setTags)
       setEditingBranchData(prev => ({
         ...prev,
         tagIds: [...prev.tagIds, newTagId],
@@ -575,114 +413,10 @@ export function useBranchOperations({
 
     setIsUpdating(true)
     try {
-      // 選択されたメッセージIDを配列として取得
-      const selectedMessageIds = Array.from(selectedMessages)
-      const updateTimestamp = new Date().toISOString()
-
-      // 元のライン別にメッセージをグループ化
-      const messagesByOldLine = new Map<string, string[]>()
-      for (const messageId of selectedMessageIds) {
-        const message = messages[messageId]
-        if (message) {
-          const oldLineId = message.lineId
-          if (!messagesByOldLine.has(oldLineId)) {
-            messagesByOldLine.set(oldLineId, [])
-          }
-          messagesByOldLine.get(oldLineId)?.push(messageId)
-        }
-      }
-
-      // 一括更新用のPromise配列を準備
-      const updatePromises: Promise<unknown>[] = []
-
-      // 全メッセージのlineIdを一括更新
-      for (const messageId of selectedMessageIds) {
-        updatePromises.push(
-          dataSourceManager.updateMessage(messageId, {
-            lineId: targetLineId
-          })
-        )
-      }
-
-      // 各元ラインからメッセージIDを一括削除
-      for (const [oldLineId, messageIds] of Array.from(messagesByOldLine.entries())) {
-        if (lines[oldLineId]) {
-          const updatedMessageIds = lines[oldLineId].messageIds.filter(id => !messageIds.includes(id))
-          updatePromises.push(
-            dataSourceManager.updateLine(oldLineId, {
-              messageIds: updatedMessageIds,
-              updated_at: updateTimestamp
-            })
-          )
-        }
-      }
-
-      // ターゲットラインに全メッセージIDを一括追加
-      if (lines[targetLineId]) {
-        const currentMessageIds = lines[targetLineId].messageIds
-        const newMessageIds = [...currentMessageIds, ...selectedMessageIds.filter(id => !currentMessageIds.includes(id))]
-        updatePromises.push(
-          dataSourceManager.updateLine(targetLineId, {
-            messageIds: newMessageIds,
-            updated_at: updateTimestamp
-          })
-        )
-      }
-
-      // 全ての更新を並列実行
-      await Promise.all(updatePromises)
-
-      // ローカル状態を更新
-      setMessages(prev => {
-        const updated = { ...prev }
-        Array.from(selectedMessages).forEach(messageId => {
-          if (updated[messageId]) {
-            updated[messageId] = {
-              ...updated[messageId],
-              lineId: targetLineId
-            }
-          }
-        })
-        return updated
-      })
-
-      setLines(prev => {
-        const updated = { ...prev }
-
-        // 各メッセージの元のラインから削除
-        Array.from(selectedMessages).forEach(messageId => {
-          const message = messages[messageId]
-          if (message && updated[message.lineId]) {
-            updated[message.lineId] = {
-              ...updated[message.lineId],
-              messageIds: updated[message.lineId].messageIds.filter(id => id !== messageId),
-              updated_at: updateTimestamp
-            }
-          }
-        })
-
-        // ターゲットラインに追加
-        if (updated[targetLineId]) {
-          const newMessageIds = [...updated[targetLineId].messageIds]
-          Array.from(selectedMessages).forEach(messageId => {
-            if (!newMessageIds.includes(messageId)) {
-              newMessageIds.push(messageId)
-            }
-          })
-          updated[targetLineId] = {
-            ...updated[targetLineId],
-            messageIds: newMessageIds,
-            updated_at: updateTimestamp
-          }
-        }
-
-        return updated
-      })
-
-      // キャッシュをクリア
+      await moveMessagesToLine(selectedMessages, targetLineId, messages, lines)
+      updateLocalStateAfterMove({ selectedMessages, targetLineId, messages, setMessages, setLines })
       clearAllCaches()
 
-      // 選択をクリアしてダイアログを閉じる
       const movedCount = selectedMessages.size
       setSelectedMessages(new Set())
       setShowMoveDialog(false)

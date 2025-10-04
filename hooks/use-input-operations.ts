@@ -96,7 +96,7 @@ export function useInputOperations({
     if (selectedBaseMessage) {
       branchOps.setFooterKey(prev => prev + 1)
     }
-  }, [inputValue, pendingImages, selectedBaseMessage, currentLineId, lines, messageOps, branchOps.completeTimeline, branchOps.setFooterKey])
+  }, [inputValue, pendingImages, selectedBaseMessage, currentLineId, lines, messageOps, branchOps])
 
   // Effects
   useEffect(() => {

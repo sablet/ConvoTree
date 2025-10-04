@@ -8,8 +8,9 @@ import { TagProvider } from "@/lib/tag-context"
 import { ChatLayout } from "@/components/layouts/ChatLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { MAIN_LINE_ID } from "@/lib/constants"
-import { LOADING_CHAT_DATA, LOADING_GENERIC } from "@/lib/ui-strings"
+import { LOADING_CHAT_DATA } from "@/lib/ui-strings"
 import { ROUTE_BRANCHES, ROUTE_MANAGEMENT } from "@/lib/routes"
+import { LoadingFallback } from "@/components/LoadingFallback"
 
 function ChatPageContent() {
   const router = useRouter()
@@ -62,13 +63,6 @@ function ChatPageContent() {
     }
   }, [lines, router])
 
-  // 新しいライン作成時専用のハンドラー（ライン名が既に分かっている）
-  const handleNewLineCreated = useCallback((lineId: string, lineName: string) => {
-    setCurrentLineId(lineId)
-    // URLクエリパラメータを更新
-    const encodedLineName = encodeURIComponent(lineName)
-    router.push(`/chat?line=${encodedLineName}`)
-  }, [router])
 
   // ビューが変更されたときのハンドラー
   const handleViewChange = (newView: 'chat' | 'management' | 'branches') => {
@@ -123,7 +117,6 @@ function ChatPageContent() {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
-          onNewLineCreated={handleNewLineCreated}
         />
       </ChatLayout>
     </TagProvider>
@@ -132,14 +125,7 @@ function ChatPageContent() {
 
 export default function ChatPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">{LOADING_GENERIC}</p>
-        </div>
-      </div>
-    }>
+    <Suspense fallback={<LoadingFallback />}>
       <ChatPageContent />
     </Suspense>
   )

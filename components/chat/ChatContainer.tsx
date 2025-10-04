@@ -26,7 +26,6 @@ interface ChatContainerProps {
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
-  onNewLineCreated?: (lineId: string, lineName: string) => void
 }
 
 /**
@@ -40,8 +39,7 @@ export function ChatContainer({
   initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
-  onLineChange,
-  onNewLineCreated
+  onLineChange
 }: ChatContainerProps) {
   // Refs
   const messagesContainerRef = useRef<HTMLDivElement>(null)
@@ -83,8 +81,7 @@ export function ChatContainer({
     messagesContainerRef,
     selectedBaseMessage,
     setSelectedBaseMessage,
-    onLineChange,
-    onNewLineCreated
+    onLineChange
   })
 
   // Input operations hook
