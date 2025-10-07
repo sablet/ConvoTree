@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { BranchStructure } from "@/components/branch"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { useRouter } from "next/navigation"
@@ -19,42 +19,42 @@ export default function BranchListPage() {
   const [currentLineId, setCurrentLineId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
 
+  const loadChatData = useCallback(async () => {
+    try {
+      setIsLoading(true)
+      const data = await dataSourceManager.loadChatData()
+
+      // メッセージデータ変換（timestampをDateオブジェクトに変換）
+      const newMessages: Record<string, Message> = {}
+      Object.entries(data.messages).forEach(([id, msg]) => {
+        newMessages[id] = {
+          ...(msg as Message & { timestamp: string | number | Date }),
+          timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
+        }
+      })
+
+      setMessages(newMessages)
+      setLines(data.lines)
+      setBranchPoints(data.branchPoints)
+      setTags(data.tags)
+      setTagGroups(data.tagGroups)
+
+      // デフォルトライン設定
+      const mainLine = data.lines.find((line: Line) => line.id === 'main') || data.lines[0]
+      if (mainLine) {
+        setCurrentLineId(mainLine.id)
+      }
+    } catch (error) {
+      console.error('Failed to load chat data:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [])
+
   // データローディング
   useEffect(() => {
-    const loadChatData = async () => {
-      try {
-        setIsLoading(true)
-        const data = await dataSourceManager.loadChatData()
-
-        // メッセージデータ変換（timestampをDateオブジェクトに変換）
-        const newMessages: Record<string, Message> = {}
-        Object.entries(data.messages).forEach(([id, msg]) => {
-          newMessages[id] = {
-            ...(msg as Message & { timestamp: string | number | Date }),
-            timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
-          }
-        })
-
-        setMessages(newMessages)
-        setLines(data.lines)
-        setBranchPoints(data.branchPoints)
-        setTags(data.tags)
-        setTagGroups(data.tagGroups)
-
-        // デフォルトライン設定
-        const mainLine = data.lines.find((line: Line) => line.id === 'main') || data.lines[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
-        }
-      } catch (error) {
-        console.error('Failed to load chat data:', error)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadChatData()
-  }, [])
+    void loadChatData()
+  }, [loadChatData])
 
   // ライン切り替えハンドラー（URLルーティング付き）
   const handleLineSwitch = (lineId: string) => {
@@ -189,7 +189,7 @@ export default function BranchListPage() {
     <PageLayout
       title="Branch Structure"
       sidebar={
-        <HamburgerMenu>
+        <HamburgerMenu onDataReload={loadChatData}>
           <LineList
             lines={lines}
             currentLineId={currentLineId}

@@ -71,3 +71,13 @@ export const EMOJI_FIRESTORE = "🔥";
 export const EMOJI_SAMPLE = "📄";
 export const EMOJI_SUCCESS = "✅";
 export const EMOJI_ERROR = "❌";
+
+// Data Source Controls
+export const DATA_SOURCE_SECTION_TITLE = "データソース";
+export const DATA_SOURCE_RELOAD_LABEL = "データソースを更新";
+export const DATA_SOURCE_LABEL_FIRESTORE = "Firestore";
+export const DATA_SOURCE_LABEL_SAMPLE = "サンプル";
+export const DATA_SOURCE_BUTTON_FIRESTORE = "Firestore";
+export const DATA_SOURCE_BUTTON_SAMPLE = "サンプルデータ";
+export const DATA_SOURCE_STATUS_FIRESTORE = `${EMOJI_FIRESTORE} リアルタイムデータベースから読み込み中`;
+export const DATA_SOURCE_STATUS_SAMPLE = `${EMOJI_SAMPLE} デバッグ用サンプルデータを使用中`;

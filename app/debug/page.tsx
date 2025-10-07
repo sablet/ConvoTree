@@ -1,5 +1,6 @@
 "use client"
 
+import { useCallback, useState } from "react"
 import { DataSourceToggle } from "@/components/data-source-toggle"
 import { FirestoreDebug } from "@/components/firestore-debug"
 import TagCrudTest from "@/components/tag-crud-test"
@@ -9,25 +10,35 @@ import { LineHistoryMenu } from "@/components/line-history-menu"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useLines } from "@/hooks/use-lines"
+import { DataSource, dataSourceManager } from "@/lib/data-source"
 
 export default function DebugPage() {
-  const lines = useLines()
+  const { lines, reloadLines } = useLines()
+  const [currentSource, setCurrentSource] = useState<DataSource>(dataSourceManager.getCurrentSource())
+
+  const reloadData = useCallback(async () => {
+    await reloadLines()
+  }, [reloadLines])
 
   // データソース変更ハンドラー
-  const handleDataSourceChange = () => {
-  }
+  const handleDataSourceChange = useCallback((nextSource: DataSource) => {
+    setCurrentSource(nextSource)
+  }, [])
 
   // データ再読み込みハンドラー
-  const handleDataReload = () => {
-    // 必要に応じてデータの再読み込み処理を実装
-  }
+  const handleDataReload = useCallback(() => {
+    void reloadData()
+  }, [reloadData])
 
   return (
     <TagProvider>
       <PageLayout
         title="🐛 Debug Tools"
         sidebar={
-          <HamburgerMenu>
+          <HamburgerMenu
+            onDataReload={reloadData}
+            currentDataSource={currentSource}
+          >
             <LineHistoryMenu lines={lines} />
           </HamburgerMenu>
         }

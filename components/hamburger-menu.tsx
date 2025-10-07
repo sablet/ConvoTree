@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Menu, X, MessageSquare, Tags, GitBranch, Bug } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_DEBUG } from "@/lib/routes"
+import { DataSourceMenuAction } from "@/components/data-source-menu-action"
+import { DataSource } from "@/lib/data-source"
 import {
   NAV_CHAT,
   NAV_BRANCHES,
@@ -24,9 +26,16 @@ interface HamburgerMenuProps {
     right?: string
     bottom?: string
   }
+  onDataReload?: () => Promise<void> | void
+  currentDataSource?: DataSource
 }
 
-export function HamburgerMenu({ children, position = { top: '1rem', right: '1rem' } }: HamburgerMenuProps) {
+export function HamburgerMenu({
+  children,
+  position = { top: '1rem', right: '1rem' },
+  onDataReload,
+  currentDataSource
+}: HamburgerMenuProps) {
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -111,9 +120,9 @@ export function HamburgerMenu({ children, position = { top: '1rem', right: '1rem
           </Button>
         </div>
 
-        <div className="p-4">
+        <div className="p-4 space-y-6">
           {/* Navigation Section */}
-          <div className="mb-6">
+          <div>
             <h3 className="text-sm font-medium text-gray-700 mb-3">ナビゲーション</h3>
             <div className="space-y-1">
               {navItems.map((item) => {
@@ -140,6 +149,11 @@ export function HamburgerMenu({ children, position = { top: '1rem', right: '1rem
               })}
             </div>
           </div>
+
+          <DataSourceMenuAction
+            onReload={onDataReload}
+            currentSource={currentDataSource}
+          />
 
           {/* Additional Content */}
           {children}

@@ -5,7 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Database, FileText, Settings, RefreshCw } from 'lucide-react';
 import { dataSourceManager, DataSource } from '@/lib/data-source';
-import { EMOJI_FIRESTORE, EMOJI_SAMPLE, ERROR_PREFIX } from '@/lib/ui-strings';
+import {
+  ERROR_PREFIX,
+  DATA_SOURCE_SECTION_TITLE,
+  DATA_SOURCE_LABEL_FIRESTORE,
+  DATA_SOURCE_LABEL_SAMPLE,
+  DATA_SOURCE_BUTTON_FIRESTORE,
+  DATA_SOURCE_BUTTON_SAMPLE,
+  DATA_SOURCE_STATUS_FIRESTORE,
+  DATA_SOURCE_STATUS_SAMPLE
+} from '@/lib/ui-strings';
 
 interface DataSourceToggleProps {
   onDataSourceChange?: (source: DataSource) => void;
@@ -61,7 +70,7 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Settings className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-700">データソース</span>
+          <span className="text-sm font-medium text-gray-700">{DATA_SOURCE_SECTION_TITLE}</span>
           <Badge
             variant={currentSource === 'firestore' ? 'default' : 'secondary'}
             className={`text-xs ${
@@ -70,7 +79,7 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
                 : 'bg-gray-100 text-gray-600'
             }`}
           >
-            {currentSource === 'firestore' ? 'Firestore' : 'サンプル'}
+            {currentSource === 'firestore' ? DATA_SOURCE_LABEL_FIRESTORE : DATA_SOURCE_LABEL_SAMPLE}
           </Badge>
         </div>
 
@@ -100,7 +109,7 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
           }`}
         >
           <FileText className="w-4 h-4" />
-          サンプルデータ
+          {DATA_SOURCE_BUTTON_SAMPLE}
         </Button>
 
         <Button
@@ -115,15 +124,15 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
           }`}
         >
           <Database className="w-4 h-4" />
-          Firestore
+          {DATA_SOURCE_BUTTON_FIRESTORE}
         </Button>
       </div>
 
       <div className="mt-3 text-xs text-gray-500">
         {currentSource === 'firestore' ? (
-          <span>{EMOJI_FIRESTORE} リアルタイムデータベースから読み込み中</span>
+          <span>{DATA_SOURCE_STATUS_FIRESTORE}</span>
         ) : (
-          <span>{EMOJI_SAMPLE} デバッグ用サンプルデータを使用中</span>
+          <span>{DATA_SOURCE_STATUS_SAMPLE}</span>
         )}
       </div>
 

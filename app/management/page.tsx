@@ -7,13 +7,13 @@ import { PageLayout } from "@/components/layouts/PageLayout"
 import { useLines } from "@/hooks/use-lines"
 
 export default function ManagementPage() {
-  const lines = useLines()
+  const { lines, reloadLines } = useLines()
 
   return (
     <PageLayout
       title="Tag Management"
       sidebar={
-        <HamburgerMenu>
+        <HamburgerMenu onDataReload={reloadLines}>
           <LineHistoryMenu lines={lines} />
         </HamburgerMenu>
       }
