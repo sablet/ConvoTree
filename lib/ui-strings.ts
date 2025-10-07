@@ -17,6 +17,7 @@ export const DATE_NAVIGATION_TITLE = "次の期間に移動";
 export const DATE_NAVIGATION_LAST_WEEK = "先週";
 export const DATE_NAVIGATION_LAST_MONTH = "先月";
 export const DATE_NAVIGATION_FIRST = "最初";
+export const DATE_NAVIGATION_LAST = "最後へ";
 export const DATE_NAVIGATION_SPECIFIC_DATE = "特定の日付に移動";
 export const DATE_NAVIGATION_SELECT_DATE = "日付を選択";
 export const DATE_NAVIGATION_NO_MESSAGES = "メッセージがありません";

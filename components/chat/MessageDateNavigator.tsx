@@ -13,32 +13,38 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   DATE_NAVIGATION_FIRST,
+  DATE_NAVIGATION_LAST,
   DATE_NAVIGATION_LAST_MONTH,
   DATE_NAVIGATION_NO_MESSAGES,
   DATE_NAVIGATION_SELECT_DATE,
   DATE_NAVIGATION_SPECIFIC_DATE,
   DATE_NAVIGATION_TITLE,
   DATE_NAVIGATION_LAST_WEEK,
+  DATE_TODAY,
   DATE_YESTERDAY
 } from "@/lib/ui-strings"
 
 interface MessageDateNavigatorProps {
   label: string | null
   disabled?: boolean
+  onJumpToToday: () => void
   onJumpToYesterday: () => void
   onJumpToLastWeek: () => void
   onJumpToLastMonth: () => void
   onJumpToFirst: () => void
+  onJumpToLast: () => void
   onJumpToSpecificDate: (date: Date) => void
 }
 
 export function MessageDateNavigator({
   label,
   disabled = false,
+  onJumpToToday,
   onJumpToYesterday,
   onJumpToLastWeek,
   onJumpToLastMonth,
   onJumpToFirst,
+  onJumpToLast,
   onJumpToSpecificDate
 }: MessageDateNavigatorProps) {
   const [open, setOpen] = useState(false)
@@ -83,6 +89,12 @@ export function MessageDateNavigator({
         <DropdownMenuLabel className="text-xs text-muted-foreground">
           {DATE_NAVIGATION_TITLE}
         </DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => { onJumpToLast(); setOpen(false) }}>
+          {DATE_NAVIGATION_LAST}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => { onJumpToToday(); setOpen(false) }}>
+          {DATE_TODAY}
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => { onJumpToYesterday(); setOpen(false) }}>
           {DATE_YESTERDAY}
         </DropdownMenuItem>

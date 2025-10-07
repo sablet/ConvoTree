@@ -271,10 +271,7 @@ export function MessageList({
       }
     }
 
-    if (!nextDate && filteredTimeline.messages.length > 0) {
-      const fallback = filteredTimeline.messages[filteredTimeline.messages.length - 1]
-      nextDate = ensureDate(fallback.timestamp)
-    }
+
 
     setCurrentTopDate((previous) => {
       if (!nextDate) {
@@ -330,7 +327,7 @@ export function MessageList({
     const targetPosition = calculateTargetScroll(element, container)
 
     if (typeof container.scrollTo === 'function') {
-      container.scrollTo({ top: targetPosition, behavior: 'smooth' })
+      container.scrollTo({ top: targetPosition, behavior: 'auto' })
       return
     }
 
@@ -356,43 +353,40 @@ export function MessageList({
       }
     }
 
-    return filteredTimeline.messages[filteredTimeline.messages.length - 1]?.id ?? null
+    return null
   }, [filteredTimeline.messages])
 
-  const handleJumpToYesterday = useCallback(() => {
+  const jumpToRelativeDate = useCallback((daysOffset: number, monthOffset: number = 0) => {
     const today = new Date()
     const target = new Date(today)
-    target.setDate(today.getDate() - 1)
+    if (monthOffset !== 0) {
+      target.setMonth(today.getMonth() + monthOffset)
+    }
+    if (daysOffset !== 0) {
+      target.setDate(today.getDate() + daysOffset)
+    }
     const messageId = findMessageIdForDate(target)
     if (messageId) {
       scrollToMessage(messageId)
     }
   }, [findMessageIdForDate, scrollToMessage])
 
-  const handleJumpToLastWeek = useCallback(() => {
-    const today = new Date()
-    const target = new Date(today)
-    target.setDate(today.getDate() - 7)
-    const messageId = findMessageIdForDate(target)
-    if (messageId) {
-      scrollToMessage(messageId)
-    }
-  }, [findMessageIdForDate, scrollToMessage])
-
-  const handleJumpToLastMonth = useCallback(() => {
-    const today = new Date()
-    const target = new Date(today)
-    target.setMonth(today.getMonth() - 1)
-    const messageId = findMessageIdForDate(target)
-    if (messageId) {
-      scrollToMessage(messageId)
-    }
-  }, [findMessageIdForDate, scrollToMessage])
+  const handleJumpToToday = useCallback(() => jumpToRelativeDate(0), [jumpToRelativeDate])
+  const handleJumpToYesterday = useCallback(() => jumpToRelativeDate(-1), [jumpToRelativeDate])
+  const handleJumpToLastWeek = useCallback(() => jumpToRelativeDate(-7), [jumpToRelativeDate])
+  const handleJumpToLastMonth = useCallback(() => jumpToRelativeDate(0, -1), [jumpToRelativeDate])
 
   const handleJumpToFirst = useCallback(() => {
     const firstMessage = filteredTimeline.messages[0]
     if (firstMessage) {
       scrollToMessage(firstMessage.id)
+    }
+  }, [filteredTimeline.messages, scrollToMessage])
+
+  const handleJumpToLast = useCallback(() => {
+    const lastMessage = filteredTimeline.messages[filteredTimeline.messages.length - 1]
+    if (lastMessage) {
+      scrollToMessage(lastMessage.id)
     }
   }, [filteredTimeline.messages, scrollToMessage])
 
@@ -487,10 +481,12 @@ export function MessageList({
           <MessageDateNavigator
             label={currentDateLabel}
             disabled={!hasMessages}
+            onJumpToToday={handleJumpToToday}
             onJumpToYesterday={handleJumpToYesterday}
             onJumpToLastWeek={handleJumpToLastWeek}
             onJumpToLastMonth={handleJumpToLastMonth}
             onJumpToFirst={handleJumpToFirst}
+            onJumpToLast={handleJumpToLast}
             onJumpToSpecificDate={handleJumpToSpecificDate}
           />
         </div>
