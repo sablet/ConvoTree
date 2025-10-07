@@ -93,6 +93,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
     id: newMessageId,
     content: parsedMessage.content,
     timestamp: currentTimestamp,
+    updatedAt: currentTimestamp,
     lineId: targetLineId,
     prevInLine: baseMessageId,
     author: "User",

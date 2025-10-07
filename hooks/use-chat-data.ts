@@ -36,10 +36,27 @@ export function useChatData(options: UseChatDataOptions = {}) {
       // メッセージデータ変換
       if (data.messages) {
         Object.entries(data.messages).forEach(([id, msg]) => {
-          newMessages[id] = {
-            ...(msg as Message & { timestamp: string | number | Date }),
-            timestamp: new Date((msg as Message & { timestamp: string | number | Date }).timestamp)
+          const rawMessage = msg as Message & {
+            timestamp: string | number | Date
+            updatedAt?: string | number | Date
           }
+
+          const { updatedAt, timestamp, ...rest } = rawMessage
+          const timestampDate = new Date(timestamp)
+
+          const normalizedMessage: Message = {
+            ...(rest as Omit<Message, 'timestamp' | 'updatedAt'>),
+            timestamp: Number.isNaN(timestampDate.getTime()) ? new Date() : timestampDate
+          }
+
+          if (updatedAt) {
+            const updatedAtDate = new Date(updatedAt)
+            if (!Number.isNaN(updatedAtDate.getTime())) {
+              normalizedMessage.updatedAt = updatedAtDate
+            }
+          }
+
+          newMessages[id] = normalizedMessage
         })
       }
 

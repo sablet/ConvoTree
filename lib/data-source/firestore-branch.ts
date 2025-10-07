@@ -15,7 +15,9 @@ interface BranchPointWithTimestamp {
   updatedAt?: unknown;
 }
 
-interface MessageWithTimestamp extends Omit<Message, 'id'> {
+interface MessageWithTimestamp extends Omit<Message, 'id' | 'timestamp' | 'updatedAt'> {
+  id?: string;
+  timestamp?: Timestamp;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

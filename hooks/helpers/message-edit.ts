@@ -66,6 +66,8 @@ export function updateLocalMessageState(
   editingContent: string,
   setMessages: (updater: (prev: Record<string, Message>) => Record<string, Message>) => void
 ): void {
+  const updatedAt = new Date()
+
   setMessages(prev => {
     const newMessages = { ...prev }
     const updatedMessage = {
@@ -74,7 +76,8 @@ export function updateLocalMessageState(
       ...(updateData.type && { type: updateData.type }),
       ...(updateData.metadata !== undefined && {
         metadata: updateData.metadata === null ? undefined : updateData.metadata
-      })
+      }),
+      updatedAt
     }
 
     if (updateData.metadata === null) {

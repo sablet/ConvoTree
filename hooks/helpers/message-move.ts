@@ -76,7 +76,8 @@ export interface UpdateLocalStateParams {
  */
 export function updateLocalStateAfterMove(params: UpdateLocalStateParams): void {
   const { selectedMessages, targetLineId, messages, setMessages, setLines } = params
-  const updateTimestamp = new Date().toISOString()
+  const updateDate = new Date()
+  const updateTimestamp = updateDate.toISOString()
 
   setMessages(prev => {
     const updated = { ...prev }
@@ -84,7 +85,8 @@ export function updateLocalStateAfterMove(params: UpdateLocalStateParams): void 
       if (updated[messageId]) {
         updated[messageId] = {
           ...updated[messageId],
-          lineId: targetLineId
+          lineId: targetLineId,
+          updatedAt: updateDate
         }
       }
     })

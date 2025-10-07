@@ -212,6 +212,8 @@ export function useMessageOperations({
             delete newMessage.images
           }
 
+          newMessage.updatedAt = new Date()
+
           updated[messageId] = newMessage
         }
         return updated

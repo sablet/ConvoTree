@@ -6,6 +6,7 @@ export interface Message {
   id: string
   content: string
   timestamp: Date
+  updatedAt?: Date
   lineId: string
   prevInLine?: string
   nextInLine?: string
