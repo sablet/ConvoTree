@@ -37,10 +37,16 @@ export function MessageTypeRenderer({
     dueDate?: string
     completed: boolean
     tags?: string[]
+    completedAt?: string
   }) => {
     if (onUpdate) {
+      const cleanedTaskData = { ...newTaskData }
+      if (cleanedTaskData.completedAt === undefined) {
+        delete cleanedTaskData.completedAt
+      }
+
       onUpdate(message.id, {
-        metadata: newTaskData
+        metadata: cleanedTaskData
       })
     }
   }
@@ -79,6 +85,7 @@ export function MessageTypeRenderer({
         priority: 'low' | 'medium' | 'high' | 'urgent'
         completed: boolean
         tags?: string[]
+        completedAt?: string
       }
       return (
         <TaskMessage

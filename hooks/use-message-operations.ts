@@ -16,6 +16,80 @@ interface MessageOperationsProps {
   onScrollToBottom?: () => void
 }
 
+interface UpdateMessageParams {
+  messages: Record<string, Message>
+  setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
+  setIsUpdating: React.Dispatch<React.SetStateAction<boolean>>
+  onCacheInvalidate: () => void
+}
+
+function useHandleUpdateMessage({
+  messages,
+  setMessages,
+  setIsUpdating,
+  onCacheInvalidate
+}: UpdateMessageParams): (messageId: string, updates: Partial<Message>) => Promise<void> {
+  return useCallback(async (messageId: string, updates: Partial<Message>) => {
+    const targetMessage = messages[messageId]
+    if (!targetMessage) {
+      return
+    }
+
+    const cleanedUpdates: Partial<Message> = { ...updates }
+
+    if (cleanedUpdates.metadata) {
+      const normalizedMetadata = { ...cleanedUpdates.metadata }
+      Object.keys(normalizedMetadata).forEach((key) => {
+        if (normalizedMetadata[key] === undefined) {
+          delete normalizedMetadata[key]
+        }
+      })
+      cleanedUpdates.metadata = normalizedMetadata
+    }
+
+    setIsUpdating(true)
+    try {
+      await dataSourceManager.updateMessage(messageId, cleanedUpdates)
+
+      setMessages(prev => {
+        const updated = { ...prev }
+        if (updated[messageId]) {
+          const nextMessage = { ...updated[messageId] }
+
+          if (cleanedUpdates.content !== undefined) {
+            nextMessage.content = cleanedUpdates.content as string
+          }
+
+          if (cleanedUpdates.type !== undefined) {
+            nextMessage.type = cleanedUpdates.type
+          }
+
+          if ('metadata' in cleanedUpdates) {
+            const metadataUpdate = cleanedUpdates.metadata as Record<string, unknown> | undefined
+            if (metadataUpdate && Object.keys(metadataUpdate).length > 0) {
+              nextMessage.metadata = metadataUpdate
+            } else {
+              delete nextMessage.metadata
+            }
+          }
+
+          nextMessage.updatedAt = new Date()
+          updated[messageId] = nextMessage
+        }
+        return updated
+      })
+
+      onCacheInvalidate()
+
+    } catch (error) {
+      console.error('Failed to update message:', error)
+      alert('メッセージの更新に失敗しました')
+    } finally {
+      setIsUpdating(false)
+    }
+  }, [messages, setMessages, onCacheInvalidate, setIsUpdating])
+}
+
 interface DeleteConfirmationState {
   messageId: string
   message: Message
@@ -65,6 +139,7 @@ export interface MessageOperations {
   isUpdating: boolean
   isValidImageUrl: (url: string) => boolean
   getDefaultMetadataForType: (type: MessageType, content?: string) => Record<string, unknown> | undefined
+  handleUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
 }
 
 /**
@@ -229,6 +304,12 @@ export function useMessageOperations({
     }
   }, [messages, setMessages, deleteImageFromStorage, onCacheInvalidate])
 
+  const handleUpdateMessage = useHandleUpdateMessage({
+    messages,
+    setMessages,
+    setIsUpdating,
+    onCacheInvalidate
+  })
 
   /**
    * Send message or create branch
@@ -466,6 +547,7 @@ export function useMessageOperations({
     handleDeleteImage,
     isUpdating,
     isValidImageUrl,
-    getDefaultMetadataForType
+    getDefaultMetadataForType,
+    handleUpdateMessage
   }
 }

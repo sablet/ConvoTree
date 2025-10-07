@@ -50,6 +50,7 @@ interface MessageListProps {
   isSameDay: (date1: Date, date2: Date) => boolean
   getBranchingLines: (messageId: string) => Line[]
   isUpdating: boolean
+  onUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
 }
 
 /**
@@ -96,7 +97,8 @@ export function MessageList({
   formatDateForSeparator,
   isSameDay,
   getBranchingLines,
-  isUpdating
+  isUpdating,
+  onUpdateMessage
 }: MessageListProps) {
   return (
     <div
@@ -187,6 +189,7 @@ export function MessageList({
               setHasSetCursorToEnd={setHasSetCursorToEnd}
               isValidImageUrl={isValidImageUrl}
               getRelativeTime={getRelativeTime}
+              onUpdateMessage={onUpdateMessage}
             />
           </div>
         )

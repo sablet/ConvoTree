@@ -9,6 +9,7 @@ interface TaskMessageData {
   priority: 'low' | 'medium' | 'high' | 'urgent'
   completed: boolean
   tags?: string[]
+  completedAt?: string
 }
 
 interface TaskMessageProps {
@@ -42,7 +43,8 @@ export function TaskMessage({
   const taskData = useMemo(() => data || {
     priority: 'medium' as const,
     completed: false,
-    tags: []
+    tags: [],
+    completedAt: undefined
   }, [data]);
 
   const [isEditing, setIsEditing] = useState(false)
@@ -66,7 +68,11 @@ export function TaskMessage({
   }
 
   const handleToggleComplete = () => {
-    const newData = { ...taskData, completed: !taskData.completed }
+    const newData: TaskMessageData = {
+      ...taskData,
+      completed: !taskData.completed,
+      completedAt: taskData.completed ? undefined : new Date().toISOString()
+    }
     if (onUpdate) {
       onUpdate(newData)
     }
@@ -131,26 +137,32 @@ export function TaskMessage({
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 space-y-3">
           {/* タスクヘッダー */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full">
             <button
+              type="button"
               onClick={handleToggleComplete}
-              className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                taskData.completed
-                  ? 'bg-green-500 border-green-500 text-white'
-                  : 'border-gray-300 hover:border-gray-400'
+              className={`flex items-center gap-2 flex-1 text-left rounded-md px-2 py-1 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 ${
+                taskData.completed ? 'bg-green-100/70' : 'hover:bg-gray-100'
               }`}
             >
-              {taskData.completed && <Check className="h-3 w-3" />}
-            </button>
-
-            <div className="flex items-center gap-2">
-              <CheckSquare className="h-4 w-4 text-gray-600" />
-              <span className={`text-sm font-medium break-words overflow-wrap-anywhere ${
-                taskData.completed ? 'line-through text-gray-500' : 'text-gray-900'
-              }`}>
-                {content}
+              <span
+                className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  taskData.completed
+                    ? 'bg-green-500 border-green-500 text-white'
+                    : 'border-gray-300'
+                }`}
+              >
+                {taskData.completed && <Check className="h-3 w-3" />}
               </span>
-            </div>
+              <div className="flex items-center gap-2">
+                <CheckSquare className="h-4 w-4 text-gray-600" />
+                <span className={`text-sm font-medium break-words overflow-wrap-anywhere ${
+                  taskData.completed ? 'line-through text-gray-500' : 'text-gray-900'
+                }`}>
+                  {content}
+                </span>
+              </div>
+            </button>
 
             <Badge className={`text-xs ${priorityColors[taskData.priority || 'medium']}`}>
               {priorityIcons[taskData.priority || 'medium']} {(taskData.priority || 'medium').toUpperCase()}
@@ -162,15 +174,38 @@ export function TaskMessage({
           <div className="space-y-2">
 
             {taskData.completed && (
-              <div className="flex items-center gap-2 text-xs text-green-600">
-                <Check className="h-3 w-3" />
-                <span>完了済み</span>
-              </div>
+              <TaskCompletionStatus completedAt={taskData.completedAt} />
             )}
           </div>
         </div>
 
       </div>
+    </div>
+  )
+}
+
+const COMPLETION_TIME_FORMAT = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false
+})
+
+interface TaskCompletionStatusProps {
+  completedAt?: string
+}
+
+function TaskCompletionStatus({ completedAt }: TaskCompletionStatusProps) {
+  const completedAtDate = completedAt ? new Date(completedAt) : null
+  const isValidDate = completedAtDate && !Number.isNaN(completedAtDate.getTime())
+  const completedLabel = isValidDate ? COMPLETION_TIME_FORMAT.format(completedAtDate) : null
+
+  return (
+    <div className="flex items-center gap-2 text-xs text-green-600">
+      <Check className="h-3 w-3" />
+      <span>{completedLabel ? `完了: ${completedLabel}` : '完了済み'}</span>
     </div>
   )
 }

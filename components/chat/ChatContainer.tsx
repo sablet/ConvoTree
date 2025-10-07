@@ -203,6 +203,7 @@ export function ChatContainer({
         isSameDay={isSameDay}
         getBranchingLines={branchOps.getBranchingLines}
         isUpdating={branchOps.isUpdating || messageOps.isUpdating}
+        onUpdateMessage={messageOps.handleUpdateMessage}
       />
 
       {/* Composer or Selection Toolbar */}

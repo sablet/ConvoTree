@@ -66,7 +66,8 @@ export function MessageItem({
   setEditingMetadata,
   setHasSetCursorToEnd,
   isValidImageUrl,
-  getRelativeTime
+  getRelativeTime,
+  onUpdateMessage
 }: MessageItemProps) {
   const isEditing = editingMessageId === message.id
   const createdAtDate = toValidDate(message.timestamp)
@@ -115,6 +116,7 @@ export function MessageItem({
       showEditedTimestamp={showEditedTimestamp}
       editedLabel={editedLabel}
       editedTooltip={editedTooltip}
+      onUpdateMessage={onUpdateMessage}
     />
   )
 
@@ -272,6 +274,7 @@ interface DefaultMessageContentProps {
   showEditedTimestamp: boolean
   editedLabel: string
   editedTooltip?: string
+  onUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
 }
 
 function DefaultMessageContent({
@@ -288,7 +291,8 @@ function DefaultMessageContent({
   onDelete,
   showEditedTimestamp,
   editedLabel,
-  editedTooltip
+  editedTooltip,
+  onUpdateMessage
 }: DefaultMessageContentProps) {
   const validImages = Array.isArray(message.images)
     ? message.images.filter((imageUrl) => isValidImageUrl(imageUrl))
@@ -299,7 +303,12 @@ function DefaultMessageContent({
 
   return (
     <div className="flex-1 min-w-0">
-      <MessageTypeRenderer message={message} />
+      <MessageTypeRenderer
+        message={message}
+        onUpdate={(messageId, updates) => {
+          void onUpdateMessage(messageId, updates)
+        }}
+      />
 
       {hasImages && (
         <MessageImages

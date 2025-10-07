@@ -32,6 +32,7 @@ export interface MessageOperationProps {
   setHasSetCursorToEnd: (value: string | null) => void
   isValidImageUrl: (url: string) => boolean
   getRelativeTime: (dateString: string) => string
+  onUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
 }
 
 /**
