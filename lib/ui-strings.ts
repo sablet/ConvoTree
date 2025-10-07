@@ -13,6 +13,13 @@ export const RELATIVE_TIME_MONTHS = "ヶ月前";
 // Date Labels
 export const DATE_TODAY = "今日";
 export const DATE_YESTERDAY = "昨日";
+export const DATE_NAVIGATION_TITLE = "次の期間に移動";
+export const DATE_NAVIGATION_LAST_WEEK = "先週";
+export const DATE_NAVIGATION_LAST_MONTH = "先月";
+export const DATE_NAVIGATION_FIRST = "最初";
+export const DATE_NAVIGATION_SPECIFIC_DATE = "特定の日付に移動";
+export const DATE_NAVIGATION_SELECT_DATE = "日付を選択";
+export const DATE_NAVIGATION_NO_MESSAGES = "メッセージがありません";
 
 // Weekday Names
 export const WEEKDAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
