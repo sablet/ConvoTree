@@ -2,19 +2,21 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, X, MessageSquare, Tags, GitBranch, Bug } from "lucide-react"
+import { Menu, X, MessageSquare, Tags, GitBranch, Bug, CheckSquare } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
-import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_DEBUG } from "@/lib/routes"
+import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_TASKS, ROUTE_DEBUG } from "@/lib/routes"
 import { DataSourceMenuAction } from "@/components/data-source-menu-action"
 import { DataSource } from "@/lib/data-source"
 import {
   NAV_CHAT,
   NAV_BRANCHES,
   NAV_TAGS,
+  NAV_TASKS,
   NAV_DEBUG,
   NAV_CHAT_DESC,
   NAV_BRANCHES_DESC,
   NAV_TAGS_DESC,
+  NAV_TASKS_DESC,
   NAV_DEBUG_DESC
 } from "@/lib/ui-strings"
 
@@ -61,6 +63,13 @@ export function HamburgerMenu({
       icon: Tags,
       description: NAV_TAGS_DESC,
       path: ROUTE_MANAGEMENT
+    },
+    {
+      id: 'tasks' as const,
+      label: NAV_TASKS,
+      icon: CheckSquare,
+      description: NAV_TASKS_DESC,
+      path: ROUTE_TASKS
     },
     {
       id: 'debug' as const,

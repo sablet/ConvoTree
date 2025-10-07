@@ -36,12 +36,14 @@ export const FILTER_SESSION = "セッション";
 export const NAV_CHAT = "チャット";
 export const NAV_BRANCHES = "ブランチ";
 export const NAV_TAGS = "タグ";
+export const NAV_TASKS = "タスク";
 export const NAV_DEBUG = "デバッグ";
 
 // Navigation Descriptions
 export const NAV_CHAT_DESC = "ブランチングチャット";
 export const NAV_BRANCHES_DESC = "ブランチ構造";
 export const NAV_TAGS_DESC = "タグ管理";
+export const NAV_TASKS_DESC = "タスク一覧";
 export const NAV_DEBUG_DESC = "デバッグツール";
 
 // Timeline/Branch Names
