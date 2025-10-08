@@ -62,6 +62,12 @@ export const LOADING_GENERIC = "読み込み中...";
 // Error Messages
 export const ERROR_PREFIX = "エラー: ";
 
+// Auth
+export const AUTH_PROMPT_TITLE = "アクセスにはログインが必要です";
+export const AUTH_PROMPT_DESCRIPTION = "Googleアカウントでサインインしてください";
+export const AUTH_LOGOUT = "ログアウト";
+export const AUTH_ERROR_PREFIX = "ログインエラー: ";
+
 // Badge Labels
 export const BADGE_TIMELINE = "Timeline";
 export const BADGE_MAIN = "Main";

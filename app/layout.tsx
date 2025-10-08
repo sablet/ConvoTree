@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import "firebaseui/dist/firebaseui.css";
+import { AuthGate } from "@/components/auth/auth-gate";
+import { AuthProvider } from "@/lib/auth-context";
 import { TagProvider } from "@/lib/tag-context";
 import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
 
@@ -46,9 +49,13 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <TagProvider>
-          {children}
-        </TagProvider>
+        <AuthProvider>
+          <AuthGate>
+            <TagProvider>
+              {children}
+            </TagProvider>
+          </AuthGate>
+        </AuthProvider>
       </body>
     </html>
   );

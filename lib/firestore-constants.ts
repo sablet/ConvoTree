@@ -4,6 +4,7 @@
 
 // Top-level Collections
 export const CONVERSATIONS_COLLECTION = "conversations";
+export const ALLOWED_USERS_COLLECTION = "allowed_users";
 
 // Subcollections
 export const MESSAGES_SUBCOLLECTION = "messages";

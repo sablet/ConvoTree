@@ -1,33 +1,28 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 会話データへのアクセス許可
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAllowedUser() {
+      return request.auth != null &&
+             exists(/databases/$(database)/documents/allowed_users/$(request.auth.token.email));
+    }
+
+    // 許可リスト（管理者のみ読み取り可能）
+    match /allowed_users/{email} {
+      allow read: if isAllowedUser();
+      allow write: if false; // 管理スクリプトからのみ変更可能
+    }
+
+    // 会話データへのアクセス許可（許可リストに登録されたユーザーのみ）
     match /conversations/{conversationId} {
-      allow read, write: if true; // 開発中は全許可（本番では認証必須）
+      allow read, write: if isAllowedUser();
 
-      // メッセージサブコレクション
-      match /messages/{messageId} {
-        allow read, write: if true;
-      }
-
-      // ラインサブコレクション
-      match /lines/{lineId} {
-        allow read, write: if true;
-      }
-
-      // ブランチポイントサブコレクション
-      match /branchPoints/{branchPointId} {
-        allow read, write: if true;
-      }
-
-      // タグサブコレクション
-      match /tags/{tagId} {
-        allow read, write: if true;
-      }
-
-      // タググループサブコレクション
-      match /tagGroups/{tagGroupId} {
-        allow read, write: if true;
+      // サブコレクションも許可リストチェックを必須にする
+      match /{document=**} {
+        allow read, write: if isAllowedUser();
       }
     }
   }
