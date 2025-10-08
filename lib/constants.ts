@@ -40,6 +40,7 @@ export const TASK_PRIORITY_ORDER: Record<TaskPriority, number> = {
 export const TASK_PRIORITY_KEYS: TaskPriority[] = ['urgent', 'high', 'medium', 'low'];
 
 // Slash Commands
+export const SLASH_COMMAND_TASK = "/task";
 export const SLASH_COMMAND_TASK_HIGH = "/task_high";
 export const SLASH_COMMAND_TASK_MEDIUM = "/task_medium";
 export const SLASH_COMMAND_TASK_LOW = "/task_low";

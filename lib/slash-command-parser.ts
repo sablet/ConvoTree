@@ -1,5 +1,18 @@
 // スラッシュコマンドの解析とメッセージタイプの判定
-import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from '@/lib/constants'
+import {
+  MESSAGE_TYPE_TEXT,
+  MESSAGE_TYPE_TASK,
+  MESSAGE_TYPE_DOCUMENT,
+  MESSAGE_TYPE_SESSION,
+  SLASH_COMMAND_TASK,
+  SLASH_COMMAND_TASK_HIGH,
+  SLASH_COMMAND_TASK_MEDIUM,
+  SLASH_COMMAND_TASK_LOW,
+  SLASH_COMMAND_DOCUMENT,
+  SLASH_COMMAND_SESSION
+} from '@/lib/constants'
+import type { MessageType } from '@/lib/constants'
+import type { TaskPriority } from '@/lib/types/task'
 
 export interface ParsedMessage {
   content: string // コマンドを除いた実際のメッセージ内容
@@ -14,45 +27,27 @@ export interface SlashCommandPattern {
 }
 
 // サポートするスラッシュコマンドパターン
+const escapeForRegExp = (command: string) => command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+const buildCommandPattern = (command: string) => new RegExp(`^${escapeForRegExp(command)}\\s+([\\s\\S]*)$`)
+
+const createTaskCommand = (command: string, priority: TaskPriority): SlashCommandPattern => ({
+  pattern: buildCommandPattern(command),
+  type: MESSAGE_TYPE_TASK,
+  metadata: {
+    priority,
+    completed: false,
+    tags: []
+  }
+})
+
 const COMMAND_PATTERNS: SlashCommandPattern[] = [
+  createTaskCommand(SLASH_COMMAND_TASK_HIGH, 'high'),
+  createTaskCommand(SLASH_COMMAND_TASK_MEDIUM, 'medium'),
+  createTaskCommand(SLASH_COMMAND_TASK_LOW, 'low'),
+  createTaskCommand(SLASH_COMMAND_TASK, 'medium'),
   {
-    pattern: /^\/task_high\s+([\s\S]*)$/,
-    type: MESSAGE_TYPE_TASK,
-    metadata: {
-      priority: 'high',
-      completed: false,
-      tags: []
-    }
-  },
-  {
-    pattern: /^\/task_medium\s+([\s\S]*)$/,
-    type: MESSAGE_TYPE_TASK,
-    metadata: {
-      priority: 'medium',
-      completed: false,
-      tags: []
-    }
-  },
-  {
-    pattern: /^\/task_low\s+([\s\S]*)$/,
-    type: MESSAGE_TYPE_TASK,
-    metadata: {
-      priority: 'low',
-      completed: false,
-      tags: []
-    }
-  },
-  {
-    pattern: /^\/task\s+([\s\S]*)$/,
-    type: MESSAGE_TYPE_TASK,
-    metadata: {
-      priority: 'medium',
-      completed: false,
-      tags: []
-    }
-  },
-  {
-    pattern: /^\/document\s+([\s\S]*)$/,
+    pattern: buildCommandPattern(SLASH_COMMAND_DOCUMENT),
     type: MESSAGE_TYPE_DOCUMENT,
     metadata: {
       isCollapsed: false,
@@ -62,7 +57,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
     }
   },
   {
-    pattern: /^\/session\s+([\s\S]*)$/,
+    pattern: buildCommandPattern(SLASH_COMMAND_SESSION),
     type: MESSAGE_TYPE_SESSION,
     metadata: {
       timeSpent: 0,
@@ -122,10 +117,11 @@ export function parseSlashCommand(input: string): ParsedMessage {
  */
 export function getAvailableCommands() {
   return [
-    { command: '/task_high', description: '高優先度タスクを作成' },
-    { command: '/task_medium', description: '中優先度タスクを作成' },
-    { command: '/task_low', description: '低優先度タスクを作成' },
-    { command: '/document', description: '長文ドキュメントを作成' },
-    { command: '/session', description: '作業セッションを開始' }
+    { command: SLASH_COMMAND_TASK_HIGH, description: '高優先度タスクを作成' },
+    { command: SLASH_COMMAND_TASK, description: '中優先度タスクを作成' },
+    { command: SLASH_COMMAND_TASK_MEDIUM, description: '中優先度タスクを作成 (/task_medium)' },
+    { command: SLASH_COMMAND_TASK_LOW, description: '低優先度タスクを作成' },
+    { command: SLASH_COMMAND_DOCUMENT, description: '長文ドキュメントを作成' },
+    { command: SLASH_COMMAND_SESSION, description: '作業セッションを開始' }
   ]
 }

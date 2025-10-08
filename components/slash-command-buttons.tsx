@@ -4,8 +4,8 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { CheckSquare, FileText, Timer, AlertTriangle, Zap } from "lucide-react"
 import {
+  SLASH_COMMAND_TASK,
   SLASH_COMMAND_TASK_HIGH,
-  SLASH_COMMAND_TASK_MEDIUM,
   SLASH_COMMAND_TASK_LOW,
   SLASH_COMMAND_DOCUMENT,
   SLASH_COMMAND_SESSION
@@ -39,7 +39,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
   },
   {
-    command: `${SLASH_COMMAND_TASK_MEDIUM} `,
+    command: `${SLASH_COMMAND_TASK} `,
     label: LABEL_TASK_MEDIUM,
     icon: <CheckSquare className="h-3 w-3" />,
     description: "通常の優先度のタスクを作成",
