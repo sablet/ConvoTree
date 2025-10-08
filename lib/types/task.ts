@@ -1,8 +1,10 @@
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+
 export interface TaskRow {
   id: string
   content: string
   completed: boolean
-  priority: 'low' | 'medium' | 'high' | 'urgent'
+  priority: TaskPriority
   lineName: string
   createdAt: Date
   updatedAt?: Date

@@ -2,17 +2,18 @@ import { Filter, X, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { useState, useRef, useEffect } from "react"
+import type { TaskPriority } from "@/lib/types/task"
 
 interface TaskFiltersProps {
   searchText: string
   onSearchChange: (value: string) => void
   completedFilter: 'all' | 'completed' | 'incomplete'
   onCompletedFilterChange: (value: 'all' | 'completed' | 'incomplete') => void
-  priorityFilter: string[]
-  onPriorityToggle: (priority: string) => void
+  priorityFilter: TaskPriority[]
+  onPriorityToggle: (priority: TaskPriority) => void
   lineFilter: string[]
   onLineToggle: (lineName: string) => void
-  uniquePriorities: string[]
+  uniquePriorities: TaskPriority[]
   uniqueLines: string[]
   totalTasks: number
   completedTasks: number
@@ -20,9 +21,9 @@ interface TaskFiltersProps {
   filteredCount: number
   hasActiveFilters: boolean
   onClearFilters: () => void
-  priorityLabels: Record<string, string>
+  priorityLabels: Record<TaskPriority, string>
   taskCounts: {
-    byPriority: Record<string, number>
+    byPriority: Record<TaskPriority, number>
     byLine: Record<string, number>
   }
 }
@@ -177,12 +178,12 @@ export function TaskFilters({
             options={uniquePriorities.map(p => priorityLabels[p])}
             selected={priorityFilter.map(p => priorityLabels[p])}
             onToggle={(label) => {
-              const priority = Object.entries(priorityLabels).find(([, l]) => l === label)?.[0]
-              if (priority) onPriorityToggle(priority)
+              const entry = (Object.entries(priorityLabels) as [TaskPriority, string][]).find(([, l]) => l === label)
+              if (entry) onPriorityToggle(entry[0])
             }}
             getCounts={(label) => {
-              const priority = Object.entries(priorityLabels).find(([, l]) => l === label)?.[0]
-              return priority ? (taskCounts.byPriority[priority] || 0) : 0
+              const entry = (Object.entries(priorityLabels) as [TaskPriority, string][]).find(([, l]) => l === label)
+              return entry ? taskCounts.byPriority[entry[0]] : 0
             }}
           />
         )}

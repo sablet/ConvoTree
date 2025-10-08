@@ -1,3 +1,5 @@
+import type { TaskPriority } from "@/lib/types/task";
+
 /**
  * Core application constants for IDs and identifiers
  */
@@ -19,6 +21,23 @@ export type MessageType = typeof MESSAGE_TYPE_TEXT | typeof MESSAGE_TYPE_TASK | 
 export const PRIORITY_LOW = "低";
 export const PRIORITY_MEDIUM = "中";
 export const PRIORITY_HIGH = "高";
+export const PRIORITY_URGENT = "緊急";
+
+export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
+  urgent: PRIORITY_URGENT,
+  high: PRIORITY_HIGH,
+  medium: PRIORITY_MEDIUM,
+  low: PRIORITY_LOW,
+};
+
+export const TASK_PRIORITY_ORDER: Record<TaskPriority, number> = {
+  urgent: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+export const TASK_PRIORITY_KEYS: TaskPriority[] = ['urgent', 'high', 'medium', 'low'];
 
 // Slash Commands
 export const SLASH_COMMAND_TASK_HIGH = "/task_high";

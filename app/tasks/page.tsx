@@ -7,25 +7,16 @@ import { TaskTable } from "@/components/tasks/TaskTable"
 import { useChatData } from "@/hooks/use-chat-data"
 import { dataSourceManager } from "@/lib/data-source"
 import { Message } from "@/lib/types"
-import { TaskRow, SortKey } from "@/lib/types/task"
-import { MESSAGE_TYPE_TASK } from "@/lib/constants"
+import { TaskRow, SortKey, TaskPriority } from "@/lib/types/task"
+import { MESSAGE_TYPE_TASK, TASK_PRIORITY_ORDER, TASK_PRIORITY_KEYS, TASK_PRIORITY_LABELS } from "@/lib/constants"
 import { LOADING_GENERIC } from "@/lib/ui-strings"
 
 type SortDirection = 'asc' | 'desc'
 
-const priorityOrder = {
-  urgent: 4,
-  high: 3,
-  medium: 2,
-  low: 1
-}
+const DEFAULT_PRIORITY: TaskPriority = 'medium'
 
-const priorityLabels = {
-  low: '低',
-  medium: '中',
-  high: '高',
-  urgent: '緊急'
-}
+const isTaskPriority = (value: string | undefined): value is TaskPriority =>
+  value !== undefined && (TASK_PRIORITY_KEYS as TaskPriority[]).includes(value as TaskPriority)
 
 export default function TasksPage() {
   const [isLoading, setIsLoading] = useState(true)
@@ -45,7 +36,7 @@ export default function TasksPage() {
   const [sortKey, setSortKey] = useState<SortKey>('createdAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
   const [completedFilter, setCompletedFilter] = useState<'all' | 'completed' | 'incomplete'>('all')
-  const [priorityFilter, setPriorityFilter] = useState<string[]>([])
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority[]>([])
   const [lineFilter, setLineFilter] = useState<string[]>([])
   const [searchText, setSearchText] = useState('')
 
@@ -56,12 +47,14 @@ export default function TasksPage() {
       if (msg.type === MESSAGE_TYPE_TASK) {
         const taskData = msg.metadata as { priority?: string; completed?: boolean; completedAt?: string } | undefined
         const line = lines[msg.lineId]
+        const metadataPriority = taskData?.priority
+        const priority: TaskPriority = isTaskPriority(metadataPriority) ? metadataPriority : DEFAULT_PRIORITY
 
         tasks.push({
           id: msg.id,
           content: msg.content,
           completed: taskData?.completed ?? false,
-          priority: (taskData?.priority as 'low' | 'medium' | 'high' | 'urgent') ?? 'medium',
+          priority,
           lineName: line?.name ?? msg.lineId,
           createdAt: msg.timestamp,
           updatedAt: msg.updatedAt,
@@ -73,10 +66,10 @@ export default function TasksPage() {
     return tasks
   }, [messages, lines])
 
-  const uniquePriorities = useMemo(() => {
-    const priorities = new Set<string>()
+  const uniquePriorities = useMemo<TaskPriority[]>(() => {
+    const priorities = new Set<TaskPriority>()
     taskRows.forEach(task => priorities.add(task.priority))
-    return Array.from(priorities).sort((a, b) => priorityOrder[b as keyof typeof priorityOrder] - priorityOrder[a as keyof typeof priorityOrder])
+    return Array.from(priorities).sort((a, b) => TASK_PRIORITY_ORDER[b] - TASK_PRIORITY_ORDER[a])
   }, [taskRows])
 
   const uniqueLines = useMemo(() => {
@@ -86,11 +79,14 @@ export default function TasksPage() {
   }, [taskRows])
 
   const taskCounts = useMemo(() => {
-    const byPriority: Record<string, number> = {}
+    const byPriority = TASK_PRIORITY_KEYS.reduce((acc, key) => {
+      acc[key] = 0
+      return acc
+    }, {} as Record<TaskPriority, number>)
     const byLine: Record<string, number> = {}
 
     taskRows.forEach(task => {
-      byPriority[task.priority] = (byPriority[task.priority] || 0) + 1
+      byPriority[task.priority] += 1
       byLine[task.lineName] = (byLine[task.lineName] || 0) + 1
     })
 
@@ -136,7 +132,7 @@ export default function TasksPage() {
           compareValue = (a.completed ? 1 : 0) - (b.completed ? 1 : 0)
           break
         case 'priority':
-          compareValue = priorityOrder[a.priority] - priorityOrder[b.priority]
+          compareValue = TASK_PRIORITY_ORDER[a.priority] - TASK_PRIORITY_ORDER[b.priority]
           break
         case 'lineName':
           compareValue = a.lineName.localeCompare(b.lineName, 'ja')
@@ -205,7 +201,59 @@ export default function TasksPage() {
     }
   }
 
-  const togglePriorityFilter = (priority: string) => {
+  const handleUpdateTask = async (taskId: string, updates: { content?: string; priority?: TaskPriority; lineName?: string }) => {
+    const message = messages[taskId]
+    if (!message) return
+
+    const taskData = message.metadata as { priority?: string; completed?: boolean; completedAt?: string } | undefined
+
+    // ライン名の変更がある場合、対応するlineIdを見つける
+    let newLineId = message.lineId
+    if (updates.lineName && updates.lineName !== lines[message.lineId]?.name) {
+      const targetLine = Object.values(lines).find(l => l.name === updates.lineName)
+      if (targetLine) {
+        newLineId = targetLine.id
+      }
+    }
+
+    const existingPriority = taskData?.priority
+    const nextPriority: TaskPriority = updates.priority ?? (isTaskPriority(existingPriority) ? existingPriority : DEFAULT_PRIORITY)
+
+    const newMetadata = {
+      ...taskData,
+      priority: nextPriority
+    }
+
+    // 楽観的更新
+    setMessages(prev => ({
+      ...prev,
+      [taskId]: {
+        ...message,
+        content: updates.content || message.content,
+        lineId: newLineId,
+        metadata: newMetadata,
+        updatedAt: new Date()
+      }
+    }))
+
+    // バックグラウンドでFirestoreを更新
+    try {
+      await dataSourceManager.updateMessage(taskId, {
+        content: updates.content,
+        lineId: newLineId,
+        metadata: newMetadata,
+        updatedAt: new Date()
+      })
+    } catch (error) {
+      console.error('Failed to update task:', error)
+      setMessages(prev => ({
+        ...prev,
+        [taskId]: message
+      }))
+    }
+  }
+
+  const togglePriorityFilter = (priority: TaskPriority) => {
     setPriorityFilter(prev =>
       prev.includes(priority) ? prev.filter(p => p !== priority) : [...prev, priority]
     )
@@ -259,7 +307,7 @@ export default function TasksPage() {
             filteredCount={filteredTasks.length}
             hasActiveFilters={hasActiveFilters}
             onClearFilters={clearAllFilters}
-            priorityLabels={priorityLabels}
+            priorityLabels={TASK_PRIORITY_LABELS}
             taskCounts={taskCounts}
           />
 
@@ -269,7 +317,10 @@ export default function TasksPage() {
             sortDirection={sortDirection}
             onSort={handleSort}
             onToggleComplete={handleToggleComplete}
-            priorityLabels={priorityLabels}
+            onUpdateTask={handleUpdateTask}
+            priorityLabels={TASK_PRIORITY_LABELS}
+            priorityOptions={TASK_PRIORITY_KEYS}
+            allLines={uniqueLines}
           />
 
           {sortedTasks.length === 0 && (
