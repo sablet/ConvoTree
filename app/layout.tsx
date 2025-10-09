@@ -5,6 +5,7 @@ import "firebaseui/dist/firebaseui.css";
 import { AuthGate } from "@/components/auth/auth-gate";
 import { AuthProvider } from "@/lib/auth-context";
 import { TagProvider } from "@/lib/tag-context";
+import { OnlineStatusProvider } from "@/lib/online-status-context";
 import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
 
 const geistSans = localFont({
@@ -49,13 +50,15 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <AuthProvider>
-          <AuthGate>
-            <TagProvider>
-              {children}
-            </TagProvider>
-          </AuthGate>
-        </AuthProvider>
+        <OnlineStatusProvider>
+          <AuthProvider>
+            <AuthGate>
+              <TagProvider>
+                {children}
+              </TagProvider>
+            </AuthGate>
+          </AuthProvider>
+        </OnlineStatusProvider>
       </body>
     </html>
   );

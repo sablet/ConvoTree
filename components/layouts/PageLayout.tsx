@@ -1,4 +1,5 @@
 import { ReactNode } from 'react'
+import { OfflineBanner } from '@/components/offline-banner'
 
 interface PageLayoutProps {
   title?: string
@@ -10,6 +11,7 @@ interface PageLayoutProps {
 export function PageLayout({ children, footer, sidebar }: PageLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
+      <OfflineBanner />
       <main className="w-full">
         <div className="flex">
           <div className="flex-1">

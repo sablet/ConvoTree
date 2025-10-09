@@ -9,6 +9,7 @@ import { FirestoreMessageOperations } from './firestore-message';
 import { FirestoreTagOperations } from './firestore-tag';
 import { FirestoreLineOperations } from './firestore-line';
 import { FirestoreBranchOperations } from './firestore-branch';
+import { localStorageCache } from './cache';
 
 const normalizeDateValue = (value: unknown): Date | undefined => {
   if (!value) {
@@ -153,13 +154,17 @@ export class FirestoreDataSource implements IDataSource {
         };
       });
 
-      return {
+      const chatData: ChatData = {
         messages,
         lines,
         branchPoints,
         tags,
         tagGroups
       };
+
+      await localStorageCache.save(chatData);
+
+      return chatData;
 
     } catch (error) {
       console.error('❌ Failed to load from Firestore:', error);

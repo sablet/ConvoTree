@@ -56,4 +56,4 @@ export interface IDataSource {
   ): Promise<string>;
 }
 
-export type DataSource = 'firestore' | 'sample';
+export type DataSource = 'firestore' | 'sample' | 'cache';

@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { TaskFilters } from "@/components/tasks/TaskFilters"
 import { TaskTable } from "@/components/tasks/TaskTable"
+import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { dataSourceManager } from "@/lib/data-source"
 import { Message } from "@/lib/types"
@@ -276,56 +277,60 @@ export default function TasksPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-gray-500">{LOADING_GENERIC}</div>
-      </div>
+      <PageLayout>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-gray-500">{LOADING_GENERIC}</div>
+        </div>
+      </PageLayout>
     )
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      <HamburgerMenu />
+    <PageLayout>
+      <div className="flex flex-col h-screen bg-gray-50">
+        <HamburgerMenu />
 
-      <TaskFilters
-        searchText={searchText}
-        onSearchChange={setSearchText}
-        completedFilter={completedFilter}
-        onCompletedFilterChange={setCompletedFilter}
-        priorityFilter={priorityFilter}
-        onPriorityToggle={togglePriorityFilter}
-        lineFilter={lineFilter}
-        onLineToggle={toggleLineFilter}
-        uniquePriorities={uniquePriorities}
-        uniqueLines={uniqueLines}
-        totalTasks={taskRows.length}
-        completedTasks={taskRows.filter(t => t.completed).length}
-        incompleteTasks={taskRows.filter(t => !t.completed).length}
-        filteredCount={filteredTasks.length}
-        hasActiveFilters={hasActiveFilters}
-        onClearFilters={clearAllFilters}
-        priorityLabels={TASK_PRIORITY_LABELS}
-        taskCounts={taskCounts}
-      />
-
-      <div className="flex-1 overflow-auto">
-        <TaskTable
-          tasks={sortedTasks}
-          sortKey={sortKey}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          onToggleComplete={handleToggleComplete}
-          onUpdateTask={handleUpdateTask}
+        <TaskFilters
+          searchText={searchText}
+          onSearchChange={setSearchText}
+          completedFilter={completedFilter}
+          onCompletedFilterChange={setCompletedFilter}
+          priorityFilter={priorityFilter}
+          onPriorityToggle={togglePriorityFilter}
+          lineFilter={lineFilter}
+          onLineToggle={toggleLineFilter}
+          uniquePriorities={uniquePriorities}
+          uniqueLines={uniqueLines}
+          totalTasks={taskRows.length}
+          completedTasks={taskRows.filter(t => t.completed).length}
+          incompleteTasks={taskRows.filter(t => !t.completed).length}
+          filteredCount={filteredTasks.length}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={clearAllFilters}
           priorityLabels={TASK_PRIORITY_LABELS}
-          priorityOptions={TASK_PRIORITY_KEYS}
-          allLines={uniqueLines}
+          taskCounts={taskCounts}
         />
 
-        {sortedTasks.length === 0 && (
-          <div className="p-8 text-center text-gray-500">
-            タスクが見つかりません
-          </div>
-        )}
+        <div className="flex-1 overflow-auto">
+          <TaskTable
+            tasks={sortedTasks}
+            sortKey={sortKey}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            onToggleComplete={handleToggleComplete}
+            onUpdateTask={handleUpdateTask}
+            priorityLabels={TASK_PRIORITY_LABELS}
+            priorityOptions={TASK_PRIORITY_KEYS}
+            allLines={uniqueLines}
+          />
+
+          {sortedTasks.length === 0 && (
+            <div className="p-8 text-center text-gray-500">
+              タスクが見つかりません
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }

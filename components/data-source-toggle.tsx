@@ -3,23 +3,44 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Database, FileText, Settings, RefreshCw } from 'lucide-react';
+import { Database, FileText, Settings, RefreshCw, HardDrive } from 'lucide-react';
 import { dataSourceManager, DataSource } from '@/lib/data-source';
 import {
   ERROR_PREFIX,
   DATA_SOURCE_SECTION_TITLE,
   DATA_SOURCE_LABEL_FIRESTORE,
   DATA_SOURCE_LABEL_SAMPLE,
+  DATA_SOURCE_LABEL_CACHE,
   DATA_SOURCE_BUTTON_FIRESTORE,
   DATA_SOURCE_BUTTON_SAMPLE,
+  DATA_SOURCE_BUTTON_CACHE,
   DATA_SOURCE_STATUS_FIRESTORE,
-  DATA_SOURCE_STATUS_SAMPLE
+  DATA_SOURCE_STATUS_SAMPLE,
+  DATA_SOURCE_STATUS_CACHE
 } from '@/lib/ui-strings';
 
 interface DataSourceToggleProps {
   onDataSourceChange?: (source: DataSource) => void;
   onDataReload?: () => void;
 }
+
+const getBadgeStyle = (source: DataSource): string => {
+  if (source === 'firestore') return 'bg-blue-500 text-white';
+  if (source === 'cache') return 'bg-purple-500 text-white';
+  return 'bg-gray-100 text-gray-600';
+};
+
+const getSourceLabel = (source: DataSource): string => {
+  if (source === 'firestore') return DATA_SOURCE_LABEL_FIRESTORE;
+  if (source === 'cache') return DATA_SOURCE_LABEL_CACHE;
+  return DATA_SOURCE_LABEL_SAMPLE;
+};
+
+const getStatusMessage = (source: DataSource): string => {
+  if (source === 'firestore') return DATA_SOURCE_STATUS_FIRESTORE;
+  if (source === 'cache') return DATA_SOURCE_STATUS_CACHE;
+  return DATA_SOURCE_STATUS_SAMPLE;
+};
 
 export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourceToggleProps) {
   const [currentSource, setCurrentSource] = useState<DataSource>('firestore');
@@ -73,13 +94,9 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
           <span className="text-sm font-medium text-gray-700">{DATA_SOURCE_SECTION_TITLE}</span>
           <Badge
             variant={currentSource === 'firestore' ? 'default' : 'secondary'}
-            className={`text-xs ${
-              currentSource === 'firestore'
-                ? 'bg-blue-500 text-white'
-                : 'bg-gray-100 text-gray-600'
-            }`}
+            className={`text-xs ${getBadgeStyle(currentSource)}`}
           >
-            {currentSource === 'firestore' ? DATA_SOURCE_LABEL_FIRESTORE : DATA_SOURCE_LABEL_SAMPLE}
+            {getSourceLabel(currentSource)}
           </Badge>
         </div>
 
@@ -126,14 +143,25 @@ export function DataSourceToggle({ onDataSourceChange, onDataReload }: DataSourc
           <Database className="w-4 h-4" />
           {DATA_SOURCE_BUTTON_FIRESTORE}
         </Button>
+
+        <Button
+          variant={currentSource === 'cache' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleSourceChange('cache')}
+          disabled={isLoading}
+          className={`flex items-center gap-2 ${
+            currentSource === 'cache'
+              ? 'bg-purple-500 hover:bg-purple-600 text-white'
+              : 'border-purple-300 text-purple-700 hover:bg-purple-50'
+          }`}
+        >
+          <HardDrive className="w-4 h-4" />
+          {DATA_SOURCE_BUTTON_CACHE}
+        </Button>
       </div>
 
       <div className="mt-3 text-xs text-gray-500">
-        {currentSource === 'firestore' ? (
-          <span>{DATA_SOURCE_STATUS_FIRESTORE}</span>
-        ) : (
-          <span>{DATA_SOURCE_STATUS_SAMPLE}</span>
-        )}
+        <span>{getStatusMessage(currentSource)}</span>
       </div>
 
       {lastError && (
