@@ -200,32 +200,30 @@ export function TaskTable({
   allLines
 }: TaskTableProps) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full">
-        <thead className="bg-gray-50 border-b border-gray-200">
-          <tr>
-            {SORTABLE_COLUMNS.map(({ key, label, className }) => (
-              <TableHeaderCell key={key} className={className}>
-                <SortButton column={key} label={label} sortKey={sortKey} onClick={onSort} />
-              </TableHeaderCell>
-            ))}
-            <TableHeaderCell>操作</TableHeaderCell>
-          </tr>
-        </thead>
-        <tbody className="bg-white divide-y divide-gray-200">
-          {tasks.map((task) => (
-            <TaskTableRow
-              key={task.id}
-              task={task}
-              onToggleComplete={onToggleComplete}
-              onUpdateTask={onUpdateTask}
-              priorityLabels={priorityLabels}
-              priorityOptions={priorityOptions}
-              allLines={allLines}
-            />
+    <table className="w-full">
+      <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
+        <tr>
+          {SORTABLE_COLUMNS.map(({ key, label, className }) => (
+            <TableHeaderCell key={key} className={className}>
+              <SortButton column={key} label={label} sortKey={sortKey} onClick={onSort} />
+            </TableHeaderCell>
           ))}
-        </tbody>
-      </table>
-    </div>
+          <TableHeaderCell>操作</TableHeaderCell>
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {tasks.map((task) => (
+          <TaskTableRow
+            key={task.id}
+            task={task}
+            onToggleComplete={onToggleComplete}
+            onUpdateTask={onUpdateTask}
+            priorityLabels={priorityLabels}
+            priorityOptions={priorityOptions}
+            allLines={allLines}
+          />
+        ))}
+      </tbody>
+    </table>
   )
 }
