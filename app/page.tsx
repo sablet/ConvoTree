@@ -2,18 +2,26 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
+import Image from "next/image"
 import { ChatContainer } from "@/components/chat"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { MAIN_LINE_ID } from "@/lib/constants"
 import { LoadingFallback } from "@/components/LoadingFallback"
+import { useAuth } from "@/lib/auth-context"
+import {
+  AUTH_UNAUTHORIZED_TITLE,
+  AUTH_UNAUTHORIZED_DESCRIPTION,
+  AUTH_UNAUTHORIZED_LOGOUT,
+} from "@/lib/ui-strings"
 
 function HomeContent() {
   const searchParams = useSearchParams()
   const [currentLineId, setCurrentLineId] = useState<string>('')
+  const { user, signOut } = useAuth()
 
-  const { messages, lines, branchPoints, tags, loadChatData } = useChatData({
+  const { messages, lines, branchPoints, tags, error, loadChatData } = useChatData({
     onDataLoaded: (data) => {
       // URLからライン名を取得
       const lineFromUrl = searchParams.get('line')
@@ -39,10 +47,11 @@ function HomeContent() {
     }
   })
 
-  // 初期データローディング
+  // 初期データローディング（初回のみ）
   useEffect(() => {
     loadChatData()
-  }, [loadChatData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
 
   // ライン切り替えハンドラー（状態更新を優先し、URL更新は遅延実行）
@@ -59,7 +68,32 @@ function HomeContent() {
     }
   }, [lines])
 
-
+  // Firestoreデータ取得エラー（権限不足の可能性）
+  if (error && user) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-md rounded-2xl bg-white shadow-xl border border-slate-200 p-8 space-y-6">
+          <div className="flex justify-center">
+            <Image src="/icon-192.png" alt="Chat Line" width={64} height={64} className="rounded-2xl" />
+          </div>
+          <div className="text-center space-y-2">
+            <h1 className="text-2xl font-semibold text-slate-900">{AUTH_UNAUTHORIZED_TITLE}</h1>
+            <p className="text-sm text-slate-600">{AUTH_UNAUTHORIZED_DESCRIPTION}</p>
+          </div>
+          <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800">
+            <p className="font-medium">ログイン中のアカウント:</p>
+            <p className="break-words">{user.email}</p>
+          </div>
+          <button
+            onClick={() => signOut()}
+            className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 transition-colors"
+          >
+            {AUTH_UNAUTHORIZED_LOGOUT}
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <TagProvider>

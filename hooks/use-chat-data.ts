@@ -19,12 +19,14 @@ export function useChatData(options: UseChatDataOptions = {}) {
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
+  const [error, setError] = useState<Error | null>(null)
 
   const loadChatData = useCallback(async () => {
     try {
       if (options.setIsLoading) {
         options.setIsLoading(true)
       }
+      setError(null)
 
       const data = await dataSourceManager.loadChatData()
 
@@ -102,6 +104,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
       setLines({})
       setBranchPoints({})
       setTags({})
+      setError(error instanceof Error ? error : new Error('データの読み込みに失敗しました'))
 
       if (options.setIsLoading) {
         options.setIsLoading(false)
@@ -114,6 +117,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
     lines,
     branchPoints,
     tags,
+    error,
     loadChatData
   }
 }
