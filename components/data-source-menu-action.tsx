@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { dataSourceManager, DataSource } from "@/lib/data-source"
+import { chatRepository } from "@/lib/repositories/chat-repository"
 import {
   DATA_SOURCE_SECTION_TITLE,
   DATA_SOURCE_RELOAD_LABEL,
@@ -36,7 +37,9 @@ export function DataSourceMenuAction({ onReload, currentSource }: DataSourceMenu
       if (onReload) {
         await onReload()
       } else {
-        await dataSourceManager.loadChatData()
+        await chatRepository.loadChatData({
+          source: dataSourceManager.getCurrentSource()
+        })
       }
     } catch (error) {
       console.error("Failed to reload data source:", error)

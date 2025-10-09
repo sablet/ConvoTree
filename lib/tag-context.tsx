@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useReducer, useEffect, ReactNode } from "react"
 import { dataSourceManager } from "@/lib/data-source"
+import { chatRepository } from "@/lib/repositories/chat-repository"
 import { collection, onSnapshot } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { config } from "@/lib/config"
@@ -154,7 +155,9 @@ export function TagProvider({ children }: TagProviderProps) {
     dispatch({ type: "SET_LOADING", payload: true })
     try {
       // DataSourceManagerからFirestoreデータを取得
-      const chatData = await dataSourceManager.loadChatData()
+      const { data: chatData } = await chatRepository.loadChatData({
+        source: dataSourceManager.getCurrentSource()
+      })
 
       // 実際のタグデータとグループデータを取得
       const actualTags = chatData.tags || {}

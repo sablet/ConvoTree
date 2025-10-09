@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react"
 import { BranchStructure } from "@/components/branch"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { dataSourceManager } from "@/lib/data-source"
+import { chatRepository } from "@/lib/repositories/chat-repository"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
 
@@ -19,7 +20,9 @@ export default function BranchListPage() {
   const loadChatData = useCallback(async () => {
     try {
       setIsLoading(true)
-      const data = await dataSourceManager.loadChatData()
+      const { data } = await chatRepository.loadChatData({
+        source: dataSourceManager.getCurrentSource()
+      })
 
       // メッセージデータ変換（timestampをDateオブジェクトに変換）
       const newMessages: Record<string, Message> = {}

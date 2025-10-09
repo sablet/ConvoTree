@@ -9,7 +9,6 @@ import { FirestoreMessageOperations } from './firestore-message';
 import { FirestoreTagOperations } from './firestore-tag';
 import { FirestoreLineOperations } from './firestore-line';
 import { FirestoreBranchOperations } from './firestore-branch';
-import { localStorageCache } from './cache';
 
 const normalizeDateValue = (value: unknown): Date | undefined => {
   if (!value) {
@@ -161,8 +160,6 @@ export class FirestoreDataSource implements IDataSource {
         tags,
         tagGroups
       };
-
-      await localStorageCache.save(chatData);
 
       return chatData;
 

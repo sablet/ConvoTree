@@ -5,6 +5,44 @@
   ],
   "plugins": ["sonarjs"],
   "rules": {
+    // --- アーキテクチャルール（Repository Pattern） ---
+    "no-restricted-imports": ["error", {
+      "patterns": [
+        {
+          "group": ["**/lib/data-source/cache*"],
+          "message": "Direct import from cache layer is not allowed. Use chatRepository instead."
+        },
+        {
+          "group": ["**/lib/data-source/firestore*", "**/lib/data-source/sample*"],
+          "message": "Direct import from data-source layer is not allowed. Use repository layer instead."
+        }
+      ],
+      "paths": [
+        {
+          "name": "@/lib/data-source/cache",
+          "message": "Direct import from cache layer is not allowed. Use chatRepository instead."
+        },
+        {
+          "name": "@/lib/data-source/firestore",
+          "message": "Direct import from Firestore data-source is not allowed. Use repository layer instead."
+        },
+        {
+          "name": "@/lib/data-source/sample",
+          "message": "Direct import from sample data-source is not allowed. Use repository layer instead."
+        },
+        {
+          "name": "firebase/firestore",
+          "message": "Direct Firestore access is not allowed in application layer. Use repository layer instead."
+        }
+      ]
+    }],
+    "no-restricted-globals": ["error", {
+      "name": "localStorage",
+      "message": "Direct localStorage access is not allowed. Use authRepository or chatRepository instead."
+    }, {
+      "name": "sessionStorage",
+      "message": "Direct sessionStorage access is not allowed. Use repository layer instead."
+    }],
     // --- 実行時エラーを防ぐ可能性が高いルール ---
     "no-use-before-define": ["error", {
       "functions": false,
@@ -147,6 +185,24 @@
             "skipComments": true
           }
         ]
+      }
+    },
+    {
+      "files": ["lib/repositories/**/*.ts", "lib/data-source/**/*.ts"],
+      "rules": {
+        "no-restricted-imports": "off",
+        "no-restricted-globals": "off"
+      }
+    },
+    {
+      "files": [
+        "lib/tag-context.tsx",
+        "lib/firebase.ts",
+        "components/**/*test*.tsx",
+        "components/**/*debug*.tsx"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
       }
     }
   ]

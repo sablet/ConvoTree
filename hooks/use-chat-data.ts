@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 import { dataSourceManager } from "@/lib/data-source"
-import { localStorageCache } from "@/lib/data-source/cache"
+import { chatRepository } from "@/lib/repositories/chat-repository"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
 import { Message, Line, BranchPoint, Tag } from "@/lib/types"
 
@@ -93,23 +93,6 @@ const clearAllData = (setters: DataSetters) => {
   setters.setTags({})
 }
 
-const loadFromCache = async (
-  setters: DataSetters,
-  onDataLoaded?: (data: ChatData) => void
-): Promise<boolean> => {
-  console.log('📦 Attempting to load from cache (offline)...')
-  const cached = await localStorageCache.load()
-
-  if (cached) {
-    console.log('✅ Using cached data (offline mode)')
-    const chatData = transformChatData(cached)
-    applyLoadedData(chatData, setters, onDataLoaded)
-    return true
-  }
-
-  return false
-}
-
 export function useChatData(options: UseChatDataOptions = {}) {
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
@@ -126,8 +109,12 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
       setError(null)
 
-      const data = await dataSourceManager.loadChatData()
-      const chatData = transformChatData(data)
+      const preferCache = typeof navigator !== 'undefined' && !navigator.onLine
+      const result = await chatRepository.loadChatData({
+        source: dataSourceManager.getCurrentSource(),
+        preferCache
+      })
+      const chatData = transformChatData(result.data)
 
       applyLoadedData(chatData, setters, options.onDataLoaded)
 
@@ -137,7 +124,13 @@ export function useChatData(options: UseChatDataOptions = {}) {
     } catch (error) {
       console.error('Failed to load chat data:', error)
 
-      const cacheLoaded = navigator.onLine ? false : await loadFromCache(setters, options.onDataLoaded)
+      const cacheResult = await chatRepository.loadCacheOnly()
+      const cacheLoaded = Boolean(cacheResult)
+
+      if (cacheResult) {
+        const chatData = transformChatData(cacheResult.data)
+        applyLoadedData(chatData, setters, options.onDataLoaded)
+      }
 
       if (cacheLoaded) {
         setError(null)
