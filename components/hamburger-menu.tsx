@@ -7,6 +7,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_TASKS, ROUTE_DEBUG } from "@/lib/routes"
 import { DataSourceMenuAction } from "@/components/data-source-menu-action"
 import { DataSource } from "@/lib/data-source"
+import { useAuth } from "@/lib/auth-context"
 import {
   NAV_CHAT,
   NAV_BRANCHES,
@@ -17,7 +18,8 @@ import {
   NAV_BRANCHES_DESC,
   NAV_TAGS_DESC,
   NAV_TASKS_DESC,
-  NAV_DEBUG_DESC
+  NAV_DEBUG_DESC,
+  AUTH_LOGOUT
 } from "@/lib/ui-strings"
 
 interface HamburgerMenuProps {
@@ -41,6 +43,7 @@ export function HamburgerMenu({
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  const { user, signOut } = useAuth()
 
   const navItems = [
     {
@@ -113,11 +116,11 @@ export function HamburgerMenu({
 
       {/* Menu Panel */}
       <div
-        className={`fixed top-0 right-0 h-full w-80 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 h-full w-80 bg-white shadow-xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-lg font-medium text-gray-900">メニュー</h2>
           <Button
             variant="ghost"
@@ -129,7 +132,27 @@ export function HamburgerMenu({
           </Button>
         </div>
 
-        <div className="p-4 space-y-6">
+        <div className="p-4 space-y-6 overflow-y-auto flex-1">
+          {/* User Section */}
+          {user && (
+            <div className="border-b border-gray-200 pb-4">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">ユーザー</h3>
+              <div className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 rounded-md">
+                <span className="truncate text-sm text-gray-700">
+                  {user.email ?? user.displayName ?? user.uid}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void signOut()}
+                  className="flex-shrink-0 text-xs"
+                >
+                  {AUTH_LOGOUT}
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Navigation Section */}
           <div>
             <h3 className="text-sm font-medium text-gray-700 mb-3">ナビゲーション</h3>

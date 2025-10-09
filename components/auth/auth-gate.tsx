@@ -8,7 +8,6 @@ import { FirebaseAuthUI } from "@/components/auth/firebase-auth-ui"
 import {
   AUTH_PROMPT_TITLE,
   AUTH_PROMPT_DESCRIPTION,
-  AUTH_LOGOUT,
   AUTH_ERROR_PREFIX,
 } from "@/lib/ui-strings"
 
@@ -17,7 +16,7 @@ interface AuthGateProps {
 }
 
 export function AuthGate({ children }: AuthGateProps) {
-  const { user, isLoading, error, signOut } = useAuth()
+  const { user, isLoading, error } = useAuth()
 
   if (isLoading && !user) {
     return <LoadingFallback />
@@ -46,19 +45,5 @@ export function AuthGate({ children }: AuthGateProps) {
     )
   }
 
-  return (
-    <div className="relative min-h-screen">
-      <div className="pointer-events-none fixed right-4 top-4 z-50 flex max-w-xs items-center gap-2 rounded-full bg-white/80 px-3 py-1 text-xs text-slate-700 shadow-md backdrop-blur">
-        <span className="truncate">{user.email ?? user.displayName ?? user.uid}</span>
-        <button
-          type="button"
-          onClick={() => void signOut()}
-          className="pointer-events-auto rounded-md border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
-        >
-          {AUTH_LOGOUT}
-        </button>
-      </div>
-      {children}
-    </div>
-  )
+  return <>{children}</>;
 }
