@@ -18,6 +18,13 @@ interface AuthGateProps {
 export function AuthGate({ children }: AuthGateProps) {
   const { user, isLoading, error } = useAuth()
 
+  // デバッグモード: 認証をスキップ
+  const isDebugMode = process.env.NEXT_PUBLIC_DEBUG_SKIP_AUTH === 'true'
+
+  if (isDebugMode) {
+    return <>{children}</>
+  }
+
   if (isLoading && !user) {
     return <LoadingFallback />
   }

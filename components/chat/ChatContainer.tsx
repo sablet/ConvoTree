@@ -5,7 +5,6 @@ import { HamburgerMenu } from "@/components/hamburger-menu"
 import { RecentLinesFooter } from "@/components/recent-lines-footer"
 import { BranchSelector } from "./BranchSelector"
 import { ChatHeader } from "./ChatHeader"
-import { ChatSidebar } from "./ChatSidebar"
 import { LineEditDialog } from "./LineEditDialog"
 import { MessageList } from "./MessageList"
 import { MessageInput } from "./MessageInput"
@@ -103,19 +102,7 @@ export function ChatContainer({
   return (
     <div className="flex flex-col h-screen bg-white">
       {/* Hamburger Menu */}
-      <HamburgerMenu>
-        <ChatSidebar
-          isSelectionMode={branchOps.isSelectionMode}
-          selectedMessagesCount={branchOps.selectedMessages.size}
-          currentLineId={chatState.currentLineId}
-          lines={chatState.lines}
-          isUpdating={branchOps.isUpdating || messageOps.isUpdating}
-          onToggleSelectionMode={branchOps.handleToggleSelectionMode}
-          onMoveMessages={branchOps.handleMoveMessages}
-          onClearSelection={() => branchOps.setSelectedMessages(new Set())}
-          onSwitchLine={branchOps.switchToLine}
-        />
-      </HamburgerMenu>
+      <HamburgerMenu />
 
       {/* Branch Selector (Timeline Minimap + Filters) */}
       <BranchSelector
@@ -159,6 +146,8 @@ export function ChatContainer({
           messages={chatState.messages}
           tags={chatState.tags}
           onEditLine={branchOps.handleEditLine}
+          onToggleSelectionMode={branchOps.handleToggleSelectionMode}
+          isSelectionMode={branchOps.isSelectionMode}
         />
       )}
 

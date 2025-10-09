@@ -284,9 +284,7 @@ export default function TasksPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <HamburgerMenu>
-        <></>
-      </HamburgerMenu>
+      <HamburgerMenu />
 
       <div className="container mx-auto p-6">
         <div className="bg-white rounded-lg shadow-md">

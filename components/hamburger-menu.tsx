@@ -8,6 +8,8 @@ import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_TASKS, ROUTE_DEBUG 
 import { DataSourceMenuAction } from "@/components/data-source-menu-action"
 import { DataSource } from "@/lib/data-source"
 import { useAuth } from "@/lib/auth-context"
+import { useLines } from "@/hooks/use-lines"
+import { LineHistoryMenu } from "@/components/line-history-menu"
 import {
   NAV_CHAT,
   NAV_BRANCHES,
@@ -23,7 +25,6 @@ import {
 } from "@/lib/ui-strings"
 
 interface HamburgerMenuProps {
-  children: React.ReactNode
   position?: {
     top?: string
     left?: string
@@ -35,11 +36,11 @@ interface HamburgerMenuProps {
 }
 
 export function HamburgerMenu({
-  children,
   position = { top: '1rem', right: '1rem' },
   onDataReload,
   currentDataSource
 }: HamburgerMenuProps) {
+  const { lines, reloadLines } = useLines()
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
@@ -183,12 +184,12 @@ export function HamburgerMenu({
           </div>
 
           <DataSourceMenuAction
-            onReload={onDataReload}
+            onReload={onDataReload ?? reloadLines}
             currentSource={currentDataSource}
           />
 
-          {/* Additional Content */}
-          {children}
+          {/* Line History */}
+          <LineHistoryMenu lines={lines} />
         </div>
       </div>
     </>

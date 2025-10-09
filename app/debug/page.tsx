@@ -6,19 +6,12 @@ import { FirestoreDebug } from "@/components/firestore-debug"
 import TagCrudTest from "@/components/tag-crud-test"
 import { MessageCrudTest } from "@/components/message-crud-test"
 import { HamburgerMenu } from "@/components/hamburger-menu"
-import { LineHistoryMenu } from "@/components/line-history-menu"
 import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
-import { useLines } from "@/hooks/use-lines"
 import { DataSource, dataSourceManager } from "@/lib/data-source"
 
 export default function DebugPage() {
-  const { lines, reloadLines } = useLines()
   const [currentSource, setCurrentSource] = useState<DataSource>(dataSourceManager.getCurrentSource())
-
-  const reloadData = useCallback(async () => {
-    await reloadLines()
-  }, [reloadLines])
 
   // データソース変更ハンドラー
   const handleDataSourceChange = useCallback((nextSource: DataSource) => {
@@ -27,8 +20,8 @@ export default function DebugPage() {
 
   // データ再読み込みハンドラー
   const handleDataReload = useCallback(() => {
-    void reloadData()
-  }, [reloadData])
+    // HamburgerMenu内部でreloadLinesを呼ぶため、ここでは何もしない
+  }, [])
 
   return (
     <TagProvider>
@@ -36,11 +29,8 @@ export default function DebugPage() {
         title="🐛 Debug Tools"
         sidebar={
           <HamburgerMenu
-            onDataReload={reloadData}
             currentDataSource={currentSource}
-          >
-            <LineHistoryMenu lines={lines} />
-          </HamburgerMenu>
+          />
         }
       >
         <div className="space-y-6">

@@ -3,14 +3,11 @@
 import { useState, useEffect, useCallback } from "react"
 import { BranchStructure } from "@/components/branch"
 import { HamburgerMenu } from "@/components/hamburger-menu"
-import { useRouter } from "next/navigation"
 import { dataSourceManager } from "@/lib/data-source"
 import { PageLayout } from "@/components/layouts/PageLayout"
-import { LineList } from "@/components/ui/line-list"
 import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
 
 export default function BranchListPage() {
-  const router = useRouter()
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Line[]>([])
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
@@ -56,15 +53,9 @@ export default function BranchListPage() {
     void loadChatData()
   }, [loadChatData])
 
-  // ライン切り替えハンドラー（URLルーティング付き）
+  // ライン切り替えハンドラー
   const handleLineSwitch = (lineId: string) => {
-    const targetLine = lines.find(line => line.id === lineId)
-    if (targetLine) {
-      setCurrentLineId(lineId)
-      // チャットページにリダイレクト
-      const encodedLineName = encodeURIComponent(targetLine.name)
-      router.push(`/chat?line=${encodedLineName}`)
-    }
+    setCurrentLineId(lineId)
   }
 
   // ライン編集ハンドラー
@@ -188,15 +179,7 @@ export default function BranchListPage() {
   return (
     <PageLayout
       title="Branch Structure"
-      sidebar={
-        <HamburgerMenu onDataReload={loadChatData}>
-          <LineList
-            lines={lines}
-            currentLineId={currentLineId}
-            onLineClick={handleLineSwitch}
-          />
-        </HamburgerMenu>
-      }
+      sidebar={<HamburgerMenu />}
     >
       <BranchStructure
         messages={messages}
