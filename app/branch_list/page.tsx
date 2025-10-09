@@ -177,10 +177,7 @@ export default function BranchListPage() {
   }
 
   return (
-    <PageLayout
-      title="Branch Structure"
-      sidebar={<HamburgerMenu />}
-    >
+    <PageLayout sidebar={<HamburgerMenu />}>
       <BranchStructure
         messages={messages}
         lines={lines}

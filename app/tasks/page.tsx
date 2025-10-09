@@ -35,7 +35,7 @@ export default function TasksPage() {
 
   const [sortKey, setSortKey] = useState<SortKey>('createdAt')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [completedFilter, setCompletedFilter] = useState<'all' | 'completed' | 'incomplete'>('all')
+  const [completedFilter, setCompletedFilter] = useState<'all' | 'completed' | 'incomplete'>('incomplete')
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority[]>([])
   const [lineFilter, setLineFilter] = useState<string[]>([])
   const [searchText, setSearchText] = useState('')
@@ -266,13 +266,13 @@ export default function TasksPage() {
   }
 
   const clearAllFilters = () => {
-    setCompletedFilter('all')
+    setCompletedFilter('incomplete')
     setPriorityFilter([])
     setLineFilter([])
     setSearchText('')
   }
 
-  const hasActiveFilters = completedFilter !== 'all' || priorityFilter.length > 0 || lineFilter.length > 0 || searchText.trim() !== ''
+  const hasActiveFilters = completedFilter !== 'incomplete' || priorityFilter.length > 0 || lineFilter.length > 0 || searchText.trim() !== ''
 
   if (isLoading) {
     return (

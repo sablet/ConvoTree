@@ -7,17 +7,9 @@ interface PageLayoutProps {
   sidebar?: ReactNode
 }
 
-export function PageLayout({ title, children, footer, sidebar }: PageLayoutProps) {
+export function PageLayout({ children, footer, sidebar }: PageLayoutProps) {
   return (
     <div className="min-h-screen bg-background">
-      {title && (
-        <header className="border-b">
-          <div className="container mx-auto px-4 py-6">
-            <h1 className="text-2xl font-bold">{title}</h1>
-          </div>
-        </header>
-      )}
-
       <main className="w-full">
         <div className="flex">
           <div className="flex-1">

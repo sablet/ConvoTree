@@ -26,7 +26,6 @@ export default function DebugPage() {
   return (
     <TagProvider>
       <PageLayout
-        title="🐛 Debug Tools"
         sidebar={
           <HamburgerMenu
             currentDataSource={currentSource}
@@ -36,7 +35,6 @@ export default function DebugPage() {
         <div className="space-y-6">
           {/* データソース選択 */}
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-3">Data Source Selection</h2>
             <DataSourceToggle
               onDataSourceChange={handleDataSourceChange}
               onDataReload={handleDataReload}
@@ -45,19 +43,16 @@ export default function DebugPage() {
 
           {/* Tag CRUD Test */}
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-3">Tag CRUD Test</h2>
             <TagCrudTest />
           </div>
 
           {/* デバッグツール */}
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-3">Firestore Debug Tool</h2>
             <FirestoreDebug />
           </div>
 
           {/* Message CRUD テスト */}
           <div className="bg-gray-50 p-4 rounded-lg">
-            <h2 className="text-lg font-semibold mb-3">🧪 Message CRUD Test</h2>
             <MessageCrudTest />
           </div>
         </div>

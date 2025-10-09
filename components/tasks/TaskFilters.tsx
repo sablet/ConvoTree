@@ -113,33 +113,7 @@ export function TaskFilters({
 }: TaskFiltersProps) {
   return (
     <div className="p-6 border-b border-gray-200 space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">タスク一覧</h1>
-        {hasActiveFilters && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onClearFilters}
-            className="flex items-center gap-1"
-          >
-            <X className="h-3 w-3" />
-            フィルタをクリア
-          </Button>
-        )}
-      </div>
-
-      {/* 検索 */}
-      <div>
-        <Input
-          type="text"
-          placeholder="タスク内容を検索..."
-          value={searchText}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className="max-w-md"
-        />
-      </div>
-
-      {/* フィルタセクション */}
+      {/* フィルタと検索を同じ行に */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-gray-600" />
@@ -197,6 +171,28 @@ export function TaskFilters({
             onToggle={onLineToggle}
             getCounts={(lineName) => taskCounts.byLine[lineName] || 0}
           />
+        )}
+
+        {/* 検索フィールド */}
+        <Input
+          type="text"
+          placeholder="タスク内容を検索..."
+          value={searchText}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className="w-64"
+        />
+
+        {/* フィルタクリアボタン */}
+        {hasActiveFilters && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onClearFilters}
+            className="flex items-center gap-1"
+          >
+            <X className="h-3 w-3" />
+            クリア
+          </Button>
         )}
       </div>
 

@@ -6,10 +6,7 @@ import { PageLayout } from "@/components/layouts/PageLayout"
 
 export default function ManagementPage() {
   return (
-    <PageLayout
-      title="Tag Management"
-      sidebar={<HamburgerMenu />}
-    >
+    <PageLayout sidebar={<HamburgerMenu />}>
       <TagManagement />
     </PageLayout>
   )
