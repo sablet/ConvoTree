@@ -1,122 +1,49 @@
 'use client';
 
-import type { User } from 'firebase/auth';
-
-const AUTH_CACHE_KEY = 'chat-line-auth-cache';
-const MAX_CACHE_AGE = 7 * 24 * 60 * 60 * 1000; // 7日
-
-export interface CachedAuthData {
-  uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
-  timestamp: number;
-}
-
 /**
  * 認証データのリポジトリ
  *
- * LocalStorageへの直接アクセスを抽象化し、
- * 認証データのキャッシュ管理を一元化する
+ * Firebase Authの永続化機能を使用するため、LocalStorageでのキャッシュは不要
+ * このファイルは互換性のために残すが、実質的な機能は提供しない
  */
 export class AuthRepository {
   /**
-   * 認証データをキャッシュに保存
+   * 認証データをキャッシュに保存（非推奨・何もしない）
+   * Firebase Authが自動的に永続化を行う
    */
-  saveToCache(user: User | null): void {
-    if (typeof window === 'undefined') return;
-
-    try {
-      if (user) {
-        const cacheData: CachedAuthData = {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          timestamp: Date.now()
-        };
-        localStorage.setItem(AUTH_CACHE_KEY, JSON.stringify(cacheData));
-      } else {
-        localStorage.removeItem(AUTH_CACHE_KEY);
-      }
-    } catch (error) {
-      console.error('Failed to save auth cache:', error);
-    }
+  saveToCache(): void {
+    // Firebase Authの永続化に任せる
+    console.warn('[AuthRepository] saveToCache is deprecated. Firebase Auth handles persistence automatically.');
   }
 
   /**
-   * キャッシュから認証データを読み込む
-   *
-   * @returns キャッシュされた認証データ、または null（キャッシュなし/期限切れ）
+   * キャッシュから認証データを読み込む（非推奨・常にnullを返す）
+   * Firebase AuthのonAuthStateChangedを使用すること
    */
-  loadFromCache(): CachedAuthData | null {
-    if (typeof window === 'undefined') return null;
-
-    try {
-      const cached = localStorage.getItem(AUTH_CACHE_KEY);
-      if (!cached) return null;
-
-      const data = JSON.parse(cached) as CachedAuthData;
-      const age = Date.now() - data.timestamp;
-
-      if (age > MAX_CACHE_AGE) {
-        // 期限切れのキャッシュを削除
-        this.clearCache();
-        return null;
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Failed to load auth cache:', error);
-      return null;
-    }
+  loadFromCache(): null {
+    console.warn('[AuthRepository] loadFromCache is deprecated. Use Firebase Auth onAuthStateChanged instead.');
+    return null;
   }
 
   /**
-   * キャッシュをクリア
+   * キャッシュをクリア（非推奨・何もしない）
    */
   clearCache(): void {
-    if (typeof window === 'undefined') return;
-
-    try {
-      localStorage.removeItem(AUTH_CACHE_KEY);
-    } catch (error) {
-      console.error('Failed to clear auth cache:', error);
-    }
+    console.warn('[AuthRepository] clearCache is deprecated.');
   }
 
   /**
-   * キャッシュの存在確認
+   * キャッシュの存在確認（非推奨・常にfalseを返す）
    */
   hasCache(): boolean {
-    if (typeof window === 'undefined') return false;
-
-    try {
-      const cached = localStorage.getItem(AUTH_CACHE_KEY);
-      return cached !== null;
-    } catch {
-      return false;
-    }
+    return false;
   }
 
   /**
-   * キャッシュのタイムスタンプを取得
+   * キャッシュのタイムスタンプを取得（非推奨・常にnullを返す）
    */
-  getCacheTimestamp(): number | null {
-    const cached = this.loadFromCache();
-    return cached?.timestamp ?? null;
-  }
-
-  /**
-   * キャッシュされた認証データをUser型に変換
-   */
-  convertCachedToUser(cached: CachedAuthData): Partial<User> {
-    return {
-      uid: cached.uid,
-      email: cached.email,
-      displayName: cached.displayName,
-      photoURL: cached.photoURL,
-    } as User;
+  getCacheTimestamp(): null {
+    return null;
   }
 }
 

@@ -4,7 +4,6 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { onAuthStateChanged, signOut as firebaseSignOut, type User } from "firebase/auth"
 import type { ReactNode } from "react"
 import { auth } from "@/lib/firebase"
-import { authRepository } from "@/lib/repositories/auth-repository"
 
 interface AuthContextValue {
   user: User | null
@@ -25,28 +24,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const cached = authRepository.loadFromCache();
-    if (cached && !navigator.onLine) {
-      setUser(authRepository.convertCachedToUser(cached) as User);
-      setIsLoading(false);
-    }
-
+    // Firebase Authが自動的に永続化を処理
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser)
-      authRepository.saveToCache(currentUser)
       setIsLoading(false)
       setError(null)
     }, (authError) => {
-      const cachedAuth = authRepository.loadFromCache();
-      if (cachedAuth && !navigator.onLine) {
-        console.log('🔒 Using cached auth (offline mode)');
-        setUser(authRepository.convertCachedToUser(cachedAuth) as User);
-        setIsLoading(false);
-        setError(null);
-      } else {
-        setError(authError.message)
-        setIsLoading(false)
-      }
+      setError(authError.message)
+      setIsLoading(false)
     })
 
     return unsubscribe
@@ -57,7 +42,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setError(null)
     try {
       await firebaseSignOut(auth)
-      authRepository.saveToCache(null)
       setError(null)
     } catch (signOutError) {
       if (signOutError instanceof Error) {

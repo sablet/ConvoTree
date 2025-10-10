@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { dataSourceManager } from "@/lib/data-source"
 import { chatRepository } from "@/lib/repositories/chat-repository"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
@@ -14,6 +14,7 @@ interface ChatData {
 interface UseChatDataOptions {
   onDataLoaded?: (data: ChatData) => void
   setIsLoading?: (loading: boolean) => void
+  enableRealtime?: boolean // リアルタイム更新を有効にするかどうか
 }
 
 const transformChatData = (data: SourceChatData): ChatData => {
@@ -109,10 +110,8 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
       setError(null)
 
-      const preferCache = typeof navigator !== 'undefined' && !navigator.onLine
       const result = await chatRepository.loadChatData({
-        source: dataSourceManager.getCurrentSource(),
-        preferCache
+        source: dataSourceManager.getCurrentSource()
       })
 
       if (result.fallbackUsed) {
@@ -120,7 +119,6 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
 
       const chatData = transformChatData(result.data)
-
       applyLoadedData(chatData, setters, options.onDataLoaded)
 
       if (options.setIsLoading) {
@@ -128,27 +126,32 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
     } catch (error) {
       console.error('[useChatData] Failed to load chat data:', error)
-
-      const cacheResult = await chatRepository.loadCacheOnly()
-      const cacheLoaded = Boolean(cacheResult)
-
-      if (cacheResult) {
-        const chatData = transformChatData(cacheResult.data)
-        applyLoadedData(chatData, setters, options.onDataLoaded)
-      }
-
-      if (cacheLoaded) {
-        setError(null)
-      } else {
-        clearAllData(setters)
-        setError(error instanceof Error ? error : new Error('データの読み込みに失敗しました'))
-      }
+      clearAllData(setters)
+      setError(error instanceof Error ? error : new Error('データの読み込みに失敗しました'))
 
       if (options.setIsLoading) {
         options.setIsLoading(false)
       }
     }
   }, [options])
+
+  // リアルタイム更新を監視
+  useEffect(() => {
+    if (!options.enableRealtime) return
+
+    const setters: DataSetters = { setMessages, setLines, setBranchPoints, setTags }
+
+    const unsubscribe = chatRepository.subscribeToDataChanges((data, fromCache) => {
+      if (!fromCache) {
+        const chatData = transformChatData(data)
+        applyLoadedData(chatData, setters, options.onDataLoaded)
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [options.enableRealtime, options.onDataLoaded])
 
   return {
     messages,

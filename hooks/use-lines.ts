@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react"
-import { dataSourceManager } from "@/lib/data-source"
 import { chatRepository } from "@/lib/repositories/chat-repository"
 import { Line } from "@/lib/types"
 
@@ -8,17 +7,27 @@ export function useLines() {
 
   const loadLines = useCallback(async () => {
     try {
-      const { data } = await chatRepository.loadChatData({
-        source: dataSourceManager.getCurrentSource()
-      })
-      setLines(data.lines || [])
+      const data = chatRepository.getCurrentData()
+      if (data) {
+        setLines(data.lines || [])
+      }
     } catch (error) {
       console.error('Failed to load lines:', error)
     }
   }, [])
 
   useEffect(() => {
+    // 初回ロード
     void loadLines()
+
+    // リアルタイム更新を監視
+    const unsubscribe = chatRepository.subscribeToDataChanges((data) => {
+      setLines(data.lines || [])
+    })
+
+    return () => {
+      unsubscribe()
+    }
   }, [loadLines])
 
   return {

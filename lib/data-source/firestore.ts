@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc, serverTimestamp, runTransaction, type Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
 import type { Message, Line, Tag, TagGroup, BranchPoint } from '@/lib/types';
@@ -9,37 +9,7 @@ import { FirestoreMessageOperations } from './firestore-message';
 import { FirestoreTagOperations } from './firestore-tag';
 import { FirestoreLineOperations } from './firestore-line';
 import { FirestoreBranchOperations } from './firestore-branch';
-
-const normalizeDateValue = (value: unknown): Date | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  if (value instanceof Date) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const fromString = new Date(value);
-    return Number.isNaN(fromString.getTime()) ? undefined : fromString;
-  }
-
-  if (typeof value === 'number') {
-    const fromNumber = new Date(value);
-    return Number.isNaN(fromNumber.getTime()) ? undefined : fromNumber;
-  }
-
-  if (typeof value === 'object' && value !== null && 'toDate' in value) {
-    const candidate = value as Timestamp;
-    if (typeof candidate.toDate === 'function') {
-      const fromTimestamp = candidate.toDate();
-      return Number.isNaN(fromTimestamp.getTime()) ? undefined : fromTimestamp;
-    }
-    return undefined;
-  }
-
-  return undefined;
-};
+import { normalizeDateValue } from './firestore-utils';
 
 export class FirestoreDataSource implements IDataSource {
   private conversationId: string;

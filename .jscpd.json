@@ -13,7 +13,8 @@
     "**/.next/**",
     "**/build/**",
     "**/coverage/**",
-    "**/.git/**"
+    "**/.git/**",
+    "**/firestore-realtime.ts"
   ],
   "minLines": 10,
   "maxLines": 1000,

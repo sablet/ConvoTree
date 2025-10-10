@@ -3,10 +3,7 @@
 import { createContext, useContext, useReducer, useEffect, ReactNode } from "react"
 import { dataSourceManager } from "@/lib/data-source"
 import { chatRepository } from "@/lib/repositories/chat-repository"
-import { collection, onSnapshot } from "firebase/firestore"
-import { db } from "@/lib/firebase"
-import { config } from "@/lib/config"
-import { CONVERSATIONS_COLLECTION, TAGS_SUBCOLLECTION, TAG_GROUPS_SUBCOLLECTION, LINES_SUBCOLLECTION } from "@/lib/firestore-constants"
+import type { ChatData } from "@/lib/data-source/base"
 
 export interface Tag {
   id: string
@@ -133,7 +130,6 @@ interface TagContextType {
   }
 }
 
-
 const TagContext = createContext<TagContextType | undefined>(undefined)
 
 export function useTagContext() {
@@ -148,72 +144,79 @@ interface TagProviderProps {
   children: ReactNode
 }
 
+/**
+ * タグの階層構造を構築
+ */
+function buildHierarchicalTags(chatData: ChatData): { tags: Tag[]; tagGroups: TagGroup[] } {
+  const actualTags = chatData.tags || {}
+  const actualTagGroups = chatData.tagGroups || {}
+  const tagCountMap = new Map<string, number>()
+
+  // 各ラインのtagIdsからタグの使用回数を計算
+  chatData.lines?.forEach((line) => {
+    line.tagIds?.forEach((tagId: string) => {
+      tagCountMap.set(tagId, (tagCountMap.get(tagId) || 0) + 1)
+    })
+  })
+
+  // タグデータを配列に変換
+  const tagsArray: Tag[] = Object.values(actualTags).map((tag) => {
+    return {
+      id: tag.id,
+      name: tag.name,
+      color: tag.color || "#e5e7eb",
+      groupId: tag.groupId,
+      count: tagCountMap.get(tag.id) || 0,
+    }
+  })
+
+  // タググループデータを配列に変換
+  const tagGroupsArray: TagGroup[] = Object.values(actualTagGroups)
+    .sort((a, b) => a.order - b.order)
+
+  // グループ別にタグを整理して階層構造を作成
+  const hierarchicalTags: Tag[] = tagGroupsArray.map(group => {
+    const groupTags = tagsArray.filter(tag => tag.groupId === group.id)
+    const groupCount = groupTags.reduce((sum, tag) => sum + (tag.count || 0), 0)
+
+    return {
+      id: group.id,
+      name: group.name,
+      color: group.color,
+      count: groupCount,
+      subtags: groupTags
+    }
+  })
+
+  // グループに属さないタグを個別に追加
+  const groupedTagIds = new Set(tagsArray.filter(tag => tag.groupId).map(tag => tag.id))
+  const ungroupedTags = tagsArray.filter(tag => !groupedTagIds.has(tag.id))
+
+  ungroupedTags.forEach(tag => {
+    hierarchicalTags.push({
+      ...tag,
+      color: tag.color || "#e5e7eb"
+    })
+  })
+
+  return { tags: hierarchicalTags, tagGroups: tagGroupsArray }
+}
+
 export function TagProvider({ children }: TagProviderProps) {
   const [state, dispatch] = useReducer(tagReducer, initialState)
 
   const loadTags = async () => {
-    dispatch({ type: "SET_LOADING", payload: true })
+    const currentData = chatRepository.getCurrentData()
+    if (!currentData) {
+      dispatch({ type: "SET_ERROR", payload: "データがまだロードされていません" })
+      return
+    }
+
     try {
-      // DataSourceManagerからFirestoreデータを取得
-      const { data: chatData } = await chatRepository.loadChatData({
-        source: dataSourceManager.getCurrentSource()
-      })
-
-      // 実際のタグデータとグループデータを取得
-      const actualTags = chatData.tags || {}
-      const actualTagGroups = chatData.tagGroups || {}
-      const tagCountMap = new Map<string, number>()
-
-      // 各ラインのtagIdsからタグの使用回数を計算
-      chatData.lines?.forEach((line) => {
-        line.tagIds?.forEach((tagId: string) => {
-          tagCountMap.set(tagId, (tagCountMap.get(tagId) || 0) + 1)
-        })
-      })
-
-      // Firestoreから実際のタグデータを読み込み
-      const tagsArray: Tag[] = Object.values(actualTags).map((tag) => {
-        return {
-          id: tag.id,
-          name: tag.name,
-          color: tag.color || "#e5e7eb",
-          groupId: tag.groupId,
-          count: tagCountMap.get(tag.id) || 0,
-        }
-      })
-
-      // Firestoreからタググループデータを読み込み
-      const tagGroupsArray: TagGroup[] = Object.values(actualTagGroups)
-        .sort((a, b) => a.order - b.order)
-
-      // グループ別にタグを整理して階層構造を作成
-      const hierarchicalTags: Tag[] = tagGroupsArray.map(group => {
-        const groupTags = tagsArray.filter(tag => tag.groupId === group.id)
-        const groupCount = groupTags.reduce((sum, tag) => sum + (tag.count || 0), 0)
-
-        return {
-          id: group.id,
-          name: group.name,
-          color: group.color,
-          count: groupCount,
-          subtags: groupTags
-        }
-      })
-
-      // グループに属さないタグを個別に追加
-      const groupedTagIds = new Set(tagsArray.filter(tag => tag.groupId).map(tag => tag.id))
-      const ungroupedTags = tagsArray.filter(tag => !groupedTagIds.has(tag.id))
-
-      ungroupedTags.forEach(tag => {
-        hierarchicalTags.push({
-          ...tag,
-          color: tag.color || "#e5e7eb"
-        })
-      })
-
+      const { tags, tagGroups } = buildHierarchicalTags(currentData)
       dispatch({
         type: "SET_TAGS_AND_GROUPS",
-        payload: { tags: hierarchicalTags, tagGroups: tagGroupsArray }
+        payload: { tags, tagGroups }
       })
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの読み込みに失敗しました" })
@@ -222,7 +225,6 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const addTag = async (tagData: Omit<Tag, "id">) => {
     try {
-      // Firestoreに保存
       const tagId = await dataSourceManager.createTag({
         name: tagData.name,
         color: tagData.color,
@@ -242,7 +244,6 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const updateTag = async (tag: Tag) => {
     try {
-      // Firestoreを更新
       await dataSourceManager.updateTag(tag.id, {
         name: tag.name,
         color: tag.color,
@@ -257,9 +258,7 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const deleteTag = async (tagId: string) => {
     try {
-      // Firestoreから削除
       await dataSourceManager.deleteTag(tagId)
-
       dispatch({ type: "DELETE_TAG", payload: tagId })
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの削除に失敗しました" })
@@ -268,7 +267,6 @@ export function TagProvider({ children }: TagProviderProps) {
 
   const addSubtag = async (parentId: string, subtagData: Omit<Tag, "id">) => {
     try {
-      // Firestoreに保存（サブタグは親IDをgroupIdとして設定）
       const tagId = await dataSourceManager.createTag({
         name: subtagData.name,
         color: subtagData.color,
@@ -287,60 +285,29 @@ export function TagProvider({ children }: TagProviderProps) {
   }
 
   useEffect(() => {
+    dispatch({ type: "SET_LOADING", payload: true })
+
+    // リアルタイムリスナーからのデータ変更を監視
+    const unsubscribe = chatRepository.subscribeToDataChanges((chatData, fromCache) => {
+      if (!fromCache) {
+        // サーバーからのデータのみで更新（キャッシュは無視）
+        try {
+          const { tags, tagGroups } = buildHierarchicalTags(chatData)
+          dispatch({
+            type: "SET_TAGS_AND_GROUPS",
+            payload: { tags, tagGroups }
+          })
+        } catch (error) {
+          dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの読み込みに失敗しました" })
+        }
+      }
+    })
+
     // 初回ロード
     loadTags()
 
-    // リアルタイムリスナーの設定
-    const conversationId = config.conversationId
-
-    if (!conversationId) {
-      dispatch({ type: "SET_ERROR", payload: "NEXT_PUBLIC_CONVERSATION_ID環境変数が設定されていません" })
-      return
-    }
-
-    // Tagsのリアルタイムリスナー
-    const tagsRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, TAGS_SUBCOLLECTION)
-    const unsubscribeTags = onSnapshot(tagsRef, (snapshot) => {
-      // Tags updated
-      // 変更があった場合のみリロード
-      if (!snapshot.metadata.fromCache) {
-        loadTags()
-      }
-    }, (error) => {
-      console.error('❌ Tags listener error:', error)
-      dispatch({ type: "SET_ERROR", payload: "リアルタイム更新でエラーが発生しました" })
-    })
-
-    // TagGroupsのリアルタイムリスナー
-    const tagGroupsRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, TAG_GROUPS_SUBCOLLECTION)
-    const unsubscribeTagGroups = onSnapshot(tagGroupsRef, (snapshot) => {
-      // TagGroups updated
-      // 変更があった場合のみリロード
-      if (!snapshot.metadata.fromCache) {
-        loadTags()
-      }
-    }, (error) => {
-      console.error('❌ TagGroups listener error:', error)
-      dispatch({ type: "SET_ERROR", payload: "リアルタイム更新でエラーが発生しました" })
-    })
-
-    // Linesのリアルタイムリスナー（タグカウント更新用）
-    const linesRef = collection(db, CONVERSATIONS_COLLECTION, conversationId, LINES_SUBCOLLECTION)
-    const unsubscribeLines = onSnapshot(linesRef, (snapshot) => {
-      // Lines updated (for tag counts)
-      // 変更があった場合のみリロード
-      if (!snapshot.metadata.fromCache) {
-        loadTags()
-      }
-    }, (error) => {
-      console.error('❌ Lines listener error:', error)
-    })
-
-    // クリーンアップ関数
     return () => {
-      unsubscribeTags()
-      unsubscribeTagGroups()
-      unsubscribeLines()
+      unsubscribe()
     }
   }, [])
 

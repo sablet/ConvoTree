@@ -1,46 +1,46 @@
-import { deleteField } from "firebase/firestore"
+/**
+ * Firestore共通ユーティリティ関数
+ */
 
 /**
- * メタデータからundefined値を除去する
+ * 日付値を正規化してDate型に変換
  */
-function cleanMetadata(metadata: Record<string, unknown>): Record<string, unknown> {
-  const cleaned: Record<string, unknown> = {}
-  for (const [key, value] of Object.entries(metadata)) {
+export const normalizeDateValue = (value: unknown): Date | undefined => {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+
+  if (typeof value === 'string') {
+    const fromString = new Date(value);
+    return Number.isNaN(fromString.getTime()) ? undefined : fromString;
+  }
+
+  if (typeof value === 'number') {
+    const fromNumber = new Date(value);
+    return Number.isNaN(fromNumber.getTime()) ? undefined : fromNumber;
+  }
+
+  if (typeof value === 'object' && value !== null && 'toDate' in value) {
+    const candidate = value as { toDate: () => Date };
+    if (typeof candidate.toDate === 'function') {
+      const fromTimestamp = candidate.toDate();
+      return Number.isNaN(fromTimestamp.getTime()) ? undefined : fromTimestamp;
+    }
+  }
+
+  return undefined;
+};
+
+/**
+ * 更新データを構築（undefined値を除外）
+ */
+export const buildUpdateData = <T extends Record<string, unknown>>(updates: T): Record<string, unknown> => {
+  const result: Record<string, unknown> = {};
+
+  Object.entries(updates).forEach(([key, value]) => {
     if (value !== undefined) {
-      cleaned[key] = value
+      result[key] = value;
     }
-  }
-  return cleaned
-}
+  });
 
-/**
- * 更新データの値を処理する
- */
-function processUpdateValue(key: string, value: unknown): unknown {
-  if (value === null) {
-    return deleteField()
-  }
-  if (value === undefined) {
-    return undefined
-  }
-  if (key === 'metadata' && typeof value === 'object' && value !== null) {
-    return cleanMetadata(value as Record<string, unknown>)
-  }
-  return value
-}
-
-/**
- * 更新データオブジェクトを構築する
- */
-export function buildUpdateData(updates: Record<string, unknown>): Record<string, unknown> {
-  const updateData: Record<string, unknown> = {}
-
-  for (const [key, value] of Object.entries(updates)) {
-    const processedValue = processUpdateValue(key, value)
-    if (processedValue !== undefined) {
-      updateData[key] = processedValue
-    }
-  }
-
-  return updateData
-}
+  return result;
+};

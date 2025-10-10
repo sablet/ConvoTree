@@ -4,74 +4,180 @@ import { config } from '@/lib/config';
 import type { ChatData, DataSource } from '@/lib/data-source/base';
 import { DataSourceFactory, dataSourceManager } from '@/lib/data-source/factory';
 import type { IDataSource } from '@/lib/data-source/base';
-import { localStorageCache } from '@/lib/data-source/cache';
+import { FirestoreRealtimeListener } from '@/lib/data-source/firestore-realtime';
+import type { ChatDataChangeHandler, ErrorHandler } from '@/lib/data-source/firestore-realtime';
 
 export interface LoadChatDataOptions {
   source?: DataSource;
   fallbackSources?: DataSource[];
-  preferCache?: boolean;
-  allowCacheFallback?: boolean;
 }
 
 export interface LoadChatDataResult {
   data: ChatData;
   source: DataSource;
   fromCache: boolean;
-  cacheTimestamp: number | null;
   error?: string;
   fallbackUsed?: boolean;
 }
 
-const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['cache', 'sample'];
+const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['sample'];
 
+/**
+ * リアルタイムリスナーベースのChatRepository
+ * LocalStorageを使用せず、Firestoreの永続化キャッシュのみを使用
+ */
 export class ChatRepository {
   private readonly conversationId: string;
-  private readonly cache = localStorageCache;
+  private realtimeListener: FirestoreRealtimeListener | null = null;
+  private currentData: ChatData | null = null;
+  private dataChangeCallbacks: Set<ChatDataChangeHandler> = new Set();
 
   constructor(conversationId?: string) {
     this.conversationId = conversationId ?? config.conversationId;
   }
 
+  /**
+   * リアルタイムリスナーを開始
+   */
+  startRealtimeListener(
+    onChange: ChatDataChangeHandler,
+    onError?: ErrorHandler
+  ): void {
+    if (this.realtimeListener) {
+      console.warn('[ChatRepository] Listener already started');
+      return;
+    }
+
+    this.realtimeListener = new FirestoreRealtimeListener(this.conversationId);
+
+    const wrappedOnChange: ChatDataChangeHandler = (data, fromCache) => {
+      this.currentData = data;
+
+      // すべてのコールバックを実行
+      this.dataChangeCallbacks.forEach(callback => {
+        try {
+          callback(data, fromCache);
+        } catch (error) {
+          console.error('[ChatRepository] Error in data change callback:', error);
+        }
+      });
+
+      // 主要なonChangeコールバックも実行
+      onChange(data, fromCache);
+    };
+
+    this.realtimeListener.start(wrappedOnChange, onError);
+  }
+
+  /**
+   * リアルタイムリスナーを停止
+   */
+  stopRealtimeListener(): void {
+    if (this.realtimeListener) {
+      this.realtimeListener.stop();
+      this.realtimeListener = null;
+    }
+    this.dataChangeCallbacks.clear();
+  }
+
+  /**
+   * データ変更コールバックを登録
+   */
+  subscribeToDataChanges(callback: ChatDataChangeHandler): () => void {
+    this.dataChangeCallbacks.add(callback);
+
+    // 既にデータがある場合は即座にコールバックを実行
+    if (this.currentData) {
+      callback(this.currentData, false);
+    }
+
+    // unsubscribe関数を返す
+    return () => {
+      this.dataChangeCallbacks.delete(callback);
+    };
+  }
+
+  /**
+   * 現在のデータを取得（リアルタイムリスナーから）
+   */
+  getCurrentData(): ChatData | null {
+    if (this.realtimeListener) {
+      return this.realtimeListener.getCurrentData();
+    }
+    return this.currentData;
+  }
+
+  /**
+   * 初回ロード用（フォールバック対応）
+   */
   async loadChatData(options: LoadChatDataOptions = {}): Promise<LoadChatDataResult> {
     const source = options.source ?? dataSourceManager.getCurrentSource();
     const fallbackSources = this.buildFallbackSources(source, options.fallbackSources);
-    const preferCache = options.preferCache ?? false;
-    const allowCacheFallback = options.allowCacheFallback ?? true;
 
-    if (preferCache) {
-      const cached = await this.loadFromCacheInternal();
-      if (cached) {
-        return cached;
-      }
+    // Firestoreの場合はリアルタイムリスナーを使用
+    if (source === 'firestore') {
+      return new Promise<LoadChatDataResult>((resolve, reject) => {
+        let resolved = false;
+
+        const onChange: ChatDataChangeHandler = (data, fromCache) => {
+          if (!resolved && !fromCache) {
+            // サーバーからの初回データ取得完了
+            resolved = true;
+            resolve({
+              data,
+              source: 'firestore',
+              fromCache: false
+            });
+          }
+        };
+
+        const onError: ErrorHandler = (error) => {
+          if (!resolved) {
+            resolved = true;
+            reject(error);
+          }
+        };
+
+        this.startRealtimeListener(onChange, onError);
+
+        // タイムアウト設定（10秒）
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            const currentData = this.getCurrentData();
+            if (currentData && Object.keys(currentData.messages).length > 0) {
+              // キャッシュデータがある場合はそれを返す
+              resolve({
+                data: currentData,
+                source: 'firestore',
+                fromCache: true
+              });
+            } else {
+              reject(new Error('Firestore data load timeout'));
+            }
+          }
+        }, 10000);
+      }).catch(async (primaryError) => {
+        console.error(`[ChatRepository] Firestore failed:`, primaryError);
+        return await this.handleLoadError(primaryError, fallbackSources, source);
+      });
     }
 
+    // その他のデータソース（サンプルデータなど）
     try {
       return await this.loadFromSource(source);
     } catch (primaryError) {
       console.error(`[ChatRepository] Primary source '${source}' failed:`, primaryError);
-      return await this.handleLoadError(primaryError, allowCacheFallback, fallbackSources, source);
+      return await this.handleLoadError(primaryError, fallbackSources, source);
     }
   }
 
   private async handleLoadError(
     primaryError: unknown,
-    allowCacheFallback: boolean,
     fallbackSources: DataSource[],
     originalSource: DataSource
   ): Promise<LoadChatDataResult> {
     const errorMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
-
-    if (allowCacheFallback) {
-      const cached = await this.loadFromCacheInternal();
-      if (cached) {
-        console.warn(`[ChatRepository] Using cache fallback. Original error from '${originalSource}': ${errorMessage}`);
-        return {
-          ...cached,
-          error: errorMessage,
-          fallbackUsed: true
-        };
-      }
-    }
 
     for (const fallbackSource of fallbackSources) {
       try {
@@ -92,39 +198,9 @@ export class ChatRepository {
       : new Error('チャットデータの取得に失敗しました');
   }
 
-  async loadCacheOnly(): Promise<LoadChatDataResult | null> {
-    return this.loadFromCacheInternal();
-  }
-
-  async clearCache(): Promise<void> {
-    this.cache.clear();
-  }
-
-  getCacheTimestamp(): number | null {
-    return this.cache.getCacheTimestamp();
-  }
-
-  hasCache(): boolean {
-    return this.cache.hasCache();
-  }
-
   private buildFallbackSources(source: DataSource, overrides?: DataSource[]): DataSource[] {
     const candidates = overrides ?? DEFAULT_FALLBACK_SOURCES;
     return candidates.filter((candidate) => candidate !== source);
-  }
-
-  private async loadFromCacheInternal(): Promise<LoadChatDataResult | null> {
-    const cached = await this.cache.load();
-    if (!cached) {
-      return null;
-    }
-
-    return {
-      data: cached,
-      source: 'cache',
-      fromCache: true,
-      cacheTimestamp: this.cache.getCacheTimestamp()
-    };
   }
 
   private resolveDataSource(source: DataSource): IDataSource {
@@ -136,28 +212,13 @@ export class ChatRepository {
   }
 
   private async loadFromSource(source: DataSource): Promise<LoadChatDataResult> {
-    if (source === 'cache') {
-      const cached = await this.loadFromCacheInternal();
-      if (!cached) {
-        throw new Error('キャッシュデータがありません');
-      }
-      return cached;
-    }
-
     const dataSource = this.resolveDataSource(source);
     const data = await dataSource.loadChatData();
-
-    try {
-      await this.cache.save(data);
-    } catch (cacheError) {
-      console.warn('[ChatRepository] Cache save failed, but continuing with data from source:', cacheError);
-    }
 
     return {
       data,
       source,
-      fromCache: false,
-      cacheTimestamp: this.cache.getCacheTimestamp()
+      fromCache: false
     };
   }
 }
