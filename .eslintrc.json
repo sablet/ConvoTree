@@ -204,6 +204,12 @@
       "rules": {
         "no-restricted-imports": "off"
       }
+    },
+    {
+      "files": ["lib/debug-console-state.ts", "components/debug-console.tsx"],
+      "rules": {
+        "no-restricted-globals": "off"
+      }
     }
   ]
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { debugConsoleState } from '@/lib/debug-console-state';
 
 interface LogEntry {
   id: number;
@@ -15,9 +16,27 @@ interface LogEntry {
 export function DebugConsole() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(false);
   const logIdRef = useRef(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // 初期表示状態を読み込み
+  useEffect(() => {
+    setIsVisible(debugConsoleState.isVisible());
+  }, []);
+
+  // visibility変更イベントをリッスン
+  useEffect(() => {
+    const handleVisibilityChange = (e: Event) => {
+      const customEvent = e as CustomEvent<{ visible: boolean }>;
+      setIsVisible(customEvent.detail.visible);
+    };
+
+    window.addEventListener('debug-console-visibility-change', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('debug-console-visibility-change', handleVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     const originalConsole = {
@@ -153,7 +172,7 @@ export function DebugConsole() {
             <Trash2 className="w-4 h-4" />
           </Button>
           <button
-            onClick={() => setIsVisible(false)}
+            onClick={() => debugConsoleState.setVisible(false)}
             className="hover:bg-gray-700 p-1 rounded"
           >
             <X className="w-4 h-4" />
