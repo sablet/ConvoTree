@@ -7,6 +7,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import { TagProvider } from "@/lib/tag-context";
 import { OnlineStatusProvider } from "@/lib/online-status-context";
 import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
+import { DebugConsole } from "@/components/debug-console";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -59,6 +60,7 @@ export default function RootLayout({
             </AuthGate>
           </AuthProvider>
         </OnlineStatusProvider>
+        <DebugConsole />
       </body>
     </html>
   );

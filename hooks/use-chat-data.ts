@@ -114,6 +114,11 @@ export function useChatData(options: UseChatDataOptions = {}) {
         source: dataSourceManager.getCurrentSource(),
         preferCache
       })
+
+      if (result.fallbackUsed) {
+        console.warn(`[useChatData] データ読み込みでフォールバックが使用されました: ${result.source}`, result.error);
+      }
+
       const chatData = transformChatData(result.data)
 
       applyLoadedData(chatData, setters, options.onDataLoaded)
@@ -122,7 +127,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
         options.setIsLoading(false)
       }
     } catch (error) {
-      console.error('Failed to load chat data:', error)
+      console.error('[useChatData] Failed to load chat data:', error)
 
       const cacheResult = await chatRepository.loadCacheOnly()
       const cacheLoaded = Boolean(cacheResult)

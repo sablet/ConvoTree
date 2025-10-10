@@ -30,7 +30,7 @@ export class LocalStorageCache {
 
   async save(data: ChatData): Promise<void> {
     if (!this.isAvailable()) {
-      console.warn('LocalStorage is not available');
+      console.warn('[LocalStorageCache] LocalStorage is not available');
       return;
     }
 
@@ -42,13 +42,23 @@ export class LocalStorageCache {
       };
 
       const serialized = JSON.stringify(cacheData);
+      const sizeInBytes = new Blob([serialized]).size;
+      const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+
+      console.log(`[LocalStorageCache] Attempting to save ${sizeInMB}MB to cache`);
+
       localStorage.setItem(CACHE_KEY, serialized);
       localStorage.setItem(CACHE_TIMESTAMP_KEY, cacheData.timestamp.toString());
 
-      console.log('✅ Cache saved to LocalStorage');
+      console.log(`✅ [LocalStorageCache] Cache saved successfully (${sizeInMB}MB)`);
     } catch (error) {
-      console.error('Failed to save cache:', error);
-      throw error;
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.error(`❌ [LocalStorageCache] Quota exceeded! Cannot save cache.`);
+        console.error('[LocalStorageCache] Clearing old cache and retrying...');
+        this.clear();
+      } else {
+        console.error('[LocalStorageCache] Failed to save cache:', error);
+      }
     }
   }
 

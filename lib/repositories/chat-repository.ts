@@ -18,6 +18,8 @@ export interface LoadChatDataResult {
   source: DataSource;
   fromCache: boolean;
   cacheTimestamp: number | null;
+  error?: string;
+  fallbackUsed?: boolean;
 }
 
 const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['cache', 'sample'];
@@ -46,27 +48,42 @@ export class ChatRepository {
     try {
       return await this.loadFromSource(source);
     } catch (primaryError) {
-      return await this.handleLoadError(primaryError, allowCacheFallback, fallbackSources);
+      console.error(`[ChatRepository] Primary source '${source}' failed:`, primaryError);
+      return await this.handleLoadError(primaryError, allowCacheFallback, fallbackSources, source);
     }
   }
 
   private async handleLoadError(
     primaryError: unknown,
     allowCacheFallback: boolean,
-    fallbackSources: DataSource[]
+    fallbackSources: DataSource[],
+    originalSource: DataSource
   ): Promise<LoadChatDataResult> {
+    const errorMessage = primaryError instanceof Error ? primaryError.message : String(primaryError);
+
     if (allowCacheFallback) {
       const cached = await this.loadFromCacheInternal();
       if (cached) {
-        return cached;
+        console.warn(`[ChatRepository] Using cache fallback. Original error from '${originalSource}': ${errorMessage}`);
+        return {
+          ...cached,
+          error: errorMessage,
+          fallbackUsed: true
+        };
       }
     }
 
     for (const fallbackSource of fallbackSources) {
       try {
-        return await this.loadFromSource(fallbackSource);
+        console.warn(`[ChatRepository] Trying fallback source '${fallbackSource}' after '${originalSource}' failed`);
+        const result = await this.loadFromSource(fallbackSource);
+        return {
+          ...result,
+          error: errorMessage,
+          fallbackUsed: true
+        };
       } catch (error) {
-        console.warn(`Fallback data source '${fallbackSource}' failed:`, error);
+        console.warn(`[ChatRepository] Fallback data source '${fallbackSource}' failed:`, error);
       }
     }
 
@@ -130,7 +147,11 @@ export class ChatRepository {
     const dataSource = this.resolveDataSource(source);
     const data = await dataSource.loadChatData();
 
-    await this.cache.save(data);
+    try {
+      await this.cache.save(data);
+    } catch (cacheError) {
+      console.warn('[ChatRepository] Cache save failed, but continuing with data from source:', cacheError);
+    }
 
     return {
       data,
