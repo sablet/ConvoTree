@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react"
 import { dataSourceManager } from "@/lib/data-source"
-import { chatRepository } from "@/lib/repositories/chat-repository"
+import { useChatRepository } from "@/lib/chat-repository-context"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
 import { Message, Line, BranchPoint, Tag } from "@/lib/types"
 
@@ -95,6 +95,7 @@ const clearAllData = (setters: DataSetters) => {
 }
 
 export function useChatData(options: UseChatDataOptions = {}) {
+  const chatRepository = useChatRepository();
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
@@ -133,7 +134,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
         options.setIsLoading(false)
       }
     }
-  }, [options])
+  }, [chatRepository, options])
 
   // リアルタイム更新を監視
   useEffect(() => {
@@ -151,7 +152,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
     return () => {
       unsubscribe()
     }
-  }, [options.enableRealtime, options.onDataLoaded])
+  }, [chatRepository, options.enableRealtime, options.onDataLoaded])
 
   return {
     messages,

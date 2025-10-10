@@ -4,11 +4,12 @@ import { useState, useEffect, useCallback } from "react"
 import { BranchStructure } from "@/components/branch"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { dataSourceManager } from "@/lib/data-source"
-import { chatRepository } from "@/lib/repositories/chat-repository"
+import { useChatRepository } from "@/lib/chat-repository-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
 
 export default function BranchListPage() {
+  const chatRepository = useChatRepository();
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Line[]>([])
   const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
@@ -49,7 +50,7 @@ export default function BranchListPage() {
     } finally {
       setIsLoading(false)
     }
-  }, [])
+  }, [chatRepository])
 
   // データローディング
   useEffect(() => {

@@ -1,8 +1,8 @@
 "use client"
 
-import { createContext, useContext, useReducer, useEffect, ReactNode } from "react"
+import { createContext, useContext, useReducer, useEffect, useCallback, ReactNode } from "react"
 import { dataSourceManager } from "@/lib/data-source"
-import { chatRepository } from "@/lib/repositories/chat-repository"
+import { useChatRepository } from "@/lib/chat-repository-context"
 import type { ChatData } from "@/lib/data-source/base"
 
 export interface Tag {
@@ -203,9 +203,10 @@ function buildHierarchicalTags(chatData: ChatData): { tags: Tag[]; tagGroups: Ta
 }
 
 export function TagProvider({ children }: TagProviderProps) {
+  const chatRepository = useChatRepository();
   const [state, dispatch] = useReducer(tagReducer, initialState)
 
-  const loadTags = async () => {
+  const loadTags = useCallback(async () => {
     const currentData = chatRepository.getCurrentData()
     if (!currentData) {
       dispatch({ type: "SET_ERROR", payload: "データがまだロードされていません" })
@@ -221,7 +222,7 @@ export function TagProvider({ children }: TagProviderProps) {
     } catch (error) {
       dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの読み込みに失敗しました" })
     }
-  }
+  }, [chatRepository])
 
   const addTag = async (tagData: Omit<Tag, "id">) => {
     try {
@@ -309,7 +310,7 @@ export function TagProvider({ children }: TagProviderProps) {
     return () => {
       unsubscribe()
     }
-  }, [])
+  }, [chatRepository, loadTags])
 
   const actions = {
     loadTags,

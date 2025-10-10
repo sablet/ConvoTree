@@ -4,6 +4,7 @@ import "./globals.css";
 import "firebaseui/dist/firebaseui.css";
 import { AuthGate } from "@/components/auth/auth-gate";
 import { AuthProvider } from "@/lib/auth-context";
+import { ChatRepositoryProvider } from "@/lib/chat-repository-context";
 import { TagProvider } from "@/lib/tag-context";
 import { OnlineStatusProvider } from "@/lib/online-status-context";
 import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
@@ -54,9 +55,11 @@ export default function RootLayout({
         <OnlineStatusProvider>
           <AuthProvider>
             <AuthGate>
-              <TagProvider>
-                {children}
-              </TagProvider>
+              <ChatRepositoryProvider>
+                <TagProvider>
+                  {children}
+                </TagProvider>
+              </ChatRepositoryProvider>
             </AuthGate>
           </AuthProvider>
         </OnlineStatusProvider>

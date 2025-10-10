@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { RefreshCw } from "lucide-react"
 import { dataSourceManager, DataSource } from "@/lib/data-source"
-import { chatRepository } from "@/lib/repositories/chat-repository"
+import { useChatRepository } from "@/lib/chat-repository-context"
 import {
   DATA_SOURCE_SECTION_TITLE,
   DATA_SOURCE_RELOAD_LABEL,
@@ -20,6 +20,7 @@ interface DataSourceMenuActionProps {
 }
 
 export function DataSourceMenuAction({ onReload, currentSource }: DataSourceMenuActionProps) {
+  const chatRepository = useChatRepository();
   const [source, setSource] = useState<DataSource>(currentSource ?? dataSourceManager.getCurrentSource())
   const [isReloading, setIsReloading] = useState(false)
 

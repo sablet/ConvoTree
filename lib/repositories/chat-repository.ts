@@ -44,10 +44,11 @@ export class ChatRepository {
     onError?: ErrorHandler
   ): void {
     if (this.realtimeListener) {
-      console.warn('[ChatRepository] Listener already started');
+      console.debug('[ChatRepository] Listener already started, reusing existing listener');
       return;
     }
 
+    console.debug('[ChatRepository] Starting new realtime listener');
     this.realtimeListener = new FirestoreRealtimeListener(this.conversationId);
 
     const wrappedOnChange: ChatDataChangeHandler = (data, fromCache) => {
@@ -74,10 +75,12 @@ export class ChatRepository {
    */
   stopRealtimeListener(): void {
     if (this.realtimeListener) {
+      console.debug('[ChatRepository] Stopping realtime listener');
       this.realtimeListener.stop();
       this.realtimeListener = null;
     }
     this.dataChangeCallbacks.clear();
+    this.currentData = null;
   }
 
   /**
@@ -116,6 +119,16 @@ export class ChatRepository {
 
     // Firestoreの場合はリアルタイムリスナーを使用
     if (source === 'firestore') {
+      // 既にリスナーが起動していてデータがある場合は即座に返す
+      if (this.realtimeListener && this.currentData) {
+        console.debug('[ChatRepository] Listener already running, returning cached data');
+        return Promise.resolve({
+          data: this.currentData,
+          source: 'firestore',
+          fromCache: true
+        });
+      }
+
       return new Promise<LoadChatDataResult>((resolve, reject) => {
         let resolved = false;
 

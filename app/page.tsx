@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { ChatContainer } from "@/components/chat"
-import { TagProvider } from "@/lib/tag-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { MAIN_LINE_ID } from "@/lib/constants"
@@ -100,18 +99,16 @@ function HomeContent() {
   }
 
   return (
-    <TagProvider>
-      <PageLayout>
-        <ChatContainer
-          initialMessages={messages}
-          initialLines={lines}
-          initialBranchPoints={branchPoints}
-          initialTags={tags}
-          initialCurrentLineId={currentLineId}
-          onLineChange={handleLineChange}
-        />
-      </PageLayout>
-    </TagProvider>
+    <PageLayout>
+      <ChatContainer
+        initialMessages={messages}
+        initialLines={lines}
+        initialBranchPoints={branchPoints}
+        initialTags={tags}
+        initialCurrentLineId={currentLineId}
+        onLineChange={handleLineChange}
+      />
+    </PageLayout>
   )
 }
 
