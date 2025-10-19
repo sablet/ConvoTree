@@ -132,7 +132,11 @@ export function useMessageMove({
       const { dataSourceManager } = await import('@/lib/data-source/factory')
       const messageIds = Array.from(selectedMessages)
 
-      // Determine branchFromMessageId from the first selected message
+      // branchFromMessageId is determined by the backend (firestore-branch-helpers.ts)
+      // based on the first message's prevInLine and parent line structure
+      const newLineId = await dataSourceManager.createLineAndMoveMessages(messageIds, lineName)
+
+      // Get the newly created line to extract branchFromMessageId
       const firstMessage = messages[messageIds[0]]
       let branchFromMessageId: string | undefined
 
@@ -144,8 +148,6 @@ export function useMessageMove({
           branchFromMessageId = parentLine.branchFromMessageId
         }
       }
-
-      const newLineId = await dataSourceManager.createLineAndMoveMessages(messageIds, lineName)
 
       updateLocalStateAfterCreateLine({
         selectedMessages,

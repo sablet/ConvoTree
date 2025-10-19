@@ -59,26 +59,16 @@ export function determineBranchPoint(
 
   if (firstMessageData.prevInLine) {
     // Case 1: Message has a previous message in the same line
-    // -> Branch from that previous message
+    // -> Branch from that previous message (which stays in the parent line)
+    // This creates a branch relationship from the parent line
     branchFromMessageId = firstMessageData.prevInLine;
     console.log('✅ Using prevInLine as branch point:', branchFromMessageId);
-  } else if (firstMessageData.lineId) {
-    // Case 2: Message is the first in its line
-    // -> Branch from the parent line's start message (creating hierarchical branch)
-    const parentLine = oldLineDocsMap.get(firstMessageData.lineId);
-    console.log('📍 First message in line, parent line:', {
-      lineId: firstMessageData.lineId,
-      lineName: parentLine?.name,
-      parentBranchFrom: parentLine?.branchFromMessageId,
-      startMessageId: parentLine?.startMessageId
-    });
-
-    if (parentLine?.startMessageId) {
-      // Use the parent line's start message as the branch point
-      // This creates: ParentLine -> NewLine (hierarchical branching)
-      branchFromMessageId = parentLine.startMessageId;
-      console.log('✅ Using parent line start message as branch point:', branchFromMessageId);
-    }
+  } else {
+    // Case 2: Message is the first in its line (no prevInLine)
+    // -> The new line becomes a root line (no branch point)
+    // This prevents circular references and represents a top-level line
+    console.log('📍 First message in line - creating root line (no branch point)');
+    branchFromMessageId = undefined;
   }
 
   console.log('🎯 Final branch point:', branchFromMessageId);

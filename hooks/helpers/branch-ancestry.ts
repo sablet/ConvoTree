@@ -12,7 +12,8 @@ export function calculateLineAncestry(
   lineId: string,
   lines: Record<string, Line>,
   messages: Record<string, Message>,
-  cache: Map<string, string[]>
+  cache: Map<string, string[]>,
+  visited: Set<string> = new Set()
 ): string[] {
   if (cache.has(lineId)) {
     const cached = cache.get(lineId)
@@ -22,13 +23,22 @@ export function calculateLineAncestry(
   const line = lines[lineId]
   if (!line) return []
 
+  // 循環参照チェック: 既に訪問したラインの場合は空配列を返す
+  if (visited.has(lineId)) {
+    console.error(`🔴 Circular reference detected in line ancestry: ${lineId}`)
+    return []
+  }
+
   let ancestry: string[] = []
 
   if (line.branchFromMessageId) {
     const branchFromMessage = messages[line.branchFromMessageId]
     if (branchFromMessage) {
       const parentLineId = branchFromMessage.lineId
-      const parentAncestry = calculateLineAncestry(parentLineId, lines, messages, cache)
+      // 訪問済みセットに現在のラインIDを追加
+      const newVisited = new Set(visited)
+      newVisited.add(lineId)
+      const parentAncestry = calculateLineAncestry(parentLineId, lines, messages, cache, newVisited)
       ancestry = [...parentAncestry, parentLineId]
     }
   }

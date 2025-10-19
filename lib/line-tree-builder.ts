@@ -46,6 +46,7 @@ export function buildLineTree(
   })
 
   const result: LineTreeNode[] = []
+  const visited = new Set<string>()
 
   /**
    * Recursively build tree nodes
@@ -56,6 +57,14 @@ export function buildLineTree(
     parentChain: boolean[],
     isLastChild: boolean
   ): void {
+    // 循環参照チェック: 既に訪問したラインの場合は処理をスキップ
+    if (visited.has(line.id)) {
+      console.error(`🔴 Circular reference detected in line tree: ${line.id}`)
+      return
+    }
+
+    visited.add(line.id)
+
     const node: LineTreeNode = {
       line,
       depth,
