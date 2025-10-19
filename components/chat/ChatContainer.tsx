@@ -247,6 +247,7 @@ export function ChatContainer({
         lines={chatState.lines}
         tags={chatState.tags}
         isUpdating={branchOps.isUpdating}
+        getLineAncestry={branchOps.getLineAncestry}
         onConfirm={branchOps.handleConfirmMove}
         onCancel={() => branchOps.setShowMoveDialog(false)}
       />
