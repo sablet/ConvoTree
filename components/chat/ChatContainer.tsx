@@ -18,6 +18,8 @@ import { useBranchOperations } from "@/hooks/use-branch-operations"
 import { useInputOperations } from "@/hooks/use-input-operations"
 import type { Message, Line, BranchPoint, Tag } from "@/lib/types"
 import { getRelativeTime, formatDateForSeparator, isSameDay } from "@/lib/utils"
+import { useLineConnection } from "./use-line-connection"
+import { useMessageInsert } from "./use-message-insert"
 
 interface ChatContainerProps {
   initialMessages?: Record<string, Message>
@@ -28,11 +30,7 @@ interface ChatContainerProps {
   onLineChange?: (lineId: string) => void
 }
 
-/**
- * ChatContainer Component
- *
- * Main container that integrates all hooks and components
- */
+/** Main container that integrates all hooks and components */
 export function ChatContainer({
   initialMessages = {},
   initialLines = {},
@@ -41,16 +39,12 @@ export function ChatContainer({
   initialCurrentLineId = '',
   onLineChange
 }: ChatContainerProps) {
-  // Refs
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-
-  // UI State
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [showInsertMode, setShowInsertMode] = useState<boolean>(false)
-
-  // Initialize hooks
+  const [showLineConnectionDialog, setShowLineConnectionDialog] = useState<boolean>(false)
   const chatState = useChatState({
     initialMessages,
     initialLines,
@@ -58,25 +52,17 @@ export function ChatContainer({
     initialTags,
     initialCurrentLineId
   })
-
-  // Scroll to bottom callback
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'instant' })
     }
   }, [])
-
-  // Message operations hook
   const messageOps = useMessageOperations({
     chatState,
     onCacheInvalidate: chatState.clearAllCaches,
     onScrollToBottom: scrollToBottom
   })
-
-  // Input state
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
-
-  // Branch operations hook
   const branchOps = useBranchOperations({
     chatState,
     messagesContainerRef,
@@ -84,83 +70,38 @@ export function ChatContainer({
     setSelectedBaseMessage,
     onLineChange
   })
-
-  // Input operations hook
   const inputOps = useInputOperations({
     messageOps,
     branchOps,
     currentLineId: chatState.currentLineId,
     lines: chatState.lines
   })
-
-  // メッセージ挿入処理
-  const handleInsertMessage = useCallback(async (
-    content: string, 
-    timestamp: Date, 
-    images?: string[]
-  ) => {
-    const targetLineId = chatState.currentLineId;
-    if (!content.trim()) return;
-
-    // 現在のメッセージリストを取得
-    const timelineMessages = branchOps.completeTimeline.messages;
-    const targetTimestamp = timestamp.getTime();
-    
-    // 挿入位置を特定
-    let insertIndex = 0;
-    for (let i = 0; i < timelineMessages.length; i++) {
-      const message = timelineMessages[i];
-      const messageTimestamp = message.timestamp instanceof Date 
-        ? message.timestamp.getTime() 
-        : new Date(message.timestamp).getTime();
-      
-      if (messageTimestamp > targetTimestamp) {
-        insertIndex = i;
-        break;
-      }
-    }
-
-    // 挿入位置の前後のメッセージを特定
-    const prevMessage = insertIndex > 0 ? timelineMessages[insertIndex - 1] : null;
-    // 挿入するメッセージを作成（指定されたタイムスタンプで）
-    const { messageId: newMessageId } = await messageOps.handleCreateMessageWithTimestamp(
-      content, 
-      images || [], 
-      prevMessage?.id || undefined, 
-      targetLineId,
-      timestamp
-    );
-    
-    // ローカル状態を更新（タイムスタンプを調整）
-    chatState.setMessages(prev => {
-      const updated = { ...prev };
-      if (updated[newMessageId]) {
-        updated[newMessageId] = {
-          ...updated[newMessageId],
-          timestamp
-        };
-      }
-      return updated;
-    });
-    
-    // タイムラインの並び替えを反映
-    branchOps.clearTimelineCaches();
-  }, [chatState, messageOps, branchOps]);
-
-  // Scroll effect
+  const { handleLineConnect, isConnectingLine } = useLineConnection({
+    lines: chatState.lines,
+    currentLineId: chatState.currentLineId,
+    setLines: chatState.setLines,
+    clearAllCaches: chatState.clearAllCaches,
+    clearTimelineCaches: branchOps.clearTimelineCaches
+  })
+  const { handleInsertMessage } = useMessageInsert({
+    currentLineId: chatState.currentLineId,
+    timelineMessages: branchOps.completeTimeline.messages,
+    handleCreateMessageWithTimestamp: messageOps.handleCreateMessageWithTimestamp,
+    setMessages: chatState.setMessages,
+    clearTimelineCaches: branchOps.clearTimelineCaches
+  })
+  const handleLineConnectAndClose = useCallback(async (targetLineId: string) => {
+    const success = await handleLineConnect(targetLineId)
+    if (success) setShowLineConnectionDialog(false)
+  }, [handleLineConnect])
   useEffect(() => {
     scrollToBottom()
   }, [branchOps.completeTimeline.messages.length, scrollToBottom])
-
-  // Get current line info
   const currentLineInfo = branchOps.getCurrentLine()
 
   return (
     <div className="flex flex-col h-screen bg-white">
-      {/* Hamburger Menu */}
       <HamburgerMenu />
-
-      {/* Branch Selector (Timeline Minimap + Filters) */}
       <BranchSelector
         completeTimeline={branchOps.completeTimeline}
         currentLine={currentLineInfo}
@@ -181,8 +122,6 @@ export function ChatContainer({
         onFilterTagChange={chatState.setFilterTag}
         onSearchChange={chatState.setSearchKeyword}
       />
-
-      {/* Current Line Header or Line Edit Dialog */}
       {branchOps.isEditingBranch ? (
         <LineEditDialog
           isOpen={branchOps.isEditingBranch}
@@ -204,11 +143,10 @@ export function ChatContainer({
           onEditLine={branchOps.handleEditLine}
           onToggleSelectionMode={branchOps.handleToggleSelectionMode}
           onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
+          onToggleLineConnection={() => setShowLineConnectionDialog(prev => !prev)}
           isSelectionMode={branchOps.isSelectionMode}
         />
       )}
-
-      {/* Messages List */}
       <MessageList
         filteredTimeline={branchOps.filteredTimeline}
         messages={chatState.messages}
@@ -251,8 +189,6 @@ export function ChatContainer({
         isUpdating={branchOps.isUpdating || messageOps.isUpdating}
         onUpdateMessage={messageOps.handleUpdateMessage}
       />
-
-      {/* Insert Message Input or Composer or Selection Toolbar */}
       <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
         {showInsertMode ? (
           <InsertMessageInput
@@ -307,6 +243,7 @@ export function ChatContainer({
       {/* Message Move Dialog */}
       <MessageMoveDialog
         isOpen={branchOps.showMoveDialog}
+        mode="message-move"
         selectedMessagesCount={branchOps.selectedMessages.size}
         currentLineId={chatState.currentLineId}
         lines={chatState.lines}
@@ -316,6 +253,19 @@ export function ChatContainer({
         onConfirm={branchOps.handleConfirmMove}
         onCreateNewLine={branchOps.handleCreateNewLineAndMove}
         onCancel={() => branchOps.setShowMoveDialog(false)}
+      />
+
+      {/* Line Connection Dialog */}
+      <MessageMoveDialog
+        isOpen={showLineConnectionDialog}
+        mode="line-connection"
+        currentLineId={chatState.currentLineId}
+        lines={chatState.lines}
+        tags={chatState.tags}
+        isUpdating={isConnectingLine}
+        getLineAncestry={branchOps.getLineAncestry}
+        onConfirm={handleLineConnectAndClose}
+        onCancel={() => setShowLineConnectionDialog(false)}
       />
 
       {/* Message Delete Dialog */}
