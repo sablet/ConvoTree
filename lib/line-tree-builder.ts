@@ -18,6 +18,14 @@ export function buildLineTree(
 ): LineTreeNode[] {
   const lineArray = Object.values(lines)
 
+  // messageToLineMap はすべてのラインを対象に構築
+  const messageToLineMap = new Map<string, string>()
+  lineArray.forEach(line => {
+    line.messageIds.forEach(msgId => {
+      messageToLineMap.set(msgId, line.id)
+    })
+  })
+
   // currentLineIdが指定されている場合は除外
   const filteredLines = currentLineId
     ? lineArray.filter(line => line.id !== currentLineId)
@@ -25,15 +33,6 @@ export function buildLineTree(
 
   // ルートライン（branchFromMessageIdがない）を見つける
   const rootLines = filteredLines.filter(line => !line.branchFromMessageId)
-
-  // 親ラインIDから子ラインのマップを構築
-  // branchFromMessageIdを持つラインは、そのメッセージを含む親ラインの子
-  const messageToLineMap = new Map<string, string>()
-  filteredLines.forEach(line => {
-    line.messageIds.forEach(msgId => {
-      messageToLineMap.set(msgId, line.id)
-    })
-  })
 
   const childrenMap = new Map<string, Line[]>()
   filteredLines.forEach(line => {
@@ -90,6 +89,18 @@ export function buildLineTree(
     const isLast = index === sortedRoots.length - 1
     buildNodes(root, 0, [], isLast)
   })
+
+  // rootLines が空でも、childrenMap のトップレベル（currentLineIdの子）を処理
+  if (sortedRoots.length === 0 && currentLineId) {
+    const topLevelChildren = childrenMap.get(currentLineId) || []
+    const sortedTopLevelChildren = [...topLevelChildren].sort((a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+    sortedTopLevelChildren.forEach((child, index) => {
+      const isLast = index === sortedTopLevelChildren.length - 1
+      buildNodes(child, 0, [], isLast)
+    })
+  }
 
   return result
 }
