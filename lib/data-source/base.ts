@@ -54,6 +54,7 @@ export interface IDataSource {
     lineId: string,
     prevMessageId?: string
   ): Promise<string>;
+  createLineAndMoveMessages(messageIds: string[], lineName: string): Promise<string>;
 }
 
 export type DataSource = 'firestore' | 'sample' | 'cache';

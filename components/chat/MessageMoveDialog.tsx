@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button"
-import { GitBranch } from "lucide-react"
+import { GitBranch, Plus } from "lucide-react"
 import type { Line, Tag } from "@/lib/types"
 import { buildLineTree } from "@/lib/line-tree-builder"
 import { LineBreadcrumb } from "./LineBreadcrumb"
+import { useState } from "react"
 
 interface MessageMoveDialogProps {
   isOpen: boolean
@@ -13,6 +14,7 @@ interface MessageMoveDialogProps {
   isUpdating: boolean
   getLineAncestry: (lineId: string) => string[]
   onConfirm: (targetLineId: string) => void
+  onCreateNewLine: (lineName: string) => void
   onCancel: () => void
 }
 
@@ -30,12 +32,24 @@ export function MessageMoveDialog({
   isUpdating,
   getLineAncestry,
   onConfirm,
+  onCreateNewLine,
   onCancel
 }: MessageMoveDialogProps) {
+  const [newLineName, setNewLineName] = useState("")
+  const [isCreatingNew, setIsCreatingNew] = useState(false)
+
   if (!isOpen) return null
 
   // ツリー構造を構築
   const treeNodes = buildLineTree(lines, currentLineId)
+
+  const handleCreateNew = () => {
+    if (newLineName.trim()) {
+      onCreateNewLine(newLineName.trim())
+      setNewLineName("")
+      setIsCreatingNew(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -49,6 +63,61 @@ export function MessageMoveDialog({
           <p className="text-gray-600 mb-4">
             {selectedMessagesCount}件のメッセージを移動先のラインを選択してください：
           </p>
+
+          {/* 新しいライン作成ボタン */}
+          <div className="mb-4">
+            {!isCreatingNew ? (
+              <button
+                onClick={() => setIsCreatingNew(true)}
+                disabled={isUpdating}
+                className="w-full text-left p-3 border-2 border-dashed border-blue-300 rounded-md hover:bg-blue-50 hover:border-blue-400 transition-colors disabled:opacity-50 flex items-center gap-2 text-blue-600"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="font-medium">新しいラインを作成</span>
+              </button>
+            ) : (
+              <div className="p-3 border-2 border-blue-300 rounded-md bg-blue-50">
+                <div className="flex flex-col gap-2">
+                  <input
+                    type="text"
+                    value={newLineName}
+                    onChange={(e) => setNewLineName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleCreateNew()
+                      } else if (e.key === 'Escape') {
+                        setIsCreatingNew(false)
+                        setNewLineName("")
+                      }
+                    }}
+                    placeholder="新しいライン名を入力..."
+                    disabled={isUpdating}
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={handleCreateNew}
+                      disabled={isUpdating || !newLineName.trim()}
+                      className="flex-1"
+                    >
+                      作成して移動
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setIsCreatingNew(false)
+                        setNewLineName("")
+                      }}
+                      variant="outline"
+                      disabled={isUpdating}
+                    >
+                      キャンセル
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           <div className="max-h-96 overflow-y-auto space-y-2 mb-4">
             {treeNodes.map((node) => {
@@ -94,7 +163,7 @@ export function MessageMoveDialog({
               variant="outline"
               disabled={isUpdating}
             >
-              キャンセル
+              閉じる
             </Button>
           </div>
         </div>

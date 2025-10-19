@@ -124,3 +124,54 @@ export function updateLocalStateAfterMove(params: UpdateLocalStateParams): void 
     return updated
   })
 }
+
+export interface UpdateLocalStateAfterCreateParams {
+  selectedMessages: Set<string>
+  newLineId: string
+  lineName: string
+  branchFromMessageId?: string
+  messages: Record<string, Message>
+  setMessages: (updater: (prev: Record<string, Message>) => Record<string, Message>) => void
+  setLines: (updater: (prev: Record<string, Line>) => Record<string, Line>) => void
+}
+
+export function updateLocalStateAfterCreateLine(params: UpdateLocalStateAfterCreateParams): void {
+  const { selectedMessages, newLineId, lineName, branchFromMessageId, messages, setMessages, setLines } = params
+  const now = new Date().toISOString()
+  const messageIds = Array.from(selectedMessages)
+
+  const newLine: Line = {
+    id: newLineId,
+    name: lineName,
+    messageIds,
+    startMessageId: messageIds[0],
+    branchFromMessageId,
+    created_at: now,
+    updated_at: now
+  }
+
+  setLines(prev => ({ ...prev, [newLineId]: newLine }))
+
+  setMessages(prev => {
+    const updated = { ...prev }
+    messageIds.forEach(id => {
+      if (updated[id]) {
+        updated[id] = { ...updated[id], lineId: newLineId, prevInLine: undefined, nextInLine: undefined }
+      }
+    })
+    return updated
+  })
+
+  const oldLineIds = new Set<string>()
+  messageIds.forEach(id => { if (messages[id]?.lineId) oldLineIds.add(messages[id].lineId) })
+
+  setLines(prev => {
+    const updated = { ...prev }
+    oldLineIds.forEach(lineId => {
+      if (updated[lineId]) {
+        updated[lineId] = { ...updated[lineId], messageIds: updated[lineId].messageIds.filter(id => !selectedMessages.has(id)), updated_at: now }
+      }
+    })
+    return updated
+  })
+}

@@ -207,6 +207,10 @@ export class FirestoreDataSource implements IDataSource {
     return this.branchOps.moveMessageToLine(messageId, targetLineId, position);
   }
 
+  async createLineAndMoveMessages(messageIds: string[], lineName: string): Promise<string> {
+    return this.branchOps.createLineAndMoveMessages(messageIds, lineName);
+  }
+
   async createTag(tag: Omit<Tag, 'id'>): Promise<string> {
     return this.tagOps.createTag(tag);
   }

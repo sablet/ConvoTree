@@ -142,6 +142,10 @@ export class DataSourceManager {
   ) {
     return this.dataSource.createMessageWithLineUpdate(messageData, lineId, prevMessageId);
   }
+
+  async createLineAndMoveMessages(messageIds: string[], lineName: string) {
+    return this.dataSource.createLineAndMoveMessages(messageIds, lineName);
+  }
 }
 
 export const dataSourceManager = DataSourceManager.getInstance();

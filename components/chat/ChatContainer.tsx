@@ -249,6 +249,7 @@ export function ChatContainer({
         isUpdating={branchOps.isUpdating}
         getLineAncestry={branchOps.getLineAncestry}
         onConfirm={branchOps.handleConfirmMove}
+        onCreateNewLine={branchOps.handleCreateNewLineAndMove}
         onCancel={() => branchOps.setShowMoveDialog(false)}
       />
 

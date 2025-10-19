@@ -7,6 +7,7 @@ import type { BranchPoint, Line, Message } from '@/lib/types';
 import type { FirestoreMessageOperations } from './firestore-message';
 import type { FirestoreLineOperations } from './firestore-line';
 import type * as FirebaseFirestore from 'firebase/firestore';
+import { buildMessageChain, unlinkMessageFromCurrentPosition, readTransactionData } from './firestore-branch-helpers';
 
 interface BranchPointWithTimestamp {
   messageId: string;
@@ -307,12 +308,13 @@ export class FirestoreBranchOperations {
     }
   }
 
-  async moveMessageToLine(messageId: string, targetLineId: string, position?: number): Promise<void> {
+  async moveMessageToLine(messageId: string, targetLineId: string, _position?: number): Promise<void> {
     try {
       this.messageOps.validateMessageId(messageId);
       this.lineOps.validateLineId(targetLineId);
 
       await runTransaction(db, async (transaction) => {
+        // PHASE 1: All reads
         const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
         const messageDoc = await this.getAndValidateMessageDoc(transaction, messageId);
 
@@ -325,9 +327,20 @@ export class FirestoreBranchOperations {
 
         const messageData = messageDoc.data() as MessageWithTimestamp;
         const oldLineId = messageData.lineId;
+        const targetLineData = targetLineDoc.data() as Line;
 
+        let oldLineData: Line | null = null;
+        if (oldLineId && oldLineId !== targetLineId) {
+          const oldLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, oldLineId);
+          const oldLineDoc = await transaction.get(oldLineRef);
+          if (oldLineDoc.exists()) {
+            oldLineData = oldLineDoc.data() as Line;
+          }
+        }
+
+        // PHASE 2: All writes
         if (oldLineId) {
-          await this.unlinkMessageFromCurrentPosition(messageId, transaction);
+          unlinkMessageFromCurrentPosition(this.conversationId, messageData, transaction);
         }
 
         transaction.update(messageRef, {
@@ -337,18 +350,134 @@ export class FirestoreBranchOperations {
           updatedAt: serverTimestamp()
         });
 
-        if (position !== undefined) {
-          await this.insertMessageAtPosition(messageId, targetLineId, position, transaction);
+        const now = new Date().toISOString();
+        const updatedTargetMessageIds = [...targetLineData.messageIds];
+        if (!updatedTargetMessageIds.includes(messageId)) {
+          updatedTargetMessageIds.push(messageId);
         }
 
-        if (oldLineId && oldLineId !== targetLineId) {
-          await this.updateLineMessageIds(oldLineId, transaction);
+        transaction.update(targetLineRef, {
+          messageIds: updatedTargetMessageIds,
+          updated_at: now,
+          updatedAt: serverTimestamp()
+        });
+
+        if (oldLineData && oldLineId) {
+          const oldLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, oldLineId);
+          const updatedOldMessageIds = oldLineData.messageIds.filter(id => id !== messageId);
+          transaction.update(oldLineRef, {
+            messageIds: updatedOldMessageIds,
+            updated_at: now,
+            updatedAt: serverTimestamp()
+          });
         }
-        await this.updateLineMessageIds(targetLineId, transaction);
       });
 
     } catch (error) {
       console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
+      throw error;
+    }
+  }
+
+  async createLineAndMoveMessages(messageIds: string[], lineName: string): Promise<string> {
+    try {
+      if (messageIds.length === 0) {
+        throw new Error('At least one message is required');
+      }
+
+      if (!lineName || lineName.trim() === '') {
+        throw new Error('Line name is required');
+      }
+
+      // Check line name uniqueness BEFORE transaction
+      const linesRef = collection(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION);
+      const nameCheckQuery = query(linesRef, where('name', '==', lineName));
+      const nameCheckSnapshot = await getDocs(nameCheckQuery);
+
+      if (!nameCheckSnapshot.empty) {
+        throw new Error(`Line with name "${lineName}" already exists`);
+      }
+
+      let newLineId = '';
+
+      await runTransaction(db, async (transaction) => {
+        // PHASE 1: All reads first
+        const { messageDocs, messageRefs, oldLineDocsMap, branchFromMessageId, existingBranchPoint } =
+          await readTransactionData(this.conversationId, messageIds, transaction);
+
+        // PHASE 2: All writes
+
+        // 1. Create new line
+        const newLineRef = doc(linesRef);
+        newLineId = newLineRef.id;
+
+        const now = new Date().toISOString();
+        const lineData = {
+          name: lineName,
+          messageIds,
+          startMessageId: messageIds[0],
+          branchFromMessageId,
+          created_at: now,
+          updated_at: now,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        transaction.set(newLineRef, lineData);
+
+        // 2. Update branch point if we have a branchFromMessageId
+        if (branchFromMessageId) {
+          const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, branchFromMessageId);
+
+          if (existingBranchPoint) {
+            const updatedLines = [...existingBranchPoint.lines, newLineId];
+            transaction.update(branchPointRef, {
+              lines: updatedLines,
+              updatedAt: serverTimestamp()
+            });
+          } else {
+            const newBranchPointData = {
+              messageId: branchFromMessageId,
+              lines: [newLineId],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp()
+            };
+            transaction.set(branchPointRef, newBranchPointData);
+          }
+        }
+
+        // 3. Unlink all messages from current positions
+        messageDocs.forEach(messageDoc => {
+          const messageData = messageDoc.data() as MessageWithTimestamp;
+          unlinkMessageFromCurrentPosition(this.conversationId, messageData, transaction);
+        });
+
+        // 4. Update all messages to new line
+        messageRefs.forEach((messageRef) => {
+          transaction.update(messageRef, {
+            lineId: newLineId,
+            prevInLine: null,
+            nextInLine: null,
+            updatedAt: serverTimestamp()
+          });
+        });
+
+        // 5. Update old lines' messageIds - remove moved messages
+        for (const [oldLineId, oldLineData] of Array.from(oldLineDocsMap.entries())) {
+          const oldLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, oldLineId);
+          const updatedMessageIds = oldLineData.messageIds.filter(id => !messageIds.includes(id));
+          transaction.update(oldLineRef, {
+            messageIds: updatedMessageIds,
+            updated_at: now,
+            updatedAt: serverTimestamp()
+          });
+        }
+      });
+
+      return newLineId;
+
+    } catch (error) {
+      console.error('❌ Failed to create line and move messages:', error);
       throw error;
     }
   }
@@ -388,7 +517,7 @@ export class FirestoreBranchOperations {
       messagesMap.set(doc.id, messageData);
     });
 
-    const orderedIds = this.buildMessageChain(messagesMap);
+    const orderedIds = buildMessageChain(messagesMap);
 
     const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
     transaction.update(lineRef, {
@@ -396,74 +525,6 @@ export class FirestoreBranchOperations {
       updated_at: new Date().toISOString(),
       updatedAt: serverTimestamp()
     });
-  }
-
-  private buildMessageChain(messagesMap: Map<string, MessageWithTimestamp>): string[] {
-    const orderedIds: string[] = [];
-    const visited = new Set<string>();
-
-    let startMessageId: string | null = null;
-    for (const [id, message] of Array.from(messagesMap.entries())) {
-      if (!message.prevInLine) {
-        startMessageId = id;
-        break;
-      }
-    }
-
-    let currentId: string | null = startMessageId;
-    while (currentId && !visited.has(currentId)) {
-      visited.add(currentId);
-      orderedIds.push(currentId);
-
-      const currentMessage = messagesMap.get(currentId);
-      currentId = currentMessage?.nextInLine || null;
-    }
-
-    for (const [id] of Array.from(messagesMap.entries())) {
-      if (!visited.has(id)) {
-        orderedIds.push(id);
-      }
-    }
-
-    return orderedIds;
-  }
-
-  private async unlinkMessageFromCurrentPosition(messageId: string, transaction: Transaction): Promise<void> {
-    const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-    const messageDoc = await transaction.get(messageRef);
-
-    if (!messageDoc.exists()) {
-      return;
-    }
-
-    const messageData = messageDoc.data() as MessageWithTimestamp;
-
-    if (messageData.prevInLine && messageData.nextInLine) {
-      const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
-      const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
-
-      transaction.update(prevMessageRef, {
-        nextInLine: messageData.nextInLine,
-        updatedAt: serverTimestamp()
-      });
-
-      transaction.update(nextMessageRef, {
-        prevInLine: messageData.prevInLine,
-        updatedAt: serverTimestamp()
-      });
-    } else if (messageData.prevInLine) {
-      const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.prevInLine);
-      transaction.update(prevMessageRef, {
-        nextInLine: null,
-        updatedAt: serverTimestamp()
-      });
-    } else if (messageData.nextInLine) {
-      const nextMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageData.nextInLine);
-      transaction.update(nextMessageRef, {
-        prevInLine: null,
-        updatedAt: serverTimestamp()
-      });
-    }
   }
 
   private async insertMessageAtPosition(messageId: string, lineId: string, position: number, transaction: Transaction): Promise<void> {
@@ -479,7 +540,7 @@ export class FirestoreBranchOperations {
       }
     });
 
-    const orderedIds = this.buildMessageChain(messagesMap);
+    const orderedIds = buildMessageChain(messagesMap);
 
     if (position >= orderedIds.length) {
       if (orderedIds.length > 0) {

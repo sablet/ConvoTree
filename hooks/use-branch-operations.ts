@@ -4,8 +4,8 @@ import type { ChatState } from './use-chat-state'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import { calculateLineAncestry, calculateOptimizedPath, type LineAncestryResult } from './helpers/branch-ancestry'
 import { filterTimeline } from './helpers/timeline-filter'
-import { moveMessagesToLine, updateLocalStateAfterMove } from './helpers/message-move'
 import { saveLineEdit, updateLocalLineState, createNewTag, type LineEditData } from './helpers/line-edit'
+import { useMessageMove, type MessageMoveOperations } from './helpers/use-message-move'
 
 interface BranchOperationsProps {
   chatState: ChatState
@@ -15,7 +15,7 @@ interface BranchOperationsProps {
   onLineChange?: (lineId: string) => void
 }
 
-export interface BranchOperations {
+export interface BranchOperations extends MessageMoveOperations {
   // ライン切り替え
   switchToLine: (lineId: string) => void
   getCurrentLine: () => Line | null
@@ -36,24 +36,12 @@ export interface BranchOperations {
   // ライン編集
   isEditingBranch: boolean
   editingBranchData: { name: string; tagIds: string[]; newTag: string }
-  isUpdating: boolean
   handleEditLine: () => void
   handleSaveLineEdit: () => Promise<void>
   handleAddTag: () => void
   handleRemoveTag: (tagIndex: number) => void
   setIsEditingBranch: React.Dispatch<React.SetStateAction<boolean>>
   setEditingBranchData: React.Dispatch<React.SetStateAction<{ name: string; tagIds: string[]; newTag: string }>>
-
-  // 複数選択・移動
-  selectedMessages: Set<string>
-  isSelectionMode: boolean
-  showMoveDialog: boolean
-  handleToggleSelectionMode: () => void
-  handleMoveMessages: () => void
-  handleConfirmMove: (targetLineId: string) => Promise<void>
-  handleMessageTap: (messageId: string) => void
-  setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
-  setShowMoveDialog: React.Dispatch<React.SetStateAction<boolean>>
 
   // フッター更新
   footerKey: number
@@ -108,17 +96,22 @@ export function useBranchOperations({
   // ライン編集
   const [isEditingBranch, setIsEditingBranch] = useState(false)
   const [editingBranchData, setEditingBranchData] = useState<LineEditData>({ name: "", tagIds: [], newTag: "" })
-
-  // 複数選択・移動
-  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
-  const [isSelectionMode, setIsSelectionMode] = useState(false)
-  const [showMoveDialog, setShowMoveDialog] = useState(false)
+  const [isUpdating, setIsUpdating] = useState(false)
 
   // フッター更新
   const [footerKey, setFooterKey] = useState(0)
 
-  // 更新中フラグ
-  const [isUpdating, setIsUpdating] = useState(false)
+  // メッセージ移動関連の処理
+  const messageMoveOps = useMessageMove({
+    messages,
+    setMessages,
+    lines,
+    setLines,
+    setCurrentLineId,
+    clearAllCaches,
+    selectedBaseMessage,
+    setSelectedBaseMessage
+  })
 
   /**
    * Get branching lines from a branch point
@@ -357,81 +350,8 @@ export function useBranchOperations({
     }))
   }, [])
 
-  /**
-   * Handle message tap (selection or branching)
-   */
-  const handleMessageTap = useCallback((messageId: string) => {
-    if (isSelectionMode) {
-      // 複数選択モード
-      setSelectedMessages(prev => {
-        const newSet = new Set(prev)
-        if (newSet.has(messageId)) {
-          newSet.delete(messageId)
-        } else {
-          newSet.add(messageId)
-        }
-        return newSet
-      })
-    } else {
-      // 通常の分岐作成モード
-      if (selectedBaseMessage === messageId) {
-        setSelectedBaseMessage(null)
-      } else {
-        setSelectedBaseMessage(messageId)
-      }
-    }
-  }, [isSelectionMode, selectedBaseMessage, setSelectedBaseMessage])
-
-  /**
-   * Toggle selection mode
-   */
-  const handleToggleSelectionMode = useCallback(() => {
-    setIsSelectionMode(!isSelectionMode)
-    if (isSelectionMode) {
-      // 選択モードを終了する際は選択をクリア
-      setSelectedMessages(new Set())
-    } else {
-      // 選択モードに入る際は分岐作成を無効化
-      setSelectedBaseMessage(null)
-    }
-  }, [isSelectionMode, setSelectedBaseMessage])
-
-  /**
-   * Show move messages dialog
-   */
-  const handleMoveMessages = useCallback(() => {
-    if (selectedMessages.size > 0) {
-      setShowMoveDialog(true)
-    }
-  }, [selectedMessages])
-
-  /**
-   * Confirm and execute message move
-   */
-  const handleConfirmMove = useCallback(async (targetLineId: string) => {
-    if (selectedMessages.size === 0) return
-
-    setIsUpdating(true)
-    try {
-      await moveMessagesToLine(selectedMessages, targetLineId, messages, lines)
-      updateLocalStateAfterMove({ selectedMessages, targetLineId, messages, setMessages, setLines })
-      clearAllCaches()
-
-      const movedCount = selectedMessages.size
-      setSelectedMessages(new Set())
-      setShowMoveDialog(false)
-
-      alert(`${movedCount}件のメッセージを移動しました`)
-
-    } catch (error) {
-      console.error('Failed to move messages:', error)
-      alert('メッセージの移動に失敗しました')
-    } finally {
-      setIsUpdating(false)
-    }
-  }, [selectedMessages, messages, lines, setMessages, setLines, clearAllCaches])
-
   return {
+    ...messageMoveOps,
     switchToLine,
     getCurrentLine,
     getBranchingLines,
@@ -445,22 +365,13 @@ export function useBranchOperations({
     restoreScrollPosition,
     isEditingBranch,
     editingBranchData,
-    isUpdating,
+    isUpdating: isUpdating || messageMoveOps.isUpdating,
     handleEditLine,
     handleSaveLineEdit,
     handleAddTag,
     handleRemoveTag,
     setIsEditingBranch,
     setEditingBranchData,
-    selectedMessages,
-    isSelectionMode,
-    showMoveDialog,
-    handleToggleSelectionMode,
-    handleMoveMessages,
-    handleConfirmMove,
-    handleMessageTap,
-    setSelectedMessages,
-    setShowMoveDialog,
     footerKey,
     setFooterKey
   }
