@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Edit3, CheckSquare } from "lucide-react"
+import { Edit3, CheckSquare, CalendarPlus } from "lucide-react"
 import type { Line, Message, Tag } from "@/lib/types"
 
 interface ChatHeaderProps {
@@ -9,6 +9,7 @@ interface ChatHeaderProps {
   tags: Record<string, Tag>
   onEditLine: () => void
   onToggleSelectionMode?: () => void
+  onToggleInsertMode?: () => void
   isSelectionMode?: boolean
 }
 
@@ -23,6 +24,7 @@ export function ChatHeader({
   tags,
   onEditLine,
   onToggleSelectionMode,
+  onToggleInsertMode,
   isSelectionMode = false
 }: ChatHeaderProps) {
   if (!currentLine) return null
@@ -48,6 +50,17 @@ export function ChatHeader({
               title="メッセージ選択モード"
             >
               <CheckSquare className="h-4 w-4" />
+            </Button>
+          )}
+          {onToggleInsertMode && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleInsertMode}
+              className="h-8 px-2 text-gray-400 hover:text-gray-600"
+              title="タイムライン挿入モード"
+            >
+              <CalendarPlus className="h-4 w-4" />
             </Button>
           )}
           <Button

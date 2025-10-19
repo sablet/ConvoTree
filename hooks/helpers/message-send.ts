@@ -11,7 +11,7 @@ export interface NewMessageParams {
   content: string
   images: string[]
   targetLineId: string
-  baseMessageId: string
+  baseMessageId: string | undefined
 }
 
 /**
@@ -76,7 +76,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
     content: parsedMessage.content,
     timestamp: currentTimestamp.toISOString(),
     lineId: targetLineId,
-    prevInLine: baseMessageId,
+    prevInLine: baseMessageId || undefined,
     author: "User",
     type: parsedMessage.type,
     ...(images.length > 0 && { images: [...images] }),
@@ -86,7 +86,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
   const newMessageId = await dataSourceManager.createMessageWithLineUpdate(
     messageData,
     targetLineId,
-    baseMessageId
+    baseMessageId || undefined
   )
 
   const newMessage: Message = {
@@ -95,7 +95,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
     timestamp: currentTimestamp,
     updatedAt: currentTimestamp,
     lineId: targetLineId,
-    prevInLine: baseMessageId,
+    prevInLine: baseMessageId || undefined,
     author: "User",
     type: parsedMessage.type,
     ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
@@ -111,7 +111,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
 export function updateLocalStateAfterMessage(
   messageId: string,
   message: Message,
-  baseMessageId: string,
+  baseMessageId: string | undefined,
   setMessages: (updater: (prev: Record<string, Message>) => Record<string, Message>) => void,
   setLines: (updater: (prev: Record<string, Line>) => Record<string, Line>) => void
 ): void {

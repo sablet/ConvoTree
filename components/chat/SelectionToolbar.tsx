@@ -1,12 +1,14 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
+import { CalendarPlus } from "lucide-react"
 
 interface SelectionToolbarProps {
   isSelectionMode: boolean
   selectedMessagesCount: number
   isUpdating: boolean
   onToggleSelectionMode: () => void
+  onToggleInsertMode: () => void
   onMoveMessages: () => void
   onClearSelection: () => void
 }
@@ -21,6 +23,7 @@ export function SelectionToolbar({
   selectedMessagesCount,
   isUpdating,
   onToggleSelectionMode,
+  onToggleInsertMode,
   onMoveMessages,
   onClearSelection
 }: SelectionToolbarProps) {
@@ -53,6 +56,15 @@ export function SelectionToolbar({
               選択解除
             </Button>
           )}
+          <Button
+            onClick={onToggleInsertMode}
+            size="sm"
+            variant="outline"
+            disabled={isUpdating}
+            title="タイムライン挿入モード"
+          >
+            <CalendarPlus className="h-4 w-4" />
+          </Button>
           <Button
             onClick={onToggleSelectionMode}
             size="sm"

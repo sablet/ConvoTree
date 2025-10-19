@@ -27,6 +27,7 @@ export interface BranchOperations extends MessageMoveOperations {
   getCompleteTimeline: () => LineAncestryResult
   completeTimeline: LineAncestryResult
   filteredTimeline: LineAncestryResult
+  clearTimelineCaches: () => void
 
   // スクロール位置管理
   scrollPositions: Map<string, number>
@@ -350,6 +351,14 @@ export function useBranchOperations({
     }))
   }, [])
 
+  /** 
+   * Clear timeline caches
+   */
+  const clearTimelineCaches = useCallback(() => {
+    setPathCache(new Map());
+    setLineAncestryCache(new Map());
+  }, [setPathCache, setLineAncestryCache]);
+
   return {
     ...messageMoveOps,
     switchToLine,
@@ -360,6 +369,7 @@ export function useBranchOperations({
     getCompleteTimeline,
     completeTimeline,
     filteredTimeline,
+    clearTimelineCaches,
     scrollPositions,
     saveScrollPosition,
     restoreScrollPosition,

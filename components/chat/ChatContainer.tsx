@@ -11,6 +11,7 @@ import { MessageInput } from "./MessageInput"
 import { MessageDeleteDialog } from "./MessageDeleteDialog"
 import { MessageMoveDialog } from "./MessageMoveDialog"
 import { SelectionToolbar } from "./SelectionToolbar"
+import { InsertMessageInput } from "./InsertMessageInput"
 import { useChatState } from "@/hooks/use-chat-state"
 import { useMessageOperations } from "@/hooks/use-message-operations"
 import { useBranchOperations } from "@/hooks/use-branch-operations"
@@ -47,6 +48,7 @@ export function ChatContainer({
   // UI State
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null)
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
+  const [showInsertMode, setShowInsertMode] = useState<boolean>(false)
 
   // Initialize hooks
   const chatState = useChatState({
@@ -90,6 +92,60 @@ export function ChatContainer({
     currentLineId: chatState.currentLineId,
     lines: chatState.lines
   })
+
+  // メッセージ挿入処理
+  const handleInsertMessage = useCallback(async (
+    content: string, 
+    timestamp: Date, 
+    images?: string[]
+  ) => {
+    const targetLineId = chatState.currentLineId;
+    if (!content.trim()) return;
+
+    // 現在のメッセージリストを取得
+    const timelineMessages = branchOps.completeTimeline.messages;
+    const targetTimestamp = timestamp.getTime();
+    
+    // 挿入位置を特定
+    let insertIndex = 0;
+    for (let i = 0; i < timelineMessages.length; i++) {
+      const message = timelineMessages[i];
+      const messageTimestamp = message.timestamp instanceof Date 
+        ? message.timestamp.getTime() 
+        : new Date(message.timestamp).getTime();
+      
+      if (messageTimestamp > targetTimestamp) {
+        insertIndex = i;
+        break;
+      }
+    }
+
+    // 挿入位置の前後のメッセージを特定
+    const prevMessage = insertIndex > 0 ? timelineMessages[insertIndex - 1] : null;
+    // 挿入するメッセージを作成（指定されたタイムスタンプで）
+    const { messageId: newMessageId } = await messageOps.handleCreateMessageWithTimestamp(
+      content, 
+      images || [], 
+      prevMessage?.id || undefined, 
+      targetLineId,
+      timestamp
+    );
+    
+    // ローカル状態を更新（タイムスタンプを調整）
+    chatState.setMessages(prev => {
+      const updated = { ...prev };
+      if (updated[newMessageId]) {
+        updated[newMessageId] = {
+          ...updated[newMessageId],
+          timestamp
+        };
+      }
+      return updated;
+    });
+    
+    // タイムラインの並び替えを反映
+    branchOps.clearTimelineCaches();
+  }, [chatState, messageOps, branchOps]);
 
   // Scroll effect
   useEffect(() => {
@@ -147,6 +203,7 @@ export function ChatContainer({
           tags={chatState.tags}
           onEditLine={branchOps.handleEditLine}
           onToggleSelectionMode={branchOps.handleToggleSelectionMode}
+          onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
           isSelectionMode={branchOps.isSelectionMode}
         />
       )}
@@ -195,14 +252,22 @@ export function ChatContainer({
         onUpdateMessage={messageOps.handleUpdateMessage}
       />
 
-      {/* Composer or Selection Toolbar */}
+      {/* Insert Message Input or Composer or Selection Toolbar */}
       <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
-        {(branchOps.isSelectionMode || branchOps.selectedMessages.size > 0) ? (
+        {showInsertMode ? (
+          <InsertMessageInput
+            messages={chatState.messages}
+            currentLineId={chatState.currentLineId}
+            onInsertMessage={handleInsertMessage}
+            onCancel={() => setShowInsertMode(false)}
+          />
+        ) : (branchOps.isSelectionMode || branchOps.selectedMessages.size > 0) ? (
           <SelectionToolbar
             isSelectionMode={branchOps.isSelectionMode}
             selectedMessagesCount={branchOps.selectedMessages.size}
             isUpdating={branchOps.isUpdating}
             onToggleSelectionMode={branchOps.handleToggleSelectionMode}
+            onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
             onMoveMessages={branchOps.handleMoveMessages}
             onClearSelection={() => branchOps.setSelectedMessages(new Set())}
           />

@@ -9,6 +9,7 @@ import { getDefaultMetadataForType } from './helpers/message-metadata'
 import { createNewBranch, createNewMessage, updateLocalStateAfterMessage } from './helpers/message-send'
 import { saveMessageEdit, updateLocalMessageState } from './helpers/message-edit'
 import { deleteMessageFromFirestore, updateLocalStateAfterDelete } from './helpers/message-delete'
+import { createMessageWithTimestamp } from './helpers/message-timestamp-utils'
 
 interface MessageOperationsProps {
   chatState: ChatState
@@ -105,6 +106,15 @@ export interface MessageOperations {
     targetLineId: string,
     completeTimeline: { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }
   ) => Promise<void>
+  
+  // 挿入用メッセージ作成（タイムスタンプ調整可能）
+  handleCreateMessageWithTimestamp: (
+    content: string,
+    images: string[],
+    baseMessageId: string | undefined,
+    targetLineId: string,
+    timestamp: Date
+  ) => Promise<{ messageId: string; message: Message }>
 
   // メッセージ編集
   editingMessageId: string | null
@@ -373,10 +383,10 @@ export function useMessageOperations({
           content: inputValue,
           images: pendingImages,
           targetLineId: actualTargetLineId,
-          baseMessageId
+          baseMessageId: baseMessageId || undefined
         })
 
-        updateLocalStateAfterMessage(newMessageId, newMessage, baseMessageId, setMessages, setLines)
+        updateLocalStateAfterMessage(newMessageId, newMessage, baseMessageId || undefined, setMessages, setLines)
       }
 
       // キャッシュをクリア（構造が変わった可能性があるため）
@@ -522,6 +532,8 @@ export function useMessageOperations({
     }
   }, [messages])
 
+  const handleCreateMessageWithTimestamp = useCallback(createMessageWithTimestamp as (content: string, images: string[], baseMessageId: string | undefined, targetLineId: string, timestamp: Date) => Promise<{ messageId: string; message: Message }>, []);
+
   return {
     handleSendMessage,
     editingMessageId,
@@ -548,6 +560,7 @@ export function useMessageOperations({
     isUpdating,
     isValidImageUrl,
     getDefaultMetadataForType,
-    handleUpdateMessage
+    handleUpdateMessage,
+    handleCreateMessageWithTimestamp
   }
 }
