@@ -434,6 +434,22 @@ export function MessageList({
   const hasMessages = filteredTimeline.messages.length > 0
   const currentDateLabel = currentTopDate ? formatDateForSeparator(currentTopDate) : null
 
+  // Debug log to show the last 10 messages with timestamp info
+  useEffect(() => {
+    if (filteredTimeline.messages.length > 0) {
+      const last10Messages = filteredTimeline.messages.slice(-10);
+      console.log('DEBUG: Last 10 messages in timeline:');
+      console.table(
+        last10Messages.map(msg => ({
+          id: msg.id,
+          content: msg.content.substring(0, 50) + (msg.content.length > 50 ? '...' : ''), // Truncate long content
+          createdAt: msg.timestamp,
+          updatedAt: msg.updatedAt || 'N/A'
+        }))
+      );
+    }
+  }, [filteredTimeline.messages])
+
   const messageRowActions = useMemo<MessageRowActions>(() => ({
     onStartEdit,
     onSaveEdit,

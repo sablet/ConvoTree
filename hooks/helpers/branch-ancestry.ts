@@ -72,6 +72,7 @@ export function calculateOptimizedPath(
             .slice(0, branchPointIndex + 1)
             .map(msgId => messages[msgId])
             .filter(Boolean)
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()) // Sort by timestamp
           allMessages.push(...segmentMessages)
         }
       }
@@ -79,6 +80,7 @@ export function calculateOptimizedPath(
       const lineMessages = currentLineInChain.messageIds
         .map(msgId => messages[msgId])
         .filter(Boolean)
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()) // Sort by timestamp
       allMessages.push(...lineMessages)
     }
   }
