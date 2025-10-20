@@ -56,24 +56,20 @@ export function buildLineTree(
     depth: number,
     parentChain: boolean[],
     isLastChild: boolean
-  ): void {
+  ): LineTreeNode {
     // 循環参照チェック: 既に訪問したラインの場合は処理をスキップ
     if (visited.has(line.id)) {
       console.error(`🔴 Circular reference detected in line tree: ${line.id}`)
-      return
+      return {
+        line,
+        depth,
+        children: [],
+        isLastChild,
+        parentChain: [...parentChain]
+      }
     }
 
     visited.add(line.id)
-
-    const node: LineTreeNode = {
-      line,
-      depth,
-      children: [],
-      isLastChild,
-      parentChain: [...parentChain]
-    }
-
-    result.push(node)
 
     // このラインの子ラインを探す（親ラインIDで検索）
     const children = childrenMap.get(line.id) || []
@@ -83,10 +79,21 @@ export function buildLineTree(
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
 
-    sortedChildren.forEach((child, index) => {
+    // 子ノードを再帰的に構築
+    const childNodes = sortedChildren.map((child, index) => {
       const isLast = index === sortedChildren.length - 1
-      buildNodes(child, depth + 1, [...parentChain, isLastChild], isLast)
+      return buildNodes(child, depth + 1, [...parentChain, isLastChild], isLast)
     })
+
+    const node: LineTreeNode = {
+      line,
+      depth,
+      children: childNodes,
+      isLastChild,
+      parentChain: [...parentChain]
+    }
+
+    return node
   }
 
   // ルートラインをソートして処理
@@ -96,7 +103,8 @@ export function buildLineTree(
 
   sortedRoots.forEach((root, index) => {
     const isLast = index === sortedRoots.length - 1
-    buildNodes(root, 0, [], isLast)
+    const node = buildNodes(root, 0, [], isLast)
+    result.push(node)
   })
 
   // rootLines が空でも、childrenMap のトップレベル（currentLineIdの子）を処理
@@ -107,7 +115,8 @@ export function buildLineTree(
     )
     sortedTopLevelChildren.forEach((child, index) => {
       const isLast = index === sortedTopLevelChildren.length - 1
-      buildNodes(child, 0, [], isLast)
+      const node = buildNodes(child, 0, [], isLast)
+      result.push(node)
     })
   }
 

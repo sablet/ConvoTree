@@ -8,7 +8,35 @@ import { MAIN_LINE_ID } from "@/lib/constants"
 import { toast } from "sonner"
 import { reparentLine, updateLocalStateAfterReparent, wouldCreateCircularReference } from "@/hooks/helpers/line-reparent"
 
-const EXPANDED_LINES_KEY = 'chat-line-sidebar-expanded-lines'
+const EXPANDED_LINES_KEY = 'chat-line-sidebar-expanded-lines-v2' // v2: Only expand root level by default
+
+/**
+ * Get line IDs that should be expanded by default
+ * - Root level (depth=0) is always expanded
+ * - Lines in the path to currentLineId are expanded
+ * - Other lines are collapsed
+ */
+function getDefaultExpandedLines(
+  lines: Record<string, Line>,
+  currentLineId: string,
+  getLineAncestry: (lineId: string) => string[]
+): Set<string> {
+  const tree = buildLineTree(lines, undefined)
+  const expandedIds: string[] = []
+  
+  // Always expand depth=0 (root/Inbox) lines
+  for (const node of tree) {
+    if (node.depth === 0) {
+      expandedIds.push(node.line.id)
+    }
+  }
+  
+  // Expand all lines in the ancestry path of currentLineId
+  const ancestry = getLineAncestry(currentLineId)
+  expandedIds.push(...ancestry)
+  
+  return new Set(expandedIds)
+}
 
 interface LineSidebarProps {
   lines: Record<string, Line>
@@ -47,8 +75,8 @@ export function LineSidebar({
   const [dragOverLineId, setDragOverLineId] = useState<string | null>(null)
   const [draggedLineId, setDraggedLineId] = useState<string | null>(null)
   const [expandedLines, setExpandedLines] = useState<Set<string>>(() => {
-    // Initialize with all line IDs expanded by default
-    return new Set(Object.keys(lines))
+    // Initialize with root lines and path to current line expanded
+    return getDefaultExpandedLines(lines, currentLineId, getLineAncestry)
   })
 
   // Load collapsed state and expanded lines from localStorage
@@ -71,29 +99,55 @@ export function LineSidebar({
         console.error('Failed to parse expanded lines:', e)
       }
     } else {
-      // No saved state, expand all lines by default
-      setExpandedLines(new Set(Object.keys(lines)))
+      // No saved state, expand root lines and path to current line
+      setExpandedLines(getDefaultExpandedLines(lines, currentLineId, getLineAncestry))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Expand newly added lines automatically
+  // Expand newly added root-level lines automatically
   useEffect(() => {
     setExpandedLines(prev => {
+      const tree = buildLineTree(lines, undefined)
       const newSet = new Set(prev)
       let hasNewLines = false
-      Object.keys(lines).forEach(lineId => {
-        if (!newSet.has(lineId)) {
-          newSet.add(lineId)
+      
+      // Only auto-expand new depth=0 lines
+      for (const node of tree) {
+        if (node.depth === 0 && !newSet.has(node.line.id)) {
+          newSet.add(node.line.id)
           hasNewLines = true
         }
-      })
+      }
+      
       if (hasNewLines) {
         window.localStorage.setItem(EXPANDED_LINES_KEY, JSON.stringify(Array.from(newSet)))
       }
       return newSet
     })
   }, [lines])
+
+  // Auto-expand path to current line when currentLineId changes
+  useEffect(() => {
+    setExpandedLines(prev => {
+      const ancestry = getLineAncestry(currentLineId)
+      const newSet = new Set(prev)
+      let hasChanges = false
+      
+      // Add all ancestors of current line to expanded set
+      for (const ancestorId of ancestry) {
+        if (!newSet.has(ancestorId)) {
+          newSet.add(ancestorId)
+          hasChanges = true
+        }
+      }
+      
+      if (hasChanges) {
+        window.localStorage.setItem(EXPANDED_LINES_KEY, JSON.stringify(Array.from(newSet)))
+      }
+      return newSet
+    })
+  }, [currentLineId, getLineAncestry])
 
   // Save collapsed state to localStorage
   const handleToggleCollapse = () => {
