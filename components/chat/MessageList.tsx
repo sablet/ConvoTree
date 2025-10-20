@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { GitBranch } from "lucide-react"
@@ -61,6 +62,9 @@ interface MessageRowProps {
   isSameDay: (date1: Date, date2: Date) => boolean
   getRelativeTime: (dateString: string) => string
   actions: MessageRowActions
+  isDraggable?: boolean
+  onDragStart?: (e: React.DragEvent, messageId: string) => void
+  onDragEnd?: (e: React.DragEvent) => void
 }
 
 function MessageRow({
@@ -88,7 +92,10 @@ function MessageRow({
   formatDateForSeparator,
   isSameDay,
   getRelativeTime,
-  actions
+  actions,
+  isDraggable,
+  onDragStart,
+  onDragEnd
 }: MessageRowProps) {
   const branchingLines = getBranchingLines(message.id)
   const isSelected = selectedBaseMessage === message.id
@@ -163,6 +170,9 @@ function MessageRow({
         isSelected={isSelected}
         isSelectionMode={isSelectionMode}
         isSelectedInBulk={selectedMessages.has(message.id)}
+        isDraggable={isDraggable}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
       />
     </div>
   )
@@ -193,6 +203,9 @@ interface MessageListProps extends MessageRowActions {
   isSameDay: (date1: Date, date2: Date) => boolean
   getBranchingLines: (messageId: string) => Line[]
   isUpdating: boolean
+  isDraggable?: boolean
+  onDragStart?: (e: React.DragEvent, messageId: string) => void
+  onDragEnd?: (e: React.DragEvent) => void
 }
 
 /**
@@ -200,6 +213,7 @@ interface MessageListProps extends MessageRowActions {
  *
  * Displays the list of messages with editing, deletion, and interaction features
  */
+// eslint-disable-next-line max-lines-per-function
 export function MessageList({
   filteredTimeline,
   messages,
@@ -240,7 +254,10 @@ export function MessageList({
   isSameDay,
   getBranchingLines,
   isUpdating,
-  onUpdateMessage
+  onUpdateMessage,
+  isDraggable,
+  onDragStart,
+  onDragEnd
 }: MessageListProps) {
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const dateNavigatorRef = useRef<HTMLDivElement | null>(null)
@@ -535,6 +552,9 @@ export function MessageList({
             isUpdating={isUpdating}
             formatDateForSeparator={formatDateForSeparator}
             isSameDay={isSameDay}
+            isDraggable={isDraggable && message.lineId === currentLineId}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
             getRelativeTime={getRelativeTime}
             actions={messageRowActions}
           />

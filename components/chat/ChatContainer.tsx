@@ -12,10 +12,13 @@ import { MessageDeleteDialog } from "./MessageDeleteDialog"
 import { MessageMoveDialog } from "./MessageMoveDialog"
 import { SelectionToolbar } from "./SelectionToolbar"
 import { InsertMessageInput } from "./InsertMessageInput"
+import { LineSidebar } from "./LineSidebar"
 import { useChatState } from "@/hooks/use-chat-state"
 import { useMessageOperations } from "@/hooks/use-message-operations"
 import { useBranchOperations } from "@/hooks/use-branch-operations"
 import { useInputOperations } from "@/hooks/use-input-operations"
+import { useMessageDragDrop } from "@/hooks/use-message-drag-drop"
+import { useDeviceType } from "@/hooks/use-device-type"
 import type { Message, Line, BranchPoint, Tag } from "@/lib/types"
 import { getRelativeTime, formatDateForSeparator, isSameDay } from "@/lib/utils"
 import { useLineConnection } from "./use-line-connection"
@@ -94,15 +97,43 @@ export function ChatContainer({
     const success = await handleLineConnect(targetLineId)
     if (success) setShowLineConnectionDialog(false)
   }, [handleLineConnect])
+  
+  // Device type detection for drag-drop
+  const deviceType = useDeviceType()
+  const isDesktop = deviceType === 'desktop'
+  
+  // Drag and drop operations
+  const dragDropOps = useMessageDragDrop({
+    messages: chatState.messages,
+    setMessages: chatState.setMessages,
+    lines: chatState.lines,
+    setLines: chatState.setLines,
+    clearAllCaches: chatState.clearAllCaches,
+    currentLineId: chatState.currentLineId
+  })
+  
   useEffect(() => {
     scrollToBottom()
   }, [branchOps.completeTimeline.messages.length, scrollToBottom])
   const currentLineInfo = branchOps.getCurrentLine()
 
   return (
-    <div className="flex flex-col h-screen bg-white">
-      <HamburgerMenu />
-      <BranchSelector
+    <div className="flex h-screen bg-white">
+      {/* Desktop: Line Sidebar */}
+      <LineSidebar
+        lines={chatState.lines}
+        tags={chatState.tags}
+        currentLineId={chatState.currentLineId}
+        isVisible={isDesktop}
+        getLineAncestry={branchOps.getLineAncestry}
+        onLineSelect={branchOps.switchToLine}
+        onDrop={dragDropOps.handleDrop}
+      />
+      
+      {/* Main Content */}
+      <div className="flex flex-col flex-1 min-w-0">
+        <HamburgerMenu />
+        <BranchSelector
         completeTimeline={branchOps.completeTimeline}
         currentLine={currentLineInfo}
         filterMessageType={chatState.filterMessageType}
@@ -147,7 +178,7 @@ export function ChatContainer({
           isSelectionMode={branchOps.isSelectionMode}
         />
       )}
-      <MessageList
+        <MessageList
         filteredTimeline={branchOps.filteredTimeline}
         messages={chatState.messages}
         lines={chatState.lines}
@@ -188,6 +219,9 @@ export function ChatContainer({
         getBranchingLines={branchOps.getBranchingLines}
         isUpdating={branchOps.isUpdating || messageOps.isUpdating}
         onUpdateMessage={messageOps.handleUpdateMessage}
+        isDraggable={isDesktop}
+        onDragStart={isDesktop ? dragDropOps.handleDragStart : undefined}
+        onDragEnd={isDesktop ? dragDropOps.handleDragEnd : undefined}
       />
       <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
         {showInsertMode ? (
@@ -278,6 +312,7 @@ export function ChatContainer({
         onConfirm={messageOps.handleConfirmDelete}
         onCancel={() => messageOps.setDeleteConfirmation(null)}
       />
+      </div>
     </div>
   )
 }

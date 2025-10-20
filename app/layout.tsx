@@ -9,6 +9,7 @@ import { TagProvider } from "@/lib/tag-context";
 import { OnlineStatusProvider } from "@/lib/online-status-context";
 import { APP_TITLE, APP_DESCRIPTION } from "@/lib/constants";
 import { DebugConsole } from "@/components/debug-console";
+import { Toaster } from "@/components/ui/toaster";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -64,6 +65,7 @@ export default function RootLayout({
           </AuthProvider>
         </OnlineStatusProvider>
         <DebugConsole />
+        <Toaster />
       </body>
     </html>
   );

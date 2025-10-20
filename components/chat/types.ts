@@ -45,4 +45,7 @@ export interface MessageItemProps extends MessageOperationProps {
   isSelectionMode: boolean
   isSelectedInBulk: boolean
   branchingLines: Line[]
+  isDraggable?: boolean
+  onDragStart?: (e: React.DragEvent, messageId: string) => void
+  onDragEnd?: (e: React.DragEvent) => void
 }

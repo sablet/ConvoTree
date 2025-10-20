@@ -67,7 +67,10 @@ export function MessageItem({
   setHasSetCursorToEnd,
   isValidImageUrl,
   getRelativeTime,
-  onUpdateMessage
+  onUpdateMessage,
+  isDraggable = false,
+  onDragStart,
+  onDragEnd
 }: MessageItemProps) {
   const isEditing = editingMessageId === message.id
   const createdAtDate = toValidDate(message.timestamp)
@@ -123,7 +126,20 @@ export function MessageItem({
   return (
     <div
       id={`message-${message.id}`}
+      draggable={isDraggable && !isSelectionMode}
+      onDragStart={(e) => {
+        if (isDraggable && onDragStart) {
+          onDragStart(e, message.id)
+        }
+      }}
+      onDragEnd={(e) => {
+        if (isDraggable && onDragEnd) {
+          onDragEnd(e)
+        }
+      }}
       className={`group relative transition-all duration-200 ${
+        isDraggable && !isSelectionMode ? 'cursor-move' : ''
+      } ${
         isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
       } ${
         isSelectedInBulk ? "bg-blue-100 -mx-2 px-2 py-2 rounded-lg border-2 border-blue-500" : ""
