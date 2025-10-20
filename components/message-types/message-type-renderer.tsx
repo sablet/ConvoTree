@@ -4,6 +4,7 @@ import { TaskMessage } from "./task-message"
 import { DocumentMessage } from "./document-message"
 import { SessionMessage } from "./session-message"
 import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from '@/lib/constants'
+import { LinkifiedText } from '@/lib/utils/linkify'
 
 interface Message {
   id: string
@@ -146,7 +147,7 @@ export function MessageTypeRenderer({
             boxSizing: 'border-box'
           }}
         >
-          {message.content}
+          <LinkifiedText text={message.content} />
         </div>
       )
   }

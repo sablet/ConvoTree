@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Check, CheckSquare } from "lucide-react"
+import { LinkifiedText } from "@/lib/utils/linkify"
 
 interface TaskMessageData {
   priority: 'low' | 'medium' | 'high' | 'urgent'
@@ -159,7 +160,7 @@ export function TaskMessage({
                 <span className={`text-sm font-medium break-words overflow-wrap-anywhere ${
                   taskData.completed ? 'line-through text-gray-500' : 'text-gray-900'
                 }`}>
-                  {content}
+                  <LinkifiedText text={content} />
                 </span>
               </div>
             </button>
