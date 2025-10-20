@@ -1,7 +1,7 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { CalendarPlus } from "lucide-react"
+import { CalendarPlus, Trash2 } from "lucide-react"
 
 interface SelectionToolbarProps {
   isSelectionMode: boolean
@@ -10,6 +10,7 @@ interface SelectionToolbarProps {
   onToggleSelectionMode: () => void
   onToggleInsertMode: () => void
   onMoveMessages: () => void
+  onDeleteMessages: () => void
   onClearSelection: () => void
 }
 
@@ -25,6 +26,7 @@ export function SelectionToolbar({
   onToggleSelectionMode,
   onToggleInsertMode,
   onMoveMessages,
+  onDeleteMessages,
   onClearSelection
 }: SelectionToolbarProps) {
   return (
@@ -35,14 +37,25 @@ export function SelectionToolbar({
             {selectedMessagesCount > 0 ? `${selectedMessagesCount}件選択中` : '選択モード'}
           </span>
           {selectedMessagesCount > 0 && (
-            <Button
-              onClick={onMoveMessages}
-              size="sm"
-              className="bg-blue-500 hover:bg-blue-600 text-white"
-              disabled={isUpdating}
-            >
-              別ラインに移動
-            </Button>
+            <>
+              <Button
+                onClick={onMoveMessages}
+                size="sm"
+                className="bg-blue-500 hover:bg-blue-600 text-white"
+                disabled={isUpdating}
+              >
+                別ラインに移動
+              </Button>
+              <Button
+                onClick={onDeleteMessages}
+                size="sm"
+                className="bg-red-500 hover:bg-red-600 text-white"
+                disabled={isUpdating}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                一括削除
+              </Button>
+            </>
           )}
         </div>
         <div className="flex gap-2">

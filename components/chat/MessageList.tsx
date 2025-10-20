@@ -556,7 +556,7 @@ export function MessageList({
             isUpdating={isUpdating}
             formatDateForSeparator={formatDateForSeparator}
             isSameDay={isSameDay}
-            isDraggable={isDraggable && message.lineId === currentLineId}
+            isDraggable={isDraggable && (message.lineId === currentLineId || selectedMessages.has(message.id))}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             getRelativeTime={getRelativeTime}

@@ -10,10 +10,12 @@ interface MessageDragDropProps {
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   clearAllCaches: () => void
   currentLineId: string
+  selectedMessages: Set<string>
+  isSelectionMode: boolean
 }
 
 interface UndoState {
-  messageId: string
+  messageIds: Set<string>
   originalLineId: string
   targetLineId: string
   timeoutId: ReturnType<typeof setTimeout>
@@ -30,7 +32,9 @@ export function useMessageDragDrop({
   lines,
   setLines,
   clearAllCaches,
-  currentLineId
+  currentLineId,
+  selectedMessages,
+  isSelectionMode
 }: MessageDragDropProps) {
   const undoStateRef = useRef<UndoState | null>(null)
 
@@ -39,13 +43,22 @@ export function useMessageDragDrop({
    */
   const handleDragStart = useCallback((e: React.DragEvent, messageId: string) => {
     e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', messageId)
-    
+
+    // If in selection mode and message is selected, drag all selected messages
+    if (isSelectionMode && selectedMessages.has(messageId)) {
+      const messageIds = Array.from(selectedMessages)
+      e.dataTransfer.setData('text/plain', JSON.stringify(messageIds))
+      e.dataTransfer.setData('drag-type', 'multiple')
+    } else {
+      e.dataTransfer.setData('text/plain', messageId)
+      e.dataTransfer.setData('drag-type', 'single')
+    }
+
     // Visual feedback
     if (e.currentTarget instanceof HTMLElement) {
       e.currentTarget.style.opacity = '0.5'
     }
-  }, [])
+  }, [isSelectionMode, selectedMessages])
 
   /**
    * Handle drag end on message
@@ -61,23 +74,38 @@ export function useMessageDragDrop({
    * Handle message drop on line
    */
   const handleDrop = useCallback(
-    async (targetLineId: string, messageId: string) => {
-      const message = messages[messageId]
-      if (!message) {
-        console.error('Message not found:', messageId)
-        return
-      }
-
-      const originalLineId = message.lineId
-
-      // Don't move if already in target line
-      if (originalLineId === targetLineId) {
-        return
-      }
-
+    async (targetLineId: string, dragData: string) => {
       const targetLine = lines[targetLineId]
       if (!targetLine) {
         console.error('Target line not found:', targetLineId)
+        return
+      }
+
+      // Parse drag data - could be single messageId or JSON array
+      let messageIds: string[]
+      try {
+        messageIds = JSON.parse(dragData)
+        if (!Array.isArray(messageIds)) {
+          messageIds = [dragData]
+        }
+      } catch {
+        // Single message ID (not JSON)
+        messageIds = [dragData]
+      }
+
+      // Validate all messages exist
+      const validMessageIds = messageIds.filter(id => messages[id])
+      if (validMessageIds.length === 0) {
+        console.error('No valid messages found')
+        return
+      }
+
+      // Get original line ID from first message
+      const firstMessage = messages[validMessageIds[0]]
+      const originalLineId = firstMessage.lineId
+
+      // Don't move if already in target line
+      if (originalLineId === targetLineId) {
         return
       }
 
@@ -89,25 +117,25 @@ export function useMessageDragDrop({
 
       // Perform the move
       try {
-        const selectedMessages = new Set([messageId])
-        
-        // Move message in backend
-        await moveMessagesToLine(selectedMessages, targetLineId, messages, lines)
-        
+        const messageSet = new Set(validMessageIds)
+
+        // Move messages in backend
+        await moveMessagesToLine(messageSet, targetLineId, messages, lines)
+
         // Update local state
         updateLocalStateAfterMove({
-          selectedMessages,
+          selectedMessages: messageSet,
           targetLineId,
           messages,
           setMessages,
           setLines
         })
-        
+
         clearAllCaches()
 
         // Show success toast with undo
         const undoState: UndoState = {
-          messageId,
+          messageIds: messageSet,
           originalLineId,
           targetLineId,
           timeoutId: setTimeout(() => {
@@ -117,7 +145,9 @@ export function useMessageDragDrop({
         // eslint-disable-next-line require-atomic-updates
         undoStateRef.current = undoState
 
-        toast.success(`Moved message to "${targetLine.name}"`, {
+        const messageCount = validMessageIds.length
+        const messageText = messageCount === 1 ? 'message' : `${messageCount} messages`
+        toast.success(`Moved ${messageText} to "${targetLine.name}"`, {
           duration: 5000,
             action: {
             label: 'Undo',
@@ -129,23 +159,21 @@ export function useMessageDragDrop({
               clearTimeout(currentUndoState.timeoutId)
 
               // Move back to original line
-              const restoreSet = new Set([messageId])
-              
               void (async () => {
                 try {
-                  await moveMessagesToLine(restoreSet, originalLineId, messages, lines)
-                  
+                  await moveMessagesToLine(currentUndoState.messageIds, originalLineId, messages, lines)
+
                   updateLocalStateAfterMove({
-                    selectedMessages: restoreSet,
+                    selectedMessages: currentUndoState.messageIds,
                     targetLineId: originalLineId,
                     messages,
                     setMessages,
                     setLines
                   })
-                  
+
                   clearAllCaches()
                   undoStateRef.current = null
-                  
+
                   toast.success('Move undone', { duration: 2000 })
                 } catch (error) {
                   console.error('Failed to undo move:', error)
@@ -157,8 +185,8 @@ export function useMessageDragDrop({
         })
 
       } catch (error) {
-        console.error('Failed to move message:', error)
-        toast.error('Failed to move message')
+        console.error('Failed to move messages:', error)
+        toast.error('Failed to move messages')
       }
     },
     [messages, lines, setMessages, setLines, clearAllCaches]

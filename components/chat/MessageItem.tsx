@@ -127,7 +127,7 @@ export function MessageItem({
   return (
     <div
       id={`message-${message.id}`}
-      draggable={isDraggable && !isSelectionMode}
+      draggable={isDraggable}
       onDragStart={(e) => {
         if (isDraggable && onDragStart) {
           onDragStart(e, message.id)
@@ -139,7 +139,7 @@ export function MessageItem({
         }
       }}
       className={`group relative transition-all duration-200 ${
-        isDraggable && !isSelectionMode ? 'cursor-move' : ''
+        isDraggable ? 'cursor-move' : ''
       } ${
         isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
       } ${

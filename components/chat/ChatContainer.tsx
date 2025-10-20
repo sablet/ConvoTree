@@ -10,6 +10,7 @@ import { MessageList } from "./MessageList"
 import { MessageInput } from "./MessageInput"
 import { MessageDeleteDialog } from "./MessageDeleteDialog"
 import { MessageMoveDialog } from "./MessageMoveDialog"
+import { BulkDeleteDialog } from "./BulkDeleteDialog"
 import { SelectionToolbar } from "./SelectionToolbar"
 import { InsertMessageInput } from "./InsertMessageInput"
 import { LineSidebar } from "./LineSidebar"
@@ -113,7 +114,9 @@ export function ChatContainer({
     lines: chatState.lines,
     setLines: chatState.setLines,
     clearAllCaches: chatState.clearAllCaches,
-    currentLineId: chatState.currentLineId
+    currentLineId: chatState.currentLineId,
+    selectedMessages: branchOps.selectedMessages,
+    isSelectionMode: branchOps.isSelectionMode
   })
   
   useEffect(() => {
@@ -248,6 +251,7 @@ export function ChatContainer({
             onToggleSelectionMode={branchOps.handleToggleSelectionMode}
             onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
             onMoveMessages={branchOps.handleMoveMessages}
+            onDeleteMessages={branchOps.handleDeleteMessages}
             onClearSelection={() => branchOps.setSelectedMessages(new Set())}
           />
         ) : (
@@ -322,6 +326,15 @@ export function ChatContainer({
         isUpdating={messageOps.isUpdating}
         onConfirm={messageOps.handleConfirmDelete}
         onCancel={() => messageOps.setDeleteConfirmation(null)}
+      />
+
+      {/* Bulk Delete Dialog */}
+      <BulkDeleteDialog
+        isOpen={branchOps.showBulkDeleteDialog}
+        selectedMessagesCount={branchOps.selectedMessages.size}
+        isUpdating={branchOps.isUpdating}
+        onConfirm={branchOps.handleConfirmBulkDelete}
+        onCancel={() => branchOps.setShowBulkDeleteDialog(false)}
       />
       </div>
     </div>

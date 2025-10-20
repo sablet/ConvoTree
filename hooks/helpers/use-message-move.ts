@@ -17,13 +17,17 @@ export interface MessageMoveOperations {
   selectedMessages: Set<string>
   isSelectionMode: boolean
   showMoveDialog: boolean
+  showBulkDeleteDialog: boolean
   handleToggleSelectionMode: () => void
   handleMoveMessages: () => void
+  handleDeleteMessages: () => void
+  handleConfirmBulkDelete: () => Promise<void>
   handleConfirmMove: (targetLineId: string) => Promise<void>
   handleCreateNewLineAndMove: (lineName: string) => Promise<void>
   handleMessageTap: (messageId: string) => void
   setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
   setShowMoveDialog: React.Dispatch<React.SetStateAction<boolean>>
+  setShowBulkDeleteDialog: React.Dispatch<React.SetStateAction<boolean>>
   isUpdating: boolean
 }
 
@@ -45,6 +49,7 @@ export function useMessageMove({
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
+  const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
 
   /**
@@ -94,6 +99,65 @@ export function useMessageMove({
       setShowMoveDialog(true)
     }
   }, [selectedMessages])
+
+  /**
+   * Show bulk delete dialog
+   */
+  const handleDeleteMessages = useCallback(() => {
+    if (selectedMessages.size > 0) {
+      setShowBulkDeleteDialog(true)
+    }
+  }, [selectedMessages])
+
+  /**
+   * Confirm and execute bulk delete
+   */
+  const handleConfirmBulkDelete = useCallback(async () => {
+    if (selectedMessages.size === 0) return
+
+    setIsUpdating(true)
+    try {
+      const { dataSourceManager } = await import('@/lib/data-source/factory')
+      const messageIds = Array.from(selectedMessages)
+      const deletedCount = messageIds.length
+
+      // Delete all selected messages
+      await Promise.all(messageIds.map(id => dataSourceManager.deleteMessage(id)))
+
+      // Update messages state
+      setMessages(prev => {
+        const newMessages = { ...prev }
+        for (const id of messageIds) {
+          delete newMessages[id]
+        }
+        return newMessages
+      })
+
+      // Update lines state
+      setLines(prev => {
+        const newLines = { ...prev }
+        for (const line of Object.values(newLines)) {
+          if (line.messageIds) {
+            line.messageIds = line.messageIds.filter(id => !selectedMessages.has(id))
+          }
+        }
+        return newLines
+      })
+
+      clearAllCaches()
+      setSelectedMessages(new Set())
+      setShowBulkDeleteDialog(false)
+      setIsSelectionMode(false)
+
+      alert(`${deletedCount}件のメッセージを削除しました`)
+
+    } catch (error) {
+      console.error('Failed to delete messages:', error)
+      alert('メッセージの削除に失敗しました')
+    } finally {
+      setIsUpdating(false)
+    }
+  }, [selectedMessages, setMessages, setLines, clearAllCaches])
 
   /**
    * Confirm and execute message move
@@ -178,13 +242,17 @@ export function useMessageMove({
     selectedMessages,
     isSelectionMode,
     showMoveDialog,
+    showBulkDeleteDialog,
     handleToggleSelectionMode,
     handleMoveMessages,
+    handleDeleteMessages,
+    handleConfirmBulkDelete,
     handleConfirmMove,
     handleCreateNewLineAndMove,
     handleMessageTap,
     setSelectedMessages,
     setShowMoveDialog,
+    setShowBulkDeleteDialog,
     isUpdating
   }
 }
