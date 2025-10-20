@@ -1,10 +1,27 @@
 import { Button } from "@/components/ui/button"
 import { GitBranch, Plus, Link2, AlertCircle } from "lucide-react"
 import type { Line, Tag } from "@/lib/types"
-import { buildLineTree } from "@/lib/line-tree-builder"
+import { buildLineTree, type LineTreeNode } from "@/lib/line-tree-builder"
 import { LineBreadcrumb } from "./LineBreadcrumb"
 import { useState } from "react"
 import { getLineConnectionInfo } from "@/hooks/helpers/line-connection"
+
+/**
+ * Flatten tree structure to include all descendants
+ */
+function flattenLineTree(nodes: LineTreeNode[]): LineTreeNode[] {
+  const result: LineTreeNode[] = []
+  
+  function traverse(node: LineTreeNode) {
+    result.push(node)
+    if (node.children && node.children.length > 0) {
+      node.children.forEach(traverse)
+    }
+  }
+  
+  nodes.forEach(traverse)
+  return result
+}
 
 type DialogMode = 'message-move' | 'line-connection'
 
@@ -212,6 +229,7 @@ export function MessageMoveDialog({
 
   const config = getModeConfig(mode, selectedMessagesCount)
   const treeNodes = buildLineTree(lines, currentLineId)
+  const flattenedNodes = flattenLineTree(treeNodes)
   const connectionInfo = config.isLineConnectionMode && selectedTargetLineId
     ? getLineConnectionInfo(currentLineId, selectedTargetLineId, Object.values(lines))
     : null
@@ -263,7 +281,7 @@ export function MessageMoveDialog({
           )}
 
           <div className="max-h-96 overflow-y-auto space-y-2 mb-4">
-            {treeNodes.map((node) => (
+            {flattenedNodes.map((node) => (
               <LineButton
                 key={node.line.id}
                 line={node.line}
