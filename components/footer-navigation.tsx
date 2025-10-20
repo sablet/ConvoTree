@@ -51,7 +51,7 @@ export function FooterNavigation({ currentView, onViewChange }: FooterNavigation
   ]
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-lg">
+    <div className="bg-white border-t border-gray-200 shadow-lg">
       <div className="flex">
         {navItems.map((item) => {
           const Icon = item.icon

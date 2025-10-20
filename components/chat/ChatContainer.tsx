@@ -231,8 +231,8 @@ export function ChatContainer({
         onDragEnd={isDesktop ? dragDropOps.handleDragEnd : undefined}
       />
 
-      {/* Input Area - positioned at bottom of main content area */}
-      <div className="mt-auto border-t border-gray-100 bg-white p-2 sm:p-4 shrink-0">
+      {/* Input Area - Fixed at bottom */}
+      <div className="border-t border-gray-100 bg-white p-2 sm:p-4 shrink-0">
         {showInsertMode ? (
           <InsertMessageInput
             messages={chatState.messages}
@@ -273,6 +273,18 @@ export function ChatContainer({
         )}
       </div>
 
+      {/* Recent Lines Footer - Fixed at bottom */}
+      <div className="border-t border-gray-200 bg-white shrink-0">
+        <RecentLinesFooter
+          key={branchOps.footerKey}
+          lines={chatState.lines}
+          messages={chatState.messages}
+          currentLineId={chatState.currentLineId}
+          branchPoints={chatState.branchPoints}
+          onLineSelect={branchOps.switchToLine}
+        />
+      </div>
+
       {/* Message Move Dialog */}
       <MessageMoveDialog
         isOpen={branchOps.showMoveDialog}
@@ -311,25 +323,6 @@ export function ChatContainer({
         onConfirm={messageOps.handleConfirmDelete}
         onCancel={() => messageOps.setDeleteConfirmation(null)}
       />
-      </div>
-
-      {/* Recent Lines Footer - Fixed at absolute bottom, completely outside main content */}
-      <div 
-        className="fixed bottom-0 z-50 bg-white border-t border-gray-200 shadow-lg"
-        style={{ 
-          left: shouldShowSidebar ? '256px' : '0',
-          right: 0,
-          maxWidth: shouldShowSidebar ? 'calc(100vw - 256px)' : '100vw'
-        }}
-      >
-        <RecentLinesFooter
-          key={branchOps.footerKey}
-          lines={chatState.lines}
-          messages={chatState.messages}
-          currentLineId={chatState.currentLineId}
-          branchPoints={chatState.branchPoints}
-          onLineSelect={branchOps.switchToLine}
-        />
       </div>
     </div>
   )

@@ -10,7 +10,7 @@ interface ChatLayoutProps {
 export function ChatLayout({ children, sidebar, footer }: ChatLayoutProps) {
   return (
     <PageLayout sidebar={sidebar} footer={footer}>
-      <div className="space-y-4 pb-16">
+      <div className="space-y-4">
         {children}
       </div>
     </PageLayout>
