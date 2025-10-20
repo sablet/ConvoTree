@@ -104,3 +104,6 @@ export const DATA_SOURCE_BUTTON_CACHE = "キャッシュ";
 export const DATA_SOURCE_STATUS_FIRESTORE = `${EMOJI_FIRESTORE} リアルタイムデータベースから読み込み中`;
 export const DATA_SOURCE_STATUS_SAMPLE = `${EMOJI_SAMPLE} デバッグ用サンプルデータを使用中`;
 export const DATA_SOURCE_STATUS_CACHE = `${EMOJI_CACHE} ローカルキャッシュから読み込み（オフライン対応）`;
+
+// Page Actions
+export const PAGE_RELOAD_LABEL = "ページをリロード";

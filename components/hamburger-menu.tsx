@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Menu, X, MessageSquare, Tags, GitBranch, Bug, CheckSquare } from "lucide-react"
+import { Menu, X, MessageSquare, Tags, GitBranch, Bug, CheckSquare, RotateCw } from "lucide-react"
 import { useRouter, usePathname } from "next/navigation"
 import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_TASKS, ROUTE_DEBUG } from "@/lib/routes"
 import { DataSourceMenuAction } from "@/components/data-source-menu-action"
@@ -21,7 +21,8 @@ import {
   NAV_TAGS_DESC,
   NAV_TASKS_DESC,
   NAV_DEBUG_DESC,
-  AUTH_LOGOUT
+  AUTH_LOGOUT,
+  PAGE_RELOAD_LABEL
 } from "@/lib/ui-strings"
 
 interface HamburgerMenuProps {
@@ -187,6 +188,19 @@ export function HamburgerMenu({
             onReload={onDataReload ?? reloadLines}
             currentSource={currentDataSource}
           />
+
+          {/* Page Reload */}
+          <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <Button
+              onClick={() => window.location.reload()}
+              size="sm"
+              variant="outline"
+              className="w-full justify-center"
+            >
+              <RotateCw className="mr-2 h-4 w-4" />
+              {PAGE_RELOAD_LABEL}
+            </Button>
+          </div>
 
           {/* Line History */}
           <LineHistoryMenu lines={lines} />
