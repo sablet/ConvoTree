@@ -160,7 +160,7 @@ export function RecentLinesFooter({
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 shadow-lg z-40">
+    <div className="p-3 overflow-hidden" style={{ maxWidth: '100%', width: '100%' }}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs font-medium text-gray-600">
           {FOOTER_LABEL_RECENT_LINES}
@@ -175,7 +175,10 @@ export function RecentLinesFooter({
         style={{
           scrollbarWidth: 'none',
           msOverflowStyle: 'none',
-          scrollBehavior: 'smooth'
+          scrollBehavior: 'smooth',
+          maxWidth: '100%',
+          width: '100%',
+          flexWrap: 'nowrap'
         }}
       >
         {/* タイムライン仮想ブランチを最左に固定表示（現在のラインでない場合のみ） */}

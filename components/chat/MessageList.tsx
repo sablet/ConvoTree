@@ -506,8 +506,8 @@ export function MessageList({
   return (
     <div
       ref={messagesContainerRef}
-      className="relative flex-1 overflow-y-auto overflow-x-hidden px-2 pb-80 sm:px-4"
-      style={{ width: '100%', maxWidth: '100vw', boxSizing: 'border-box' }}
+      className="relative flex-1 overflow-y-auto overflow-x-hidden px-2 pb-32 sm:px-4"
+      style={{ maxWidth: '100%' }}
     >
       <div className="pointer-events-none sticky top-0 z-20 -mx-2 bg-gradient-to-b from-white via-white/95 to-transparent px-2 pb-4 pt-3 sm:-mx-4 sm:px-4">
         <div ref={dateNavigatorRef} className="pointer-events-auto flex justify-center">
@@ -525,7 +525,7 @@ export function MessageList({
         </div>
       </div>
 
-      <div className="space-y-8 pt-4">
+      <div className="space-y-8 pt-4" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
         {filteredTimeline.messages.map((message, index) => (
           <MessageRow
             key={message.id}

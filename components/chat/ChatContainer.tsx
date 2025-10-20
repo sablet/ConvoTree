@@ -118,20 +118,23 @@ export function ChatContainer({
   const currentLineInfo = branchOps.getCurrentLine()
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-white overflow-hidden">
       {/* Desktop: Line Sidebar */}
       <LineSidebar
         lines={chatState.lines}
+        messages={chatState.messages}
         tags={chatState.tags}
         currentLineId={chatState.currentLineId}
         isVisible={isDesktop}
         getLineAncestry={branchOps.getLineAncestry}
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
+        setLines={chatState.setLines}
+        clearAllCaches={chatState.clearAllCaches}
       />
       
-      {/* Main Content */}
-      <div className="flex flex-col flex-1 min-w-0">
+      {/* Main Content - Force width to prevent flex item overflow */}
+      <div className="relative flex flex-col flex-1 overflow-hidden" style={{ minWidth: 0, maxWidth: '100%', width: 0 }}>
         <HamburgerMenu />
         <BranchSelector
         completeTimeline={branchOps.completeTimeline}
@@ -223,7 +226,9 @@ export function ChatContainer({
         onDragStart={isDesktop ? dragDropOps.handleDragStart : undefined}
         onDragEnd={isDesktop ? dragDropOps.handleDragEnd : undefined}
       />
-      <div className="fixed bottom-28 left-0 right-0 p-2 sm:p-4 border-t border-gray-100 bg-white z-10">
+
+      {/* Input Area - positioned at bottom of main content area */}
+      <div className="mt-auto border-t border-gray-100 bg-white p-2 sm:p-4 shrink-0">
         {showInsertMode ? (
           <InsertMessageInput
             messages={chatState.messages}
@@ -264,16 +269,6 @@ export function ChatContainer({
         )}
       </div>
 
-      {/* Recent Lines Footer */}
-      <RecentLinesFooter
-        key={branchOps.footerKey}
-        lines={chatState.lines}
-        messages={chatState.messages}
-        currentLineId={chatState.currentLineId}
-        branchPoints={chatState.branchPoints}
-        onLineSelect={branchOps.switchToLine}
-      />
-
       {/* Message Move Dialog */}
       <MessageMoveDialog
         isOpen={branchOps.showMoveDialog}
@@ -312,6 +307,25 @@ export function ChatContainer({
         onConfirm={messageOps.handleConfirmDelete}
         onCancel={() => messageOps.setDeleteConfirmation(null)}
       />
+      </div>
+
+      {/* Recent Lines Footer - Fixed at absolute bottom, completely outside main content */}
+      <div 
+        className="fixed bottom-0 z-50 bg-white border-t border-gray-200 shadow-lg"
+        style={{ 
+          left: isDesktop ? '256px' : '0',
+          right: 0,
+          maxWidth: isDesktop ? 'calc(100vw - 256px)' : '100vw'
+        }}
+      >
+        <RecentLinesFooter
+          key={branchOps.footerKey}
+          lines={chatState.lines}
+          messages={chatState.messages}
+          currentLineId={chatState.currentLineId}
+          branchPoints={chatState.branchPoints}
+          onLineSelect={branchOps.switchToLine}
+        />
       </div>
     </div>
   )
