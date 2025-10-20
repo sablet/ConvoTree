@@ -178,7 +178,9 @@ export function RecentLinesFooter({
           scrollBehavior: 'smooth',
           maxWidth: '100%',
           width: '100%',
-          flexWrap: 'nowrap'
+          flexWrap: 'nowrap',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-x'
         }}
       >
         {/* タイムライン仮想ブランチを最左に固定表示（現在のラインでない場合のみ） */}

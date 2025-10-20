@@ -182,7 +182,10 @@ export function LineSidebar({
 
       {/* Line Tree */}
       {!isCollapsed && (
-        <div className="overflow-y-auto h-[calc(100vh-14rem)] p-2 space-y-1 pb-4">
+        <div
+          className="overflow-y-auto h-[calc(100vh-14rem)] p-2 space-y-1 pb-4"
+          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+        >
           {treeNodes.length === 0 ? (
             <div className="text-center py-8 text-gray-500 text-sm">
               <Folder className="w-6 h-6 mx-auto mb-2 text-gray-400" />

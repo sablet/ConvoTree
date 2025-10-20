@@ -18,6 +18,7 @@ import { useMessageOperations } from "@/hooks/use-message-operations"
 import { useBranchOperations } from "@/hooks/use-branch-operations"
 import { useInputOperations } from "@/hooks/use-input-operations"
 import { useMessageDragDrop } from "@/hooks/use-message-drag-drop"
+import { useWindowWidth } from "@/hooks/use-window-width"
 import { useDeviceType } from "@/hooks/use-device-type"
 import type { Message, Line, BranchPoint, Tag } from "@/lib/types"
 import { getRelativeTime, formatDateForSeparator, isSameDay } from "@/lib/utils"
@@ -98,6 +99,9 @@ export function ChatContainer({
     if (success) setShowLineConnectionDialog(false)
   }, [handleLineConnect])
   
+  // Window width detection for sidebar visibility
+  const { shouldShowSidebar } = useWindowWidth()
+  
   // Device type detection for drag-drop
   const deviceType = useDeviceType()
   const isDesktop = deviceType === 'desktop'
@@ -119,13 +123,13 @@ export function ChatContainer({
 
   return (
     <div className="flex h-screen bg-white overflow-hidden">
-      {/* Desktop: Line Sidebar */}
+      {/* Line Sidebar - Visible when window width >= sidebar width * 2 */}
       <LineSidebar
         lines={chatState.lines}
         messages={chatState.messages}
         tags={chatState.tags}
         currentLineId={chatState.currentLineId}
-        isVisible={isDesktop}
+        isVisible={shouldShowSidebar}
         getLineAncestry={branchOps.getLineAncestry}
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
@@ -313,9 +317,9 @@ export function ChatContainer({
       <div 
         className="fixed bottom-0 z-50 bg-white border-t border-gray-200 shadow-lg"
         style={{ 
-          left: isDesktop ? '256px' : '0',
+          left: shouldShowSidebar ? '256px' : '0',
           right: 0,
-          maxWidth: isDesktop ? 'calc(100vw - 256px)' : '100vw'
+          maxWidth: shouldShowSidebar ? 'calc(100vw - 256px)' : '100vw'
         }}
       >
         <RecentLinesFooter
