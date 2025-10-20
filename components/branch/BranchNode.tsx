@@ -18,10 +18,12 @@ import {
 import { formatRelativeTime } from "@/lib/utils/date"
 import { BranchNode as BranchNodeType } from "@/lib/branch-tree-builder"
 import { BranchNodeHandlers, BranchDisplayData } from "./types"
-import { Tag } from "@/lib/types"
+import { Tag, Message } from "@/lib/types"
+import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
 
 interface BranchNodeProps extends BranchNodeHandlers, BranchDisplayData {
   node: BranchNodeType
+  messages: Record<string, Message>
   isActive: boolean
   isEditing: boolean
   canDelete: boolean
@@ -46,17 +48,21 @@ function BranchIcon({ depth, isActive }: { depth: number; isActive: boolean }) {
 
 function ViewModeContent({
   line,
+  messages,
   isActive,
   messageCount,
   relativeTime,
   tags
 }: {
   line: BranchNodeType['line']
+  messages: Record<string, Message>
   isActive: boolean
   messageCount: number
   relativeTime: string | null
   tags: Record<string, Tag>
 }) {
+  const charCount = calculateLineCharCount(line.messageIds, messages)
+  
   return (
     <div className="flex items-center gap-3">
       <div className="flex items-center gap-2 min-w-0">
@@ -74,6 +80,8 @@ function ViewModeContent({
           <MessageSquare className="w-3 h-3" />
           {messageCount}
         </span>
+        <span>·</span>
+        <span>{charCount} chars</span>
         {relativeTime && (
           <span className="flex items-center gap-1">
             <Clock className="w-3 h-3" />
@@ -242,6 +250,7 @@ function ActionButtons({
 
 export function BranchNode({
   node,
+  messages,
   isActive,
   isEditing,
   canDelete,
@@ -274,7 +283,7 @@ export function BranchNode({
 
         <div className="flex-1 min-w-0">
           {!isEditing ? (
-            <ViewModeContent line={line} isActive={isActive} messageCount={messageCount} relativeTime={relativeTime} tags={tags} />
+            <ViewModeContent line={line} messages={messages} isActive={isActive} messageCount={messageCount} relativeTime={relativeTime} tags={tags} />
           ) : (
             <EditModeContent
               editData={editData}

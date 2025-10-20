@@ -7,6 +7,7 @@ import { buildLineTree, getTreePrefix } from "@/lib/line-tree-builder"
 import { MAIN_LINE_ID } from "@/lib/constants"
 import { toast } from "sonner"
 import { reparentLine, updateLocalStateAfterReparent, wouldCreateCircularReference } from "@/hooks/helpers/line-reparent"
+import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
 
 const EXPANDED_LINES_KEY = 'chat-line-sidebar-expanded-lines-v2' // v2: Only expand root level by default
 
@@ -251,6 +252,7 @@ export function LineSidebar({
                 key={node.line.id}
                 node={node}
                 _lines={lines}
+                messages={messages}
                 tags={tags}
                 currentLineId={currentLineId}
                 dragOverLineId={dragOverLineId}
@@ -276,6 +278,7 @@ export function LineSidebar({
 interface LineItemProps {
   node: ReturnType<typeof buildLineTree>[number]
   _lines?: Record<string, Line>
+  messages: Record<string, Message>
   tags: Record<string, Tag>
   currentLineId: string
   dragOverLineId: string | null
@@ -298,6 +301,7 @@ interface LineItemProps {
 function LineItem({
   node,
   _lines,
+  messages,
   tags,
   currentLineId,
   dragOverLineId,
@@ -319,6 +323,7 @@ function LineItem({
   const treePrefix = getTreePrefix(node)
   const hasChildren = node.children && node.children.length > 0
   const isExpanded = expandedLines.has(line.id)
+  const charCount = calculateLineCharCount(line.messageIds, messages)
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -437,18 +442,23 @@ function LineItem({
               {line.name}
             </div>
             
-            {/* Message count and tags */}
+            {/* Message count, character count, and tags */}
             <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
               <span>{line.messageIds.length} msgs</span>
+              <span>·</span>
+              <span>{charCount} chars</span>
               {line.tagIds && line.tagIds.length > 0 && (
-                <span className="truncate">
-                  {line.tagIds
-                    .slice(0, 2)
-                    .map((tagId) => tags[tagId])
-                    .filter(Boolean)
-                    .map((tag) => `#${tag.name}`)
-                    .join(' ')}
-                </span>
+                <>
+                  <span>·</span>
+                  <span className="truncate">
+                    {line.tagIds
+                      .slice(0, 2)
+                      .map((tagId) => tags[tagId])
+                      .filter(Boolean)
+                      .map((tag) => `#${tag.name}`)
+                      .join(' ')}
+                  </span>
+                </>
               )}
             </div>
           </button>
@@ -463,6 +473,7 @@ function LineItem({
               key={childNode.line.id}
               node={childNode}
               _lines={_lines}
+              messages={messages}
               tags={tags}
               currentLineId={currentLineId}
               dragOverLineId={dragOverLineId}

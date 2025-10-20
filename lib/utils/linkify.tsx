@@ -47,3 +47,12 @@ export function containsUrl(text: string): boolean {
   return URL_REGEX.test(text)
 }
 
+/**
+ * Count text length excluding URLs
+ */
+export function countTextLengthWithoutUrls(text: string): number {
+  // Remove all URLs from text and count remaining characters
+  const textWithoutUrls = text.replace(URL_REGEX, '')
+  return textWithoutUrls.length
+}
+

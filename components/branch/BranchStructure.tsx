@@ -224,6 +224,7 @@ export function BranchStructure({
 
       <BranchTree
         tree={allBranches}
+        messages={messages}
         currentLineId={currentLineId}
         editingLineId={editingLineId}
         editData={editData}

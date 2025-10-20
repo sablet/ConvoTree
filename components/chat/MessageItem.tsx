@@ -6,6 +6,7 @@ import { EditingMessageForm } from "./EditingMessageForm"
 import { BranchingLinesPanel } from "./BranchingLinesPanel"
 import type { Message } from "@/lib/types"
 import type { MessageItemProps } from "./types"
+import { calculateMessageCharCount } from "@/lib/utils/line-char-counter"
 
 const TIME_FORMAT = new Intl.DateTimeFormat("ja-JP", {
   hour: "2-digit",
@@ -341,6 +342,7 @@ function DefaultMessageContent({
       {showHoverActions && (
         <HoverActionButtons
           messageId={message.id}
+          messageContent={message.content}
           onCopy={onCopy}
           onStartEdit={onStartEdit}
           onDelete={onDelete}
@@ -410,6 +412,7 @@ function CopySuccessFeedback() {
 
 interface HoverActionButtonsProps {
   messageId: string
+  messageContent: string
   onCopy: (messageId: string) => void
   onStartEdit: (messageId: string) => void
   onDelete: (messageId: string) => void
@@ -420,6 +423,7 @@ interface HoverActionButtonsProps {
 
 function HoverActionButtons({
   messageId,
+  messageContent,
   onCopy,
   onStartEdit,
   onDelete,
@@ -427,6 +431,8 @@ function HoverActionButtons({
   editedLabel,
   editedTooltip
 }: HoverActionButtonsProps) {
+  const charCount = calculateMessageCharCount(messageContent)
+  
   return (
     <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
       {showEditedTimestamp && editedLabel && (
@@ -437,6 +443,9 @@ function HoverActionButtons({
           ↺ {editedLabel}
         </span>
       )}
+      <span className="px-2 text-[11px] text-gray-500 flex items-center">
+        {charCount}文字
+      </span>
       <Button
         onClick={(event) => {
           event.stopPropagation()

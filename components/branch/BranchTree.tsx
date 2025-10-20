@@ -2,13 +2,14 @@
 
 import React from "react"
 import { GitBranch } from "lucide-react"
-import { Line } from "@/lib/types"
+import { Line, Message } from "@/lib/types"
 import { BranchNode as BranchNodeType } from "@/lib/branch-tree-builder"
 import { BranchNode } from "./BranchNode"
 import { BranchNodeHandlers, BranchDisplayData } from "./types"
 
 interface BranchTreeProps extends BranchNodeHandlers, BranchDisplayData {
   tree: BranchNodeType[]
+  messages: Record<string, Message>
   currentLineId: string
   editingLineId: string | null
   canDeleteLine: (line: Line) => boolean
@@ -16,6 +17,7 @@ interface BranchTreeProps extends BranchNodeHandlers, BranchDisplayData {
 
 export function BranchTree({
   tree,
+  messages,
   currentLineId,
   editingLineId,
   editData,
@@ -56,6 +58,7 @@ export function BranchTree({
         <BranchNode
           key={node.line.id}
           node={node}
+          messages={messages}
           isActive={node.line.id === currentLineId}
           isEditing={editingLineId === node.line.id}
           canDelete={canDeleteLine(node.line)}
