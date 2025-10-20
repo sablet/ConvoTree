@@ -14,7 +14,7 @@ export interface LineTreeNode {
  */
 export function buildLineTree(
   lines: Record<string, Line>,
-  currentLineId?: string
+  _currentLineId?: string
 ): LineTreeNode[] {
   const lineArray = Object.values(lines)
 
@@ -26,10 +26,8 @@ export function buildLineTree(
     })
   })
 
-  // currentLineIdが指定されている場合は除外
-  const filteredLines = currentLineId
-    ? lineArray.filter(line => line.id !== currentLineId)
-    : lineArray
+  // currentLineId の除外処理を削除（UIで disabled にして表示する）
+  const filteredLines = lineArray
 
   // ルートライン（branchFromMessageIdがない）を見つける
   const rootLines = filteredLines.filter(line => !line.branchFromMessageId)
@@ -106,19 +104,6 @@ export function buildLineTree(
     const node = buildNodes(root, 0, [], isLast)
     result.push(node)
   })
-
-  // rootLines が空でも、childrenMap のトップレベル（currentLineIdの子）を処理
-  if (sortedRoots.length === 0 && currentLineId) {
-    const topLevelChildren = childrenMap.get(currentLineId) || []
-    const sortedTopLevelChildren = [...topLevelChildren].sort((a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-    )
-    sortedTopLevelChildren.forEach((child, index) => {
-      const isLast = index === sortedTopLevelChildren.length - 1
-      const node = buildNodes(child, 0, [], isLast)
-      result.push(node)
-    })
-  }
 
   return result
 }

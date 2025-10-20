@@ -103,7 +103,7 @@ function LineButton({
   line,
   isSelected,
   isCurrent,
-  isLineConnectionMode,
+  isLineConnectionMode: _isLineConnectionMode,
   isUpdating,
   lines,
   tags,
@@ -122,19 +122,24 @@ function LineButton({
 }) {
   const buttonClass = isSelected
     ? 'border-blue-500 bg-blue-50'
-    : isCurrent && isLineConnectionMode
+    : isCurrent
     ? 'border-gray-300 bg-gray-100 cursor-not-allowed'
     : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'
 
   return (
     <button
       onClick={() => onSelect(line.id)}
-      disabled={isUpdating || (isLineConnectionMode && isCurrent)}
+      disabled={isUpdating || isCurrent}
       className={`w-full text-left p-3 border rounded-md transition-colors disabled:opacity-50 ${buttonClass}`}
     >
       <div className="flex items-center justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <LineBreadcrumb lineId={line.id} lines={lines} getLineAncestry={getLineAncestry} isLeafNode={true} />
+          <div className="flex items-center gap-2">
+            <LineBreadcrumb lineId={line.id} lines={lines} getLineAncestry={getLineAncestry} isLeafNode={true} />
+            {isCurrent && (
+              <span className="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-0.5 rounded">現在のライン</span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-gray-400">({line.messageIds.length})</span>
