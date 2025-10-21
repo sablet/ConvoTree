@@ -135,7 +135,7 @@ async function exportFirestoreToMarkdown() {
           }
 
           // Get type
-          const type = msg.type || 'unknown';
+          const type = msg.type || 'text';
 
           // Process content: replace newlines and truncate if needed
           let content = msg.content.replace(/\n/g, '\\n');
@@ -145,9 +145,30 @@ async function exportFirestoreToMarkdown() {
           // Escape double quotes for CSV compatibility
           content = content.replace(/"/g, '""');
 
-          // Build output line: timestamp, content, type (empty if unknown/text for CSV compatibility)
-          const typeValue = (type === 'unknown' || type === 'text') ? '' : type;
-          markdown += `* ${timestamp}, "${content}", ${typeValue}\n`;
+          // Filter metadata to only include relevant properties
+          let filteredMetadata = {};
+          if (msg.metadata) {
+            // Task properties
+            if (msg.metadata.priority !== undefined) filteredMetadata.priority = msg.metadata.priority;
+            if (msg.metadata.completed !== undefined) filteredMetadata.completed = msg.metadata.completed;
+            if (msg.metadata.completedAt !== undefined) filteredMetadata.completedAt = msg.metadata.completedAt;
+
+            // Session properties
+            if (msg.metadata.checkedInAt !== undefined) filteredMetadata.checkedInAt = msg.metadata.checkedInAt;
+            if (msg.metadata.checkedOutAt !== undefined) filteredMetadata.checkedOutAt = msg.metadata.checkedOutAt;
+            if (msg.metadata.timeSpent !== undefined) filteredMetadata.timeSpent = msg.metadata.timeSpent;
+          }
+
+          // Serialize metadata as JSON string (no escaping inside, just wrap in quotes)
+          let metadataStr = '';
+          if (Object.keys(filteredMetadata).length > 0) {
+            metadataStr = JSON.stringify(filteredMetadata);
+          }
+
+          // Build output line: timestamp, content, type, metadata
+          // Note: metadata contains JSON with quotes, so we escape it for CSV
+          const escapedMetadata = metadataStr.replace(/"/g, '""');
+          markdown += `* ${timestamp}, "${content}", ${type}, "${escapedMetadata}"\n`;
         });
       }
 
