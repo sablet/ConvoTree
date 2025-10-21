@@ -95,15 +95,23 @@ async function exportFirestoreToMarkdown() {
     markdown += `**会話ID:** ${conversationId}\n\n`;
     markdown += `**エクスポート日時:** ${new Date().toLocaleString('ja-JP')}\n\n`;
 
-    // ライン名一覧（パンくず構造付き）
+    // ライン名一覧（パンくず構造付き、名前順でソート）
     markdown += `## ライン名一覧\n\n`;
-    const linePaths = lines.map(line => generateBreadcrumbs(line.id));
-    markdown += `${linePaths.join(', ')}\n\n`;
-    markdown += `---\n\n`;
+    
+    // Sort lines by breadcrumbs for consistent ordering
+    const linesWithBreadcrumbs = lines.map(line => ({
+      line,
+      breadcrumbs: generateBreadcrumbs(line.id)
+    }));
+    linesWithBreadcrumbs.sort((a, b) => a.breadcrumbs.localeCompare(b.breadcrumbs));
+    
+    linesWithBreadcrumbs.forEach(({ breadcrumbs }) => {
+      markdown += `* ${breadcrumbs}\n`;
+    });
+    markdown += `\n---\n\n`;
 
-    // 各ラインごとにメッセージを出力
-    lines.forEach(line => {
-      const breadcrumbs = generateBreadcrumbs(line.id);
+    // 各ラインごとにメッセージを出力（ソート済みの順序で）
+    linesWithBreadcrumbs.forEach(({ line, breadcrumbs }) => {
 
       markdown += `## ${breadcrumbs}\n\n`;
 
@@ -116,7 +124,7 @@ async function exportFirestoreToMarkdown() {
         markdown += `_（メッセージなし）_\n\n`;
       } else {
         lineMessages.forEach(msg => {
-          // タイムスタンプをフォーマット (YYYY-MM-DD HH:MM:SS)
+          // Format timestamp (YYYY-MM-DD HH:MM:SS)
           let timestamp = '';
           if (msg.timestamp) {
             const date = new Date(msg.timestamp);
@@ -126,7 +134,20 @@ async function exportFirestoreToMarkdown() {
             timestamp = date.toISOString().replace('T', ' ').substring(0, 19);
           }
 
-          markdown += `* ${timestamp}, ${msg.content}\n`;
+          // Get type
+          const type = msg.type || 'unknown';
+
+          // Process content: replace newlines and truncate if needed
+          let content = msg.content.replace(/\n/g, '\\n');
+          if (content.length > 200) {
+            content = content.substring(0, 100) + '...';
+          }
+          // Escape double quotes for CSV compatibility
+          content = content.replace(/"/g, '""');
+
+          // Build output line: timestamp, content, type (empty if unknown/text for CSV compatibility)
+          const typeValue = (type === 'unknown' || type === 'text') ? '' : type;
+          markdown += `* ${timestamp}, "${content}", ${typeValue}\n`;
         });
       }
 
