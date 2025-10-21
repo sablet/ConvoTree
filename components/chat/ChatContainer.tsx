@@ -180,7 +180,9 @@ export function ChatContainer({
         <ChatHeader
           currentLine={currentLineInfo}
           messages={chatState.messages}
+          lines={chatState.lines}
           tags={chatState.tags}
+          getLineAncestry={branchOps.getLineAncestry}
           onEditLine={branchOps.handleEditLine}
           onToggleSelectionMode={branchOps.handleToggleSelectionMode}
           onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
