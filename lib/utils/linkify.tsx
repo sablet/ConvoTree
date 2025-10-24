@@ -13,12 +13,15 @@ interface LinkifiedTextProps {
  */
 export function LinkifiedText({ text }: LinkifiedTextProps) {
   const parts = text.split(URL_REGEX)
-  
+
   return (
     <>
       {parts.map((part, index) => {
         // Check if this part is a URL
         if (part.match(URL_REGEX)) {
+          // URLが50文字を超える場合は省略表示
+          const displayText = part.length > 50 ? `${part.slice(0, 47)}...` : part
+
           return (
             <a
               key={index}
@@ -27,12 +30,13 @@ export function LinkifiedText({ text }: LinkifiedTextProps) {
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800 underline break-all"
               onClick={(e) => e.stopPropagation()}
+              title={part}
             >
-              {part}
+              {displayText}
             </a>
           )
         }
-        
+
         // Regular text
         return <span key={index}>{part}</span>
       })}
