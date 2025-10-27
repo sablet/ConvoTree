@@ -4,32 +4,25 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "(npm run cpd-check || echo '⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.') && next build",
-    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && next build",
+    "build": "(npm run cpd-check || echo '⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.') && npm run knip:strict && next build",
+    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && npm run knip:strict && next build",
     "start": "next start",
     "lint": "next lint && eslint . --ext .ts,.tsx,.js,.jsx",
-    "knip": "knip --strict --max-issues 0",
+    "knip": "knip",
+    "knip:strict": "knip --strict --max-issues 0",
     "cpd-check": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "cpd-report": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "serve": "firebase serve --only hosting",
     "build:serve": "rm -rf out && npm run build && npm run serve"
   },
   "dependencies": {
-    "@radix-ui/react-dropdown-menu": "2.1.4",
-    "@radix-ui/react-slot": "1.1.1",
     "@vercel/blob": "^2.0.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "firebase": "^12.3.0",
-    "firebase-admin": "^13.5.0",
     "firebaseui": "^6.1.0",
     "lucide-react": "^0.454.0",
     "next": "14.2.25",
     "react": "^19",
-    "react-dom": "^19",
-    "sonner": "^1.7.4",
-    "tailwind-merge": "^3.3.1",
-    "tailwindcss-animate": "^1.0.7"
+    "react-dom": "^19"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",
