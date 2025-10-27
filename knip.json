@@ -1,0 +1,31 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "hooks/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx}",
+    "scripts/**/*.{js,mjs,ts}"
+  ],
+  "project": [
+    "app/**/*.{ts,tsx}",
+    "components/**/*.{ts,tsx}",
+    "hooks/**/*.{ts,tsx}",
+    "lib/**/*.{ts,tsx}",
+    "scripts/**/*.{js,mjs,ts}"
+  ],
+  "ignore": [
+    "**/*.config.{js,mjs,ts}",
+    "eslint-local-rules/**",
+    "eslint-rules/**",
+    ".eslintrc-local.cjs",
+    ".jscpd.json"
+  ],
+  "ignoreDependencies": [
+    "jscpd",
+    "eslint-plugin-local-rules"
+  ],
+  "ignoreBinaries": [
+    "firebase"
+  ]
+}
