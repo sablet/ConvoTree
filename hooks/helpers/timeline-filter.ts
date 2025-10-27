@@ -1,7 +1,7 @@
 import type { Message } from '@/lib/types'
 import type { LineAncestryResult } from './branch-ancestry'
 
-export interface TimelineFilterOptions {
+interface TimelineFilterOptions {
   filterMessageType: string
   filterTaskCompleted: string
   filterDateStart: string

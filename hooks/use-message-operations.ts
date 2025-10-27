@@ -97,7 +97,7 @@ interface DeleteConfirmationState {
   isOpen: boolean
 }
 
-export interface MessageOperations {
+interface MessageOperations {
   // メッセージ送信・作成
   handleSendMessage: (
     inputValue: string,

@@ -108,18 +108,18 @@ export function parseDateTime(dateTimeStr: string): string | null {
 /**
  * セッション編集時の検証エラー
  */
-export interface ValidationError {
+interface ValidationError {
   isValid: false
   message: string
 }
 
-export interface ValidationSuccess {
+interface ValidationSuccess {
   isValid: true
   checkedInAt?: string | null
   checkedOutAt?: string | null
 }
 
-export type ValidationResult = ValidationError | ValidationSuccess
+type ValidationResult = ValidationError | ValidationSuccess
 
 /**
  * セッション時刻編集の入力値を検証

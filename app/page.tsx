@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 import Image from "next/image"
-import { ChatContainer } from "@/components/chat"
+import { ChatContainer } from "@/components/chat/ChatContainer"
 import { PageLayout } from "@/components/layouts/PageLayout"
 import { useChatData } from "@/hooks/use-chat-data"
 import { MAIN_LINE_ID } from "@/lib/constants"

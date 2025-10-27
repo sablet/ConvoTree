@@ -63,7 +63,7 @@ export async function moveMessagesToLine(
   await Promise.all(updatePromises)
 }
 
-export interface UpdateLocalStateParams {
+interface UpdateLocalStateParams {
   selectedMessages: Set<string>
   targetLineId: string
   messages: Record<string, Message>
@@ -125,7 +125,7 @@ export function updateLocalStateAfterMove(params: UpdateLocalStateParams): void 
   })
 }
 
-export interface UpdateLocalStateAfterCreateParams {
+interface UpdateLocalStateAfterCreateParams {
   selectedMessages: Set<string>
   newLineId: string
   lineName: string

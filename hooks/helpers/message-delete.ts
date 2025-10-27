@@ -1,7 +1,7 @@
 import { dataSourceManager } from '@/lib/data-source'
 import type { Message, Line, BranchPoint } from '@/lib/types'
 
-export interface MessageDeleteParams {
+interface MessageDeleteParams {
   messageId: string
   message: Message
   branchPoints: Record<string, BranchPoint>

@@ -43,7 +43,7 @@ export function buildMessageChain(messagesMap: Map<string, MessageWithTimestamp>
   return orderedIds;
 }
 
-export function determineBranchPoint(
+function determineBranchPoint(
   firstMessageDoc: DocumentSnapshot,
   oldLineDocsMap: Map<string, Line>,
   firstMessageId: string

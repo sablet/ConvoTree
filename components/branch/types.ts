@@ -1,6 +1,6 @@
 import { Line, Tag, TagGroup } from "@/lib/types"
 
-export interface BranchEditData {
+interface BranchEditData {
   name: string
   tagIds: string[]
   availableTags: string[]

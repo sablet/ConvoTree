@@ -4,7 +4,7 @@ import type { MessageType } from '@/lib/constants'
 import { MESSAGE_TYPE_TEXT } from '@/lib/constants'
 import { getDefaultMetadataForType } from './message-metadata'
 
-export interface MessageEditData {
+interface MessageEditData {
   editingMessageId: string
   editingContent: string
   editingMessageType: MessageType

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export type DeviceType = 'desktop' | 'mobile'
+type DeviceType = 'desktop' | 'mobile'
 
 /**
  * Detect device type based on touch capability
@@ -40,4 +40,3 @@ export function useDeviceType(): DeviceType {
 
   return deviceType
 }
-

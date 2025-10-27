@@ -14,13 +14,13 @@ import {
 import type { MessageType } from '@/lib/constants'
 import type { TaskPriority } from '@/lib/types/task'
 
-export interface ParsedMessage {
+interface ParsedMessage {
   content: string // コマンドを除いた実際のメッセージ内容
   type: MessageType
   metadata?: Record<string, unknown>
 }
 
-export interface SlashCommandPattern {
+interface SlashCommandPattern {
   pattern: RegExp
   type: ParsedMessage['type']
   metadata?: ParsedMessage['metadata']
@@ -109,19 +109,4 @@ export function parseSlashCommand(input: string): ParsedMessage {
     content: trimmedInput,
     type: MESSAGE_TYPE_TEXT
   }
-}
-
-
-/**
- * スラッシュコマンド一覧を取得（UI表示用）
- */
-export function getAvailableCommands() {
-  return [
-    { command: SLASH_COMMAND_TASK_HIGH, description: '高優先度タスクを作成' },
-    { command: SLASH_COMMAND_TASK, description: '中優先度タスクを作成' },
-    { command: SLASH_COMMAND_TASK_MEDIUM, description: '中優先度タスクを作成 (/task_medium)' },
-    { command: SLASH_COMMAND_TASK_LOW, description: '低優先度タスクを作成' },
-    { command: SLASH_COMMAND_DOCUMENT, description: '長文ドキュメントを作成' },
-    { command: SLASH_COMMAND_SESSION, description: '作業セッションを開始' }
-  ]
 }

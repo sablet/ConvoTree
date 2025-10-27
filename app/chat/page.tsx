@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
-import { ChatContainer } from "@/components/chat"
+import { ChatContainer } from "@/components/chat/ChatContainer"
 import { FooterNavigation } from "@/components/footer-navigation"
 import { TagProvider } from "@/lib/tag-context"
 import { ChatLayout } from "@/components/layouts/ChatLayout"

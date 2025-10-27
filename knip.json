@@ -1,18 +1,17 @@
 {
   "entry": [
     "app/**/*.{ts,tsx}",
-    "scripts/**/*.{js,mjs,ts}",
-    "next.config.{js,mjs,ts}"
+    "scripts/**/*.{js,mjs,ts}"
   ],
   "project": [
     "app/**/*.{ts,tsx}",
     "components/**/*.{ts,tsx}",
     "hooks/**/*.{ts,tsx}",
     "lib/**/*.{ts,tsx}",
-    "scripts/**/*.{js,mjs,ts}",
-    "next.config.{js,mjs,ts}"
+    "scripts/**/*.{js,mjs,ts}"
   ],
   "ignore": [
+    "**/*.config.{js,mjs,ts}",
     "eslint-local-rules/**",
     "eslint-rules/**",
     ".eslintrc-local.cjs",
@@ -20,7 +19,13 @@
   ],
   "ignoreDependencies": [
     "jscpd",
-    "eslint-plugin-local-rules"
+    "eslint-plugin-local-rules",
+    "@radix-ui/react-dropdown-menu",
+    "@radix-ui/react-slot",
+    "class-variance-authority",
+    "clsx",
+    "sonner",
+    "tailwind-merge"
   ],
   "ignoreBinaries": [
     "firebase"

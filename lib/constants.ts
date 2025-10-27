@@ -18,10 +18,10 @@ export const MESSAGE_TYPE_SESSION = "session";
 export type MessageType = typeof MESSAGE_TYPE_TEXT | typeof MESSAGE_TYPE_TASK | typeof MESSAGE_TYPE_DOCUMENT | typeof MESSAGE_TYPE_SESSION;
 
 // Priority Levels
-export const PRIORITY_LOW = "低";
-export const PRIORITY_MEDIUM = "中";
-export const PRIORITY_HIGH = "高";
-export const PRIORITY_URGENT = "緊急";
+const PRIORITY_LOW = "低";
+const PRIORITY_MEDIUM = "中";
+const PRIORITY_HIGH = "高";
+const PRIORITY_URGENT = "緊急";
 
 export const TASK_PRIORITY_LABELS: Record<TaskPriority, string> = {
   urgent: PRIORITY_URGENT,

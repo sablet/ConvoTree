@@ -23,5 +23,3 @@ export const db = initializeFirestore(app, {
 
 // Firebase Auth インスタンス
 export const auth = getAuth(app);
-
-export default app;

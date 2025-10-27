@@ -2,12 +2,12 @@ import { dataSourceManager } from '@/lib/data-source'
 import { parseSlashCommand } from '@/lib/slash-command-parser'
 import type { Line, Message, BranchPoint } from '@/lib/types'
 
-export interface NewLineParams {
+interface NewLineParams {
   name: string
   branchFromMessageId: string
 }
 
-export interface NewMessageParams {
+interface NewMessageParams {
   content: string
   images: string[]
   targetLineId: string

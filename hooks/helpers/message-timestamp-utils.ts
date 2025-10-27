@@ -1,4 +1,3 @@
-import { useCallback } from 'react';
 import { dataSourceManager } from '@/lib/data-source';
 import type { Message } from '@/lib/types';
 import { createNewMessage } from './message-send';
@@ -26,11 +25,4 @@ export const createMessageWithTimestamp = (
 
     return { messageId, message };
   });
-};
-
-/**
- * Hook for creating messages with specific timestamps
- */
-export const useCreateMessageWithTimestamp = () => {
-  return useCallback(createMessageWithTimestamp, []);
 };

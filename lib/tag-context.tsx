@@ -14,14 +14,14 @@ export interface Tag {
   subtags?: Tag[]
 }
 
-export interface TagGroup {
+interface TagGroup {
   id: string
   name: string
   color: string
   order: number
 }
 
-export interface TagState {
+interface TagState {
   tags: Tag[]
   tagGroups: TagGroup[]
   isLoading: boolean

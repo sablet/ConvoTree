@@ -45,13 +45,6 @@ export function LinkifiedText({ text }: LinkifiedTextProps) {
 }
 
 /**
- * Detect if text contains any URLs
- */
-export function containsUrl(text: string): boolean {
-  return URL_REGEX.test(text)
-}
-
-/**
  * Count text length excluding URLs
  */
 export function countTextLengthWithoutUrls(text: string): number {
@@ -59,4 +52,3 @@ export function countTextLengthWithoutUrls(text: string): number {
   const textWithoutUrls = text.replace(URL_REGEX, '')
   return textWithoutUrls.length
 }
-

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { BranchStructure } from "@/components/branch"
+import { BranchStructure } from "@/components/branch/BranchStructure"
 import { HamburgerMenu } from "@/components/hamburger-menu"
 import { dataSourceManager } from "@/lib/data-source"
 import { useChatRepository } from "@/lib/chat-repository-context"

@@ -15,7 +15,7 @@ interface BranchOperationsProps {
   onLineChange?: (lineId: string) => void
 }
 
-export interface BranchOperations extends MessageMoveOperations {
+interface BranchOperations extends MessageMoveOperations {
   // ライン切り替え
   switchToLine: (lineId: string) => void
   getCurrentLine: () => Line | null

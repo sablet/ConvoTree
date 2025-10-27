@@ -49,14 +49,9 @@ export const NAV_DEBUG_DESC = "デバッグツール";
 // Timeline/Branch Names
 export const TIMELINE_BRANCH_NAME = "全メッセージ (時系列)";
 
-// Placeholders
-export const PLACEHOLDER_SEARCH = "検索...";
-export const PLACEHOLDER_TAG = "タグ...";
-
 // Loading Messages
 export const LOADING_TAGS = "タグを読み込み中...";
 export const LOADING_CHAT_DATA = "チャットデータを読み込み中...";
-export const LOADING_BRANCH_DATA = "ブランチデータを読み込み中...";
 export const LOADING_GENERIC = "読み込み中...";
 
 // Error Messages
@@ -86,11 +81,9 @@ export const LABEL_DOCUMENT = "ドキュメント";
 export const LABEL_SESSION = "作業セッション";
 
 // Emojis
-export const EMOJI_FIRESTORE = "🔥";
-export const EMOJI_SAMPLE = "📄";
-export const EMOJI_CACHE = "💾";
-export const EMOJI_SUCCESS = "✅";
-export const EMOJI_ERROR = "❌";
+const EMOJI_FIRESTORE = "🔥";
+const EMOJI_SAMPLE = "📄";
+const EMOJI_CACHE = "💾";
 
 // Data Source Controls
 export const DATA_SOURCE_SECTION_TITLE = "データソース";

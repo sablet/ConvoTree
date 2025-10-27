@@ -7,12 +7,12 @@ import type { IDataSource } from '@/lib/data-source/base';
 import { FirestoreRealtimeListener } from '@/lib/data-source/firestore-realtime';
 import type { ChatDataChangeHandler, ErrorHandler } from '@/lib/data-source/firestore-realtime';
 
-export interface LoadChatDataOptions {
+interface LoadChatDataOptions {
   source?: DataSource;
   fallbackSources?: DataSource[];
 }
 
-export interface LoadChatDataResult {
+interface LoadChatDataResult {
   data: ChatData;
   source: DataSource;
   fromCache: boolean;

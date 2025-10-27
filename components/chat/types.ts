@@ -3,7 +3,7 @@ import type { Message, Line, Tag, MessageType } from "@/lib/types"
 /**
  * メッセージ操作用の共通Props型
  */
-export interface MessageOperationProps {
+interface MessageOperationProps {
   editingMessageId: string | null
   editingContent: string
   editingMessageType: MessageType | null
