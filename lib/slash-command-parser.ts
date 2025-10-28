@@ -27,6 +27,12 @@ interface SlashCommandPattern {
   metadata?: ParsedMessage['metadata']
 }
 
+type TaskCommandMetadata = Record<string, unknown> & {
+  completed?: boolean
+  completedAt?: string
+  createdAt?: string
+}
+
 // サポートするスラッシュコマンドパターン
 const escapeForRegExp = (command: string) => command.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
@@ -73,6 +79,68 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   }
 ]
 
+const createDocumentMessage = (
+  content: string,
+  baseMetadata?: ParsedMessage['metadata']
+): ParsedMessage => {
+  const lines = content.split('\n')
+  const title = lines[0]?.trim() || ''
+  const metadata = {
+    ...(baseMetadata ? { ...baseMetadata } : {}),
+    wordCount: content.length,
+    originalLength: content.length,
+    title
+  }
+
+  return {
+    content,
+    type: MESSAGE_TYPE_DOCUMENT,
+    metadata
+  }
+}
+
+const createTaskMessage = (
+  content: string,
+  baseMetadata?: ParsedMessage['metadata']
+): ParsedMessage => {
+  const nowIso = new Date().toISOString()
+  const base = (baseMetadata ?? {}) as TaskCommandMetadata
+  const metadata: TaskCommandMetadata = {
+    ...base,
+    createdAt: nowIso
+  }
+
+  if (metadata.completed === true && metadata.completedAt === undefined) {
+    metadata.completedAt = nowIso
+  }
+
+  return {
+    content,
+    type: MESSAGE_TYPE_TASK,
+    metadata
+  }
+}
+
+const createParsedMessage = (
+  content: string,
+  type: ParsedMessage['type'],
+  metadata?: ParsedMessage['metadata']
+): ParsedMessage => {
+  if (type === MESSAGE_TYPE_DOCUMENT) {
+    return createDocumentMessage(content, metadata)
+  }
+
+  if (type === MESSAGE_TYPE_TASK) {
+    return createTaskMessage(content, metadata)
+  }
+
+  return {
+    content,
+    type,
+    metadata
+  }
+}
+
 /**
  * 入力されたメッセージからスラッシュコマンドを解析する
  */
@@ -84,50 +152,7 @@ export function parseSlashCommand(input: string): ParsedMessage {
     const match = trimmedInput.match(pattern)
     if (match) {
       const content = match[1]?.trim() || ''
-
-      // ドキュメントの場合、文字数とタイトルを設定
-      if (type === MESSAGE_TYPE_DOCUMENT && metadata) {
-        const lines = content.split('\n')
-        const title = lines[0]?.trim() || ''
-
-        const updatedMetadata = {
-          ...metadata,
-          wordCount: content.length,
-          originalLength: content.length,
-          title
-        }
-        return {
-          content,
-          type,
-          metadata: updatedMetadata
-        }
-      }
-
-      if (type === MESSAGE_TYPE_TASK) {
-        const nowIso = new Date().toISOString()
-        const baseMetadata = metadata ? { ...metadata } : {}
-        const isCompleted = baseMetadata.completed === true
-        const taskMetadata: Record<string, unknown> = {
-          ...baseMetadata,
-          createdAt: nowIso
-        }
-
-        if (isCompleted && baseMetadata.completedAt === undefined) {
-          taskMetadata.completedAt = nowIso
-        }
-
-        return {
-          content,
-          type,
-          metadata: taskMetadata
-        }
-      }
-
-      return {
-        content,
-        type,
-        metadata
-      }
+      return createParsedMessage(content, type, metadata)
     }
   }
 

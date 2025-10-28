@@ -131,41 +131,65 @@ export class ChatRepository {
 
       return new Promise<LoadChatDataResult>((resolve, reject) => {
         let resolved = false;
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let unsubscribe: (() => void) | undefined;
 
-        const onChange: ChatDataChangeHandler = (data, fromCache) => {
-          if (!resolved && !fromCache) {
-            // サーバーからの初回データ取得完了
-            resolved = true;
-            resolve({
-              data,
-              source: 'firestore',
-              fromCache: false
-            });
+        const cleanup = () => {
+          if (unsubscribe) {
+            unsubscribe();
+            unsubscribe = undefined;
+          }
+          if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+            timeoutId = undefined;
           }
         };
 
         const onError: ErrorHandler = (error) => {
           if (!resolved) {
             resolved = true;
+            cleanup();
             reject(error);
           }
         };
 
-        this.startRealtimeListener(onChange, onError);
+        unsubscribe = this.subscribeToDataChanges((data, fromCache) => {
+          if (!resolved && !fromCache) {
+            // サーバーからの初回データ取得完了
+            resolved = true;
+            cleanup();
+            resolve({
+              data,
+              source: 'firestore',
+              fromCache: false
+            });
+          }
+        });
+
+        if (resolved) {
+          cleanup();
+          return;
+        }
+
+        // Firestoreリスナー起動（既存リスナーがある場合は再利用）
+        this.startRealtimeListener(() => {}, onError);
 
         // タイムアウト設定（10秒）
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           if (!resolved) {
-            resolved = true;
             const currentData = this.getCurrentData();
             if (currentData && Object.keys(currentData.messages).length > 0) {
               // キャッシュデータがある場合はそれを返す
+              resolved = true;
+              cleanup();
               resolve({
                 data: currentData,
                 source: 'firestore',
                 fromCache: true
               });
             } else {
+              resolved = true;
+              cleanup();
               reject(new Error('Firestore data load timeout'));
             }
           }
