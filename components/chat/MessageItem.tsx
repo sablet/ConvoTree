@@ -319,7 +319,7 @@ function DefaultMessageContent({
   const showHoverActions = hoveredMessageId === message.id && !isSelectionMode
 
   return (
-    <div className="flex-1 min-w-0">
+    <div className="relative flex-1 min-w-0">
       <MessageTypeRenderer
         message={message}
         onUpdate={(messageId, updates) => {
@@ -434,7 +434,7 @@ function HoverActionButtons({
   const charCount = calculateMessageCharCount(messageContent)
   
   return (
-    <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1">
+    <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1 transform translate-y-full">
       {showEditedTimestamp && editedLabel && (
         <span
           className="px-2 text-[11px] text-gray-600 flex items-center gap-1"
