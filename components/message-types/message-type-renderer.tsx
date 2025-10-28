@@ -1,6 +1,8 @@
 "use client"
 
 import { TaskMessage } from "./task-message"
+import type { TaskMessageData } from "./task-message-shared"
+import { sanitizeTaskMetadata } from "./task-message-shared"
 import { DocumentMessage } from "./document-message"
 import { SessionMessage } from "./session-message"
 import { MESSAGE_TYPE_TEXT, MESSAGE_TYPE_TASK, MESSAGE_TYPE_DOCUMENT, MESSAGE_TYPE_SESSION, type MessageType } from '@/lib/constants'
@@ -33,18 +35,9 @@ export function MessageTypeRenderer({
   onUpdate,
   isEditable = false
 }: MessageTypeRendererProps) {
-  const handleTaskDataUpdate = (newTaskData: {
-    priority: 'low' | 'medium' | 'high' | 'urgent'
-    dueDate?: string
-    completed: boolean
-    tags?: string[]
-    completedAt?: string
-  }) => {
+  const handleTaskDataUpdate = (newTaskData: TaskMessageData) => {
     if (onUpdate) {
-      const cleanedTaskData = { ...newTaskData }
-      if (cleanedTaskData.completedAt === undefined) {
-        delete cleanedTaskData.completedAt
-      }
+      const cleanedTaskData = sanitizeTaskMetadata(newTaskData)
 
       onUpdate(message.id, {
         metadata: cleanedTaskData
@@ -82,13 +75,7 @@ export function MessageTypeRenderer({
   const messageType = message.type || MESSAGE_TYPE_TEXT;
   switch (messageType) {
     case MESSAGE_TYPE_TASK:
-      const taskData = message.metadata as {
-        priority: 'low' | 'medium' | 'high' | 'urgent'
-        completed: boolean
-        tags?: string[]
-        completedAt?: string
-        createdAt?: string
-      }
+      const taskData = message.metadata as TaskMessageData
       return (
         <TaskMessage
           messageId={message.id}

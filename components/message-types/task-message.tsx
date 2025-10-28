@@ -3,16 +3,12 @@
 import { useState, useEffect, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Check, CheckSquare, Clock } from "lucide-react"
+import { Check, CheckSquare, Clock, Play, Square } from "lucide-react"
+import type { LucideIcon } from "lucide-react"
 import { LinkifiedText } from "@/lib/utils/linkify"
-
-interface TaskMessageData {
-  priority: 'low' | 'medium' | 'high' | 'urgent'
-  completed: boolean
-  tags?: string[]
-  completedAt?: string
-  createdAt?: string
-}
+import { formatDuration, calculateDuration } from "./session-message-helpers"
+import type { TaskMessageData } from "./task-message-shared"
+import { STATUS_TASK_WORKING, STATUS_TASK_IDLE, LABEL_TASK_LAST_CHECKOUT } from "@/lib/ui-strings"
 
 interface TaskMessageProps {
   messageId: string
@@ -41,6 +37,7 @@ export function TaskMessage({
   content,
   data,
   onUpdate,
+  isEditable: _isEditable = false,
   fallbackCreatedAt
 }: TaskMessageProps) {
   // dataを直接使用（メモ化を削除）
@@ -49,7 +46,10 @@ export function TaskMessage({
     completed: false,
     tags: [],
     completedAt: undefined,
-    createdAt: undefined
+    createdAt: undefined,
+    checkedInAt: undefined,
+    checkedOutAt: undefined,
+    timeSpent: 0
   }, [data]);
 
   const [isEditing, setIsEditing] = useState(false)
@@ -57,11 +57,34 @@ export function TaskMessage({
   const creationTimestamp = taskData.createdAt ?? (fallbackCreatedAt ? fallbackCreatedAt.toISOString() : undefined)
   const createdLabel = formatStatusLabel(creationTimestamp)
   const completedLabel = taskData.completed ? formatStatusLabel(taskData.completedAt) : null
+  const [currentTime, setCurrentTime] = useState(Date.now())
+  const isWorking = Boolean(taskData.checkedInAt && !taskData.checkedOutAt)
+  const totalTimeSpent = taskData.timeSpent ?? 0
 
   // propsの変更を監視してローカル状態を更新
   useEffect(() => {
     setEditData(taskData);
   }, [taskData])
+
+  useEffect(() => {
+    if (isWorking) {
+      const interval = setInterval(() => {
+        setCurrentTime(Date.now())
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+  }, [isWorking])
+
+  const currentSessionDuration = useMemo(() => {
+    if (!taskData.checkedInAt) {
+      return 0
+    }
+    const start = new Date(taskData.checkedInAt).getTime()
+    if (Number.isNaN(start)) {
+      return 0
+    }
+    return Math.max(0, Math.round((currentTime - start) / (1000 * 60)))
+  }, [taskData.checkedInAt, currentTime])
 
   const handleSave = () => {
     onUpdate?.(editData)
@@ -82,7 +105,6 @@ export function TaskMessage({
     onUpdate?.(newData)
   }
 
-
   const handlePriorityChange = (priority: TaskMessageData['priority']) => {
     setEditData(prev => ({
       ...prev,
@@ -90,25 +112,28 @@ export function TaskMessage({
     }))
   }
 
-  if (isEditing) {
-    return (
-      <TaskEditingView
-        editData={editData}
-        onPriorityChange={handlePriorityChange}
-        onCancel={handleCancel}
-        onSave={handleSave}
-      />
-    )
-  }
+  const sessionInfo = buildTaskSessionInfo(taskData, isWorking, currentSessionDuration, totalTimeSpent)
 
   return (
-    <TaskDisplayView
-      content={content}
-      taskData={taskData}
-      createdLabel={createdLabel}
-      completedLabel={completedLabel}
-      onToggleComplete={handleToggleComplete}
-    />
+    <div className="space-y-3">
+      {isEditing ? (
+        <TaskEditingView
+          editData={editData}
+          onPriorityChange={handlePriorityChange}
+          onCancel={handleCancel}
+          onSave={handleSave}
+        />
+      ) : (
+        <TaskDisplayView
+          content={content}
+          taskData={taskData}
+          createdLabel={createdLabel}
+          completedLabel={completedLabel}
+          sessionInfo={sessionInfo}
+          onToggleComplete={handleToggleComplete}
+        />
+      )}
+    </div>
   )
 }
 
@@ -175,6 +200,15 @@ interface TaskDisplayViewProps {
   taskData: TaskMessageData
   createdLabel: string | null
   completedLabel: string | null
+  sessionInfo: {
+    isWorking: boolean
+    startLabel: string | null
+    endLabel: string | null
+    currentDurationLabel: string | null
+    totalDurationLabel: string | null
+    lastSessionDurationLabel: string | null
+    hasPreviousSessions: boolean
+  }
   onToggleComplete: () => void
 }
 
@@ -183,14 +217,20 @@ function TaskDisplayView({
   taskData,
   createdLabel,
   completedLabel,
+  sessionInfo,
   onToggleComplete
 }: TaskDisplayViewProps) {
   const priority = taskData.priority || 'medium'
   const isCompleted = taskData.completed
-  const containerClass = isCompleted ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+  const containerClass = isCompleted
+    ? 'bg-green-50 border-green-200'
+    : sessionInfo.isWorking
+      ? 'bg-yellow-50 border-yellow-200'
+      : 'bg-gray-50 border-gray-200'
   const toggleClass = isCompleted ? 'bg-green-100/70' : 'hover:bg-gray-100'
   const checkboxClass = isCompleted ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300'
   const contentClass = isCompleted ? 'line-through text-gray-500' : 'text-gray-900'
+  const { primaryItems, sessionItems } = buildTaskDetailItems(createdLabel, completedLabel, sessionInfo)
 
   return (
     <div className={`border rounded-lg p-4 transition-all ${containerClass}`}>
@@ -223,26 +263,166 @@ function TaskDisplayView({
 
 
           {/* タスク詳細 */}
-          {(createdLabel || completedLabel) && (
+          {primaryItems.length > 0 && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              {createdLabel && (
-                <span className="flex items-center gap-1 text-blue-600">
-                  <Clock className="h-3 w-3" />
-                  <span>作成: {createdLabel}</span>
+              {primaryItems.map(({ key, colorClass, Icon, text }) => (
+                <span key={key} className={`flex items-center gap-1 ${colorClass}`}>
+                  <Icon className={`h-3 w-3 ${colorClass}`} />
+                  <span>{text}</span>
                 </span>
-              )}
-              {completedLabel && (
-                <span className="flex items-center gap-1 text-green-600">
-                  <Check className="h-3 w-3" />
-                  <span>完了: {completedLabel}</span>
+              ))}
+            </div>
+          )}
+
+          {sessionItems.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+              {sessionItems.map(({ key, colorClass, Icon, text }) => (
+                <span key={key} className={`flex items-center gap-1 ${colorClass}`}>
+                  <Icon className={`h-3 w-3 ${colorClass}`} />
+                  <span>{text}</span>
                 </span>
-              )}
+              ))}
             </div>
           )}
         </div>
       </div>
     </div>
   )
+}
+
+interface TaskSessionInfo {
+  isWorking: boolean
+  startLabel: string | null
+  endLabel: string | null
+  currentDurationLabel: string | null
+  totalDurationLabel: string | null
+  lastSessionDurationLabel: string | null
+  hasPreviousSessions: boolean
+}
+
+function buildTaskSessionInfo(
+  taskData: TaskMessageData,
+  isWorking: boolean,
+  currentSessionDuration: number,
+  totalTimeSpent: number
+): TaskSessionInfo {
+  const startLabel = taskData.checkedInAt ? formatStatusLabel(taskData.checkedInAt) : null
+  const endLabel = taskData.checkedOutAt ? formatStatusLabel(taskData.checkedOutAt) : null
+  const lastSessionMinutes = !isWorking && taskData.checkedInAt && taskData.checkedOutAt
+    ? calculateDuration(taskData.checkedInAt, taskData.checkedOutAt)
+    : null
+  const lastSessionDurationLabel = lastSessionMinutes !== null ? formatDuration(lastSessionMinutes) : null
+  const totalDurationMinutes = totalTimeSpent + (isWorking ? currentSessionDuration : 0)
+  const totalDurationLabel = totalDurationMinutes > 0 ? formatDuration(totalDurationMinutes) : null
+  const hasPreviousSessions = isWorking
+    ? totalTimeSpent > 0
+    : lastSessionMinutes !== null
+      ? totalTimeSpent > lastSessionMinutes
+      : totalTimeSpent > 0
+  const currentDurationLabel = isWorking ? formatDuration(currentSessionDuration) : null
+
+  return {
+    isWorking,
+    startLabel,
+    endLabel,
+    currentDurationLabel,
+    totalDurationLabel,
+    lastSessionDurationLabel,
+    hasPreviousSessions
+  }
+}
+
+interface TaskDetailItem {
+  key: string
+  colorClass: string
+  Icon: LucideIcon
+  text: string
+}
+
+function buildTaskDetailItems(
+  createdLabel: string | null,
+  completedLabel: string | null,
+  sessionInfo: TaskSessionInfo
+): { primaryItems: TaskDetailItem[]; sessionItems: TaskDetailItem[] } {
+  return {
+    primaryItems: createPrimaryItems(createdLabel, completedLabel),
+    sessionItems: createSessionItems(sessionInfo)
+  }
+}
+
+function createPrimaryItems(
+  createdLabel: string | null,
+  completedLabel: string | null
+): TaskDetailItem[] {
+  const candidates: Array<[boolean, TaskDetailItem]> = [
+    [Boolean(createdLabel), { key: 'created', colorClass: 'text-blue-600', Icon: Clock, text: `作成: ${createdLabel ?? ''}` }],
+    [Boolean(completedLabel), { key: 'completed', colorClass: 'text-green-600', Icon: Check, text: `完了: ${completedLabel ?? ''}` }]
+  ]
+
+  return filterDetailItems(candidates)
+}
+
+function createSessionItems(sessionInfo: TaskSessionInfo): TaskDetailItem[] {
+  const {
+    isWorking,
+    startLabel,
+    endLabel,
+    currentDurationLabel,
+    totalDurationLabel,
+    lastSessionDurationLabel,
+    hasPreviousSessions
+  } = sessionInfo
+
+  const showTotalLabel = Boolean(
+    totalDurationLabel && (isWorking ? hasPreviousSessions : totalDurationLabel !== lastSessionDurationLabel)
+  )
+
+  const candidates: Array<[boolean, TaskDetailItem]> = [
+    [true, {
+      key: 'session-status',
+      colorClass: isWorking ? 'text-green-600' : 'text-gray-600',
+      Icon: isWorking ? Play : Square,
+      text: isWorking ? STATUS_TASK_WORKING : STATUS_TASK_IDLE
+    }],
+    [Boolean(startLabel), {
+      key: 'session-start',
+      colorClass: 'text-purple-600',
+      Icon: Play,
+      text: `作業開始: ${startLabel ?? ''}`
+    }],
+    [Boolean(isWorking && currentDurationLabel), {
+      key: 'session-current',
+      colorClass: 'text-green-600',
+      Icon: Clock,
+      text: `経過: ${currentDurationLabel ?? ''}`
+    }],
+    [Boolean(!isWorking && endLabel), {
+      key: 'session-end',
+      colorClass: 'text-gray-600',
+      Icon: Square,
+      text: `${LABEL_TASK_LAST_CHECKOUT}: ${endLabel ?? ''}`
+    }],
+    [Boolean(!isWorking && lastSessionDurationLabel), {
+      key: 'session-duration',
+      colorClass: 'text-gray-600',
+      Icon: Clock,
+      text: `作業時間: ${lastSessionDurationLabel ?? ''}`
+    }],
+    [showTotalLabel, {
+      key: 'session-total',
+      colorClass: 'text-gray-600',
+      Icon: Clock,
+      text: `累計: ${totalDurationLabel ?? ''}`
+    }]
+  ]
+
+  return filterDetailItems(candidates)
+}
+
+function filterDetailItems(candidates: Array<[boolean, TaskDetailItem]>): TaskDetailItem[] {
+  return candidates
+    .filter(([condition]) => condition)
+    .map(([, item]) => item)
 }
 
 const TASK_STATUS_TIME_FORMAT = new Intl.DateTimeFormat("ja-JP", {
@@ -263,4 +443,5 @@ function formatStatusLabel(timestamp?: string | null): string | null {
     return null
   }
   return TASK_STATUS_TIME_FORMAT.format(date)
+
 }

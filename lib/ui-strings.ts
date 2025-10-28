@@ -81,6 +81,11 @@ export const LABEL_DOCUMENT = "ドキュメント";
 export const LABEL_SESSION = "作業セッション";
 export const ACTION_CONVERT_TO_TASK = "タスク化";
 export const ACTION_CONVERT_TO_TEXT = "メッセージ化";
+export const ACTION_TASK_CHECK_IN = "チェックイン";
+export const ACTION_TASK_CHECK_OUT = "チェックアウト";
+export const STATUS_TASK_WORKING = "作業中";
+export const STATUS_TASK_IDLE = "未チェックイン";
+export const LABEL_TASK_LAST_CHECKOUT = "最終チェックアウト";
 
 // Emojis
 const EMOJI_FIRESTORE = "🔥";

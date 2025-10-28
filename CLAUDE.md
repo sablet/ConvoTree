@@ -29,20 +29,20 @@ kill 12345
 
 ```bash
 # 必須: Next.js ビルドチェック
-npx next build
+npm run build
 ```
 
-**重要**: `npx next build` は必ず上記のコマンドそのままで実行してください。`NODE_ENV=development` などの環境変数を付けて実行してはいけません。
+**重要**: `npm run build` は必ず上記のコマンドそのままで実行してください。`NODE_ENV=development` などの環境変数を付けて実行してはいけません。
 
 ### 開発完了の条件
-1. **ビルド成功**: `npx next build` がwarning・error無しで完了する
+1. **ビルド成功**: `npm run build` がwarning・error無しで完了する
 2. **型チェック**: TypeScript型エラーが0件
 3. **リントチェック**: ESLintエラーが0件
 4. **機能確認**: 実装した機能が正常に動作する
 
 ### 開発フロー
 1. 機能実装
-2. **`npx next build`** 実行 ← **必須**
+2. **`npm run build`** 実行 ← **必須**
 3. 警告・エラーがある場合は修正
 4. 再度ビルドテスト
 5. 完了
@@ -117,7 +117,7 @@ export const PROJECT_DIRS = {
 
 ### 品質保証
 - ESLint ルールに従う
-- **開発完了前に必ず `npx next build` でエラー0を確認**
+- **開発完了前に必ず `npm run build` でエラー0を確認**
 
 ### コード品質メトリクス基準
 

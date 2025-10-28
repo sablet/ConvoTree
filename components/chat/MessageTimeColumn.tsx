@@ -11,6 +11,7 @@ interface MessageTimeColumnProps {
   createdTooltip?: string
   isCurrentLine: boolean
   convertButton?: MessageConvertButtonConfig
+  timeTrackingButton?: MessageConvertButtonConfig
 }
 
 /**
@@ -20,29 +21,37 @@ export function MessageTimeColumn({
   createdLabel,
   createdTooltip,
   isCurrentLine,
-  convertButton
+  convertButton,
+  timeTrackingButton
 }: MessageTimeColumnProps) {
+  const renderActionButton = (config: MessageConvertButtonConfig) => (
+    <Button
+      onClick={(event) => {
+        event.stopPropagation()
+        config.onClick()
+      }}
+      variant="ghost"
+      size="icon"
+      className="h-6 w-6 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
+      title={config.label}
+    >
+      {config.icon}
+      <span className="sr-only">{config.label}</span>
+    </Button>
+  )
+
   return (
     <div
-      className={`flex flex-col items-start gap-1 text-xs font-mono min-w-[48px] pt-0.5 leading-tight ${
+      className={`flex flex-col items-end gap-1 text-xs font-mono min-w-[48px] pt-0.5 leading-tight ${
         !isCurrentLine ? 'text-blue-400' : 'text-gray-400'
       }`}
     >
-      <span title={createdTooltip}>{createdLabel}</span>
-      {convertButton && (
-        <Button
-          onClick={(event) => {
-            event.stopPropagation()
-            convertButton.onClick()
-          }}
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 text-gray-500 hover:text-gray-900 hover:bg-gray-100"
-          title={convertButton.label}
-        >
-          {convertButton.icon}
-          <span className="sr-only">{convertButton.label}</span>
-        </Button>
+      <span className="w-full text-right" title={createdTooltip}>{createdLabel}</span>
+      {(convertButton || timeTrackingButton) && (
+        <div className="flex items-center justify-end gap-1 w-full">
+          {convertButton && renderActionButton(convertButton)}
+          {timeTrackingButton && renderActionButton(timeTrackingButton)}
+        </div>
       )}
     </div>
   )

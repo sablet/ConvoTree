@@ -11,7 +11,8 @@ export function getDefaultMetadataForType(type: MessageType, content: string = '
         priority: 'medium' as const,
         completed: false,
         tags: [],
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        timeSpent: 0
       }
     case MESSAGE_TYPE_DOCUMENT:
       const wordCount = content.trim().length
