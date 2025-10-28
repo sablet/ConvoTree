@@ -96,6 +96,17 @@ export function parseSlashCommand(input: string): ParsedMessage {
         }
       }
 
+      if (type === MESSAGE_TYPE_TASK) {
+        return {
+          content,
+          type,
+          metadata: {
+            ...(metadata ? { ...metadata } : {}),
+            createdAt: new Date().toISOString()
+          }
+        }
+      }
+
       return {
         content,
         type,

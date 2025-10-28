@@ -87,6 +87,7 @@ export function MessageTypeRenderer({
         completed: boolean
         tags?: string[]
         completedAt?: string
+        createdAt?: string
       }
       return (
         <TaskMessage
@@ -95,6 +96,7 @@ export function MessageTypeRenderer({
           data={taskData}
           onUpdate={handleTaskDataUpdate}
           isEditable={isEditable}
+          fallbackCreatedAt={message.timestamp}
         />
       )
 

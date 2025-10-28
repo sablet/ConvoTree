@@ -79,6 +79,8 @@ export const LABEL_TASK_MEDIUM = "通常タスク";
 export const LABEL_TASK_LOW = "低優先度タスク";
 export const LABEL_DOCUMENT = "ドキュメント";
 export const LABEL_SESSION = "作業セッション";
+export const ACTION_CONVERT_TO_TASK = "タスク化";
+export const ACTION_CONVERT_TO_TEXT = "メッセージ化";
 
 // Emojis
 const EMOJI_FIRESTORE = "🔥";

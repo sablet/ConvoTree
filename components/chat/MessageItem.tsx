@@ -1,12 +1,16 @@
 import { Button } from "@/components/ui/button"
-import { Copy, CheckCircle, Edit3, Trash2 } from "lucide-react"
+import { Copy, CheckCircle, Edit3, Trash2, ListTodo, MessageSquareText } from "lucide-react"
 import Image from "next/image"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
 import { EditingMessageForm } from "./EditingMessageForm"
 import { BranchingLinesPanel } from "./BranchingLinesPanel"
+import { MessageTimeColumn, type MessageConvertButtonConfig } from "./MessageTimeColumn"
 import type { Message } from "@/lib/types"
 import type { MessageItemProps } from "./types"
 import { calculateMessageCharCount } from "@/lib/utils/line-char-counter"
+import { MESSAGE_TYPE_TASK, MESSAGE_TYPE_TEXT } from "@/lib/constants"
+import { getDefaultMetadataForType } from "@/hooks/helpers/message-metadata"
+import { ACTION_CONVERT_TO_TASK, ACTION_CONVERT_TO_TEXT } from "@/lib/ui-strings"
 
 const TIME_FORMAT = new Intl.DateTimeFormat("ja-JP", {
   hour: "2-digit",
@@ -81,6 +85,44 @@ export function MessageItem({
   const createdTooltip = formatTooltip(createdAtDate)
   const editedLabel = showEditedTimestamp ? formatEditedLabel(createdAtDate, updatedAtDate) : ""
   const editedTooltip = showEditedTimestamp ? formatTooltip(updatedAtDate) : undefined
+  const isTaskMessage = message.type === MESSAGE_TYPE_TASK
+  const isTextMessage = !message.type || message.type === MESSAGE_TYPE_TEXT
+
+  const handleConvertToTask = () => {
+    const defaultMetadata = (getDefaultMetadataForType(MESSAGE_TYPE_TASK, message.content) ?? {}) as Record<string, unknown>
+    const metadataWithCreatedAt = {
+      ...defaultMetadata,
+      createdAt: new Date().toISOString()
+    }
+
+    void onUpdateMessage(message.id, {
+      type: MESSAGE_TYPE_TASK,
+      metadata: metadataWithCreatedAt
+    })
+  }
+
+  const handleConvertToText = () => {
+    void onUpdateMessage(message.id, {
+      type: MESSAGE_TYPE_TEXT,
+      metadata: null as unknown as Record<string, unknown>
+    })
+  }
+
+  const convertButtonConfig: MessageConvertButtonConfig | undefined = isSelectionMode
+    ? undefined
+    : isTaskMessage
+      ? {
+          label: ACTION_CONVERT_TO_TEXT,
+          icon: <MessageSquareText className="h-4 w-4 text-blue-600" />,
+          onClick: handleConvertToText
+        }
+      : isTextMessage
+        ? {
+            label: ACTION_CONVERT_TO_TASK,
+            icon: <ListTodo className="h-4 w-4 text-green-600" />,
+            onClick: handleConvertToTask
+          }
+        : undefined
   const selectionCheckbox = isSelectionMode ? (
     <MessageSelectionCheckbox
       messageId={message.id}
@@ -169,6 +211,7 @@ export function MessageItem({
           createdLabel={createdLabel}
           createdTooltip={createdTooltip}
           isCurrentLine={isCurrentLine}
+          convertButton={convertButtonConfig}
         />
 
         {/* メッセージ内容 */}
@@ -256,22 +299,6 @@ function MessageSelectionCheckbox({ messageId, isChecked, onToggle }: MessageSel
         onChange={() => {}}
         className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 pointer-events-none"
       />
-    </div>
-  )
-}
-
-interface MessageTimeColumnProps {
-  createdLabel: string
-  createdTooltip?: string
-  isCurrentLine: boolean
-}
-
-function MessageTimeColumn({ createdLabel, createdTooltip, isCurrentLine }: MessageTimeColumnProps) {
-  return (
-    <div className={`flex flex-col gap-0.5 text-xs font-mono min-w-[35px] pt-0.5 leading-tight ${
-      !isCurrentLine ? 'text-blue-400' : 'text-gray-400'
-    }`}>
-      <span title={createdTooltip}>{createdLabel}</span>
     </div>
   )
 }
