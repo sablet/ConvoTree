@@ -139,7 +139,7 @@ export function MessageInput({
                 value={inputValue}
                 onChange={(e) => onInputChange(e.target.value)}
                 onInput={adjustTextareaHeight}
-                placeholder="メッセージを入力... (/task, /task_high, /document, /session などのコマンドが使用できます)"
+                placeholder="メッセージを入力... (/task, /task_completed, /task_high, /document, /session などのコマンドが使用できます)"
                 className="min-h-[80px] max-h-32 resize-none border border-gray-300 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none w-full overflow-y-auto"
                 style={{ height: '80px' }}
                 onKeyDown={(e) => {

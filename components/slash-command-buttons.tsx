@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { CheckSquare, FileText, Timer, AlertTriangle, Zap } from "lucide-react"
+import { Check, CheckSquare, FileText, Timer, AlertTriangle, Zap } from "lucide-react"
 import {
   SLASH_COMMAND_TASK,
   SLASH_COMMAND_TASK_HIGH,
   SLASH_COMMAND_TASK_LOW,
+  SLASH_COMMAND_TASK_COMPLETED,
   SLASH_COMMAND_DOCUMENT,
   SLASH_COMMAND_SESSION
 } from "@/lib/constants"
@@ -14,6 +15,7 @@ import {
   LABEL_TASK_HIGH,
   LABEL_TASK_MEDIUM,
   LABEL_TASK_LOW,
+  LABEL_TASK_COMPLETED,
   LABEL_DOCUMENT,
   LABEL_SESSION
 } from "@/lib/ui-strings"
@@ -44,6 +46,13 @@ const SLASH_COMMANDS: SlashCommand[] = [
     icon: <CheckSquare className="h-3 w-3" />,
     description: "通常の優先度のタスクを作成",
     color: "bg-white hover:bg-blue-50 text-gray-700 hover:text-blue-700 border-gray-200 hover:border-blue-300"
+  },
+  {
+    command: `${SLASH_COMMAND_TASK_COMPLETED} `,
+    label: LABEL_TASK_COMPLETED,
+    icon: <Check className="h-3 w-3" />,
+    description: "完了済みのタスクを作成",
+    color: "bg-white hover:bg-green-50 text-gray-700 hover:text-green-700 border-gray-200 hover:border-green-300"
   },
   {
     command: `${SLASH_COMMAND_TASK_LOW} `,

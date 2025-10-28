@@ -8,7 +8,7 @@ import type { LucideIcon } from "lucide-react"
 import { LinkifiedText } from "@/lib/utils/linkify"
 import { formatDuration, calculateDuration } from "./session-message-helpers"
 import type { TaskMessageData } from "./task-message-shared"
-import { STATUS_TASK_WORKING, STATUS_TASK_IDLE, LABEL_TASK_LAST_CHECKOUT } from "@/lib/ui-strings"
+import { LABEL_TASK_LAST_CHECKOUT } from "@/lib/ui-strings"
 
 interface TaskMessageProps {
   messageId: string
@@ -55,8 +55,10 @@ export function TaskMessage({
   const [isEditing, setIsEditing] = useState(false)
   const [editData, setEditData] = useState<TaskMessageData>(taskData)
   const creationTimestamp = taskData.createdAt ?? (fallbackCreatedAt ? fallbackCreatedAt.toISOString() : undefined)
-  const createdLabel = formatStatusLabel(creationTimestamp)
-  const completedLabel = taskData.completed ? formatStatusLabel(taskData.completedAt) : null
+  const completionTimestamp = taskData.completed ? taskData.completedAt ?? null : null
+  const hideCreatedTimestamp = shouldHideCreatedTimestamp(creationTimestamp, completionTimestamp)
+  const createdLabel = hideCreatedTimestamp ? null : formatStatusLabel(creationTimestamp)
+  const completedLabel = completionTimestamp ? formatStatusLabel(completionTimestamp) : null
   const [currentTime, setCurrentTime] = useState(Date.now())
   const isWorking = Boolean(taskData.checkedInAt && !taskData.checkedOutAt)
   const totalTimeSpent = taskData.timeSpent ?? 0
@@ -344,82 +346,48 @@ function buildTaskDetailItems(
   completedLabel: string | null,
   sessionInfo: TaskSessionInfo
 ): { primaryItems: TaskDetailItem[]; sessionItems: TaskDetailItem[] } {
-  return {
-    primaryItems: createPrimaryItems(createdLabel, completedLabel),
-    sessionItems: createSessionItems(sessionInfo)
-  }
-}
-
-function createPrimaryItems(
-  createdLabel: string | null,
-  completedLabel: string | null
-): TaskDetailItem[] {
-  const candidates: Array<[boolean, TaskDetailItem]> = [
+  const primaryItems = collectDetailItems([
     [Boolean(createdLabel), { key: 'created', colorClass: 'text-blue-600', Icon: Clock, text: `作成: ${createdLabel ?? ''}` }],
-    [Boolean(completedLabel), { key: 'completed', colorClass: 'text-green-600', Icon: Check, text: `完了: ${completedLabel ?? ''}` }]
-  ]
-
-  return filterDetailItems(candidates)
-}
-
-function createSessionItems(sessionInfo: TaskSessionInfo): TaskDetailItem[] {
-  const {
-    isWorking,
-    startLabel,
-    endLabel,
-    currentDurationLabel,
-    totalDurationLabel,
-    lastSessionDurationLabel,
-    hasPreviousSessions
-  } = sessionInfo
-
-  const showTotalLabel = Boolean(
-    totalDurationLabel && (isWorking ? hasPreviousSessions : totalDurationLabel !== lastSessionDurationLabel)
-  )
-
-  const candidates: Array<[boolean, TaskDetailItem]> = [
-    [true, {
-      key: 'session-status',
-      colorClass: isWorking ? 'text-green-600' : 'text-gray-600',
-      Icon: isWorking ? Play : Square,
-      text: isWorking ? STATUS_TASK_WORKING : STATUS_TASK_IDLE
-    }],
-    [Boolean(startLabel), {
-      key: 'session-start',
-      colorClass: 'text-purple-600',
-      Icon: Play,
-      text: `作業開始: ${startLabel ?? ''}`
-    }],
-    [Boolean(isWorking && currentDurationLabel), {
-      key: 'session-current',
-      colorClass: 'text-green-600',
-      Icon: Clock,
-      text: `経過: ${currentDurationLabel ?? ''}`
-    }],
-    [Boolean(!isWorking && endLabel), {
-      key: 'session-end',
-      colorClass: 'text-gray-600',
-      Icon: Square,
-      text: `${LABEL_TASK_LAST_CHECKOUT}: ${endLabel ?? ''}`
-    }],
-    [Boolean(!isWorking && lastSessionDurationLabel), {
-      key: 'session-duration',
-      colorClass: 'text-gray-600',
-      Icon: Clock,
-      text: `作業時間: ${lastSessionDurationLabel ?? ''}`
-    }],
-    [showTotalLabel, {
+    [Boolean(sessionInfo.totalDurationLabel), {
       key: 'session-total',
       colorClass: 'text-gray-600',
       Icon: Clock,
-      text: `累計: ${totalDurationLabel ?? ''}`
-    }]
-  ]
+      text: `累計: ${sessionInfo.totalDurationLabel ?? ''}`
+    }],
+    [Boolean(completedLabel), { key: 'completed', colorClass: 'text-green-600', Icon: Check, text: `完了: ${completedLabel ?? ''}` }]
+  ])
 
-  return filterDetailItems(candidates)
+  const sessionItems = collectDetailItems([
+    [Boolean(sessionInfo.isWorking && sessionInfo.currentDurationLabel), {
+      key: 'session-current',
+      colorClass: 'text-green-600',
+      Icon: Clock,
+      text: `経過: ${sessionInfo.currentDurationLabel ?? ''}`
+    }],
+    [Boolean(!sessionInfo.isWorking && sessionInfo.endLabel), {
+      key: 'session-end',
+      colorClass: 'text-gray-600',
+      Icon: Square,
+      text: `${LABEL_TASK_LAST_CHECKOUT}: ${sessionInfo.endLabel ?? ''}`
+    }],
+    [Boolean(!sessionInfo.isWorking && sessionInfo.lastSessionDurationLabel), {
+      key: 'session-duration',
+      colorClass: 'text-gray-600',
+      Icon: Clock,
+      text: `作業時間: ${sessionInfo.lastSessionDurationLabel ?? ''}`
+    }],
+    [Boolean(sessionInfo.startLabel && (!sessionInfo.endLabel || sessionInfo.isWorking)), {
+      key: 'session-start',
+      colorClass: 'text-purple-600',
+      Icon: Play,
+      text: `作業開始: ${sessionInfo.startLabel ?? ''}`
+    }]
+  ])
+
+  return { primaryItems, sessionItems }
 }
 
-function filterDetailItems(candidates: Array<[boolean, TaskDetailItem]>): TaskDetailItem[] {
+function collectDetailItems(candidates: Array<[boolean, TaskDetailItem]>): TaskDetailItem[] {
   return candidates
     .filter(([condition]) => condition)
     .map(([, item]) => item)
@@ -444,4 +412,24 @@ function formatStatusLabel(timestamp?: string | null): string | null {
   }
   return TASK_STATUS_TIME_FORMAT.format(date)
 
+}
+
+const CREATED_COMPLETED_HIDE_THRESHOLD_MS = 5 * 60 * 1000
+
+function shouldHideCreatedTimestamp(
+  createdTimestamp?: string | null,
+  completedTimestamp?: string | null
+): boolean {
+  if (!createdTimestamp || !completedTimestamp) {
+    return false
+  }
+
+  const createdTime = new Date(createdTimestamp).getTime()
+  const completedTime = new Date(completedTimestamp).getTime()
+
+  if (Number.isNaN(createdTime) || Number.isNaN(completedTime)) {
+    return false
+  }
+
+  return Math.abs(completedTime - createdTime) < CREATED_COMPLETED_HIDE_THRESHOLD_MS
 }

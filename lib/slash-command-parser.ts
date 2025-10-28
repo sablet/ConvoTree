@@ -8,6 +8,7 @@ import {
   SLASH_COMMAND_TASK_HIGH,
   SLASH_COMMAND_TASK_MEDIUM,
   SLASH_COMMAND_TASK_LOW,
+  SLASH_COMMAND_TASK_COMPLETED,
   SLASH_COMMAND_DOCUMENT,
   SLASH_COMMAND_SESSION
 } from '@/lib/constants'
@@ -31,13 +32,18 @@ const escapeForRegExp = (command: string) => command.replace(/[.*+?^${}()|[\]\\]
 
 const buildCommandPattern = (command: string) => new RegExp(`^${escapeForRegExp(command)}\\s+([\\s\\S]*)$`)
 
-const createTaskCommand = (command: string, priority: TaskPriority): SlashCommandPattern => ({
+const createTaskCommand = (
+  command: string,
+  priority: TaskPriority,
+  overrides?: Record<string, unknown>
+): SlashCommandPattern => ({
   pattern: buildCommandPattern(command),
   type: MESSAGE_TYPE_TASK,
   metadata: {
     priority,
     completed: false,
-    tags: []
+    tags: [],
+    ...(overrides ? { ...overrides } : {})
   }
 })
 
@@ -46,6 +52,7 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   createTaskCommand(SLASH_COMMAND_TASK_MEDIUM, 'medium'),
   createTaskCommand(SLASH_COMMAND_TASK_LOW, 'low'),
   createTaskCommand(SLASH_COMMAND_TASK, 'medium'),
+  createTaskCommand(SLASH_COMMAND_TASK_COMPLETED, 'medium', { completed: true }),
   {
     pattern: buildCommandPattern(SLASH_COMMAND_DOCUMENT),
     type: MESSAGE_TYPE_DOCUMENT,
@@ -97,13 +104,22 @@ export function parseSlashCommand(input: string): ParsedMessage {
       }
 
       if (type === MESSAGE_TYPE_TASK) {
+        const nowIso = new Date().toISOString()
+        const baseMetadata = metadata ? { ...metadata } : {}
+        const isCompleted = baseMetadata.completed === true
+        const taskMetadata: Record<string, unknown> = {
+          ...baseMetadata,
+          createdAt: nowIso
+        }
+
+        if (isCompleted && baseMetadata.completedAt === undefined) {
+          taskMetadata.completedAt = nowIso
+        }
+
         return {
           content,
           type,
-          metadata: {
-            ...(metadata ? { ...metadata } : {}),
-            createdAt: new Date().toISOString()
-          }
+          metadata: taskMetadata
         }
       }
 
