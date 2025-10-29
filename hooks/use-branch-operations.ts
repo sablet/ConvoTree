@@ -3,11 +3,11 @@ import type { Line } from '@/lib/types'
 import type { ChatState } from './use-chat-state'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import type { LineAncestryResult } from './helpers/branch-ancestry'
-import { saveLineEdit, updateLocalLineState, createNewTag, type LineEditData } from './helpers/line-edit'
-import { dataSourceManager } from '@/lib/data-source'
 import { useMessageMove } from './helpers/use-message-move'
 import { useTimelineOperations } from './helpers/use-timeline-operations'
-import { createNewBranch } from './helpers/message-send'
+import { useLineCrud } from './helpers/use-line-crud'
+import { useLineEditing } from './helpers/use-line-editing'
+import { useScrollPosition } from './helpers/use-scroll-position'
 
 interface BranchOperationsProps {
   chatState: ChatState
@@ -17,28 +17,6 @@ interface BranchOperationsProps {
   onLineChange?: (lineId: string) => void
 }
 
-function resolveParentBranchMessageId(
-  parentLineId: string | undefined,
-  lines: Record<string, Line>
-): string | undefined {
-  if (!parentLineId) {
-    return undefined
-  }
-
-  const parentLine = lines[parentLineId]
-  if (!parentLine) {
-    alert('指定された親ラインが見つかりません')
-    throw new Error('PARENT_LINE_NOT_FOUND')
-  }
-
-  const candidate = parentLine.endMessageId || parentLine.messageIds[parentLine.messageIds.length - 1]
-  if (!candidate) {
-    alert('選択したラインにはメッセージがないため、子ラインを作成できません')
-    throw new Error('PARENT_LINE_HAS_NO_MESSAGES')
-  }
-
-  return candidate
-}
 
 interface BranchOperations {
   // ライン切り替え
@@ -69,6 +47,7 @@ interface BranchOperations {
   setIsEditingBranch: React.Dispatch<React.SetStateAction<boolean>>
   setEditingBranchData: React.Dispatch<React.SetStateAction<{ name: string; tagIds: string[]; newTag: string }>>
   handleCreateLine: (lineName: string, parentLineId?: string) => Promise<string>
+  handleDeleteLine: (lineId: string) => Promise<void>
 
   // メッセージタップ処理
   selectedBaseMessage: string | null
@@ -140,16 +119,14 @@ export function useBranchOperations({
     clearAllCaches
   } = chatState
 
-  // スクロール位置
-  const [scrollPositions, setScrollPositions] = useState<Map<string, number>>(new Map())
-
-  // ライン編集
-  const [isEditingBranch, setIsEditingBranch] = useState(false)
-  const [editingBranchData, setEditingBranchData] = useState<LineEditData>({ name: "", tagIds: [], newTag: "" })
-  const [isUpdating, setIsUpdating] = useState(false)
-
-  // フッター更新
   const [footerKey, setFooterKey] = useState(0)
+
+  const {
+    scrollPositions,
+    saveScrollPosition,
+    restoreScrollPosition,
+    setScrollPositions
+  } = useScrollPosition({ messagesContainerRef })
 
   const messageMoveOps = useMessageMove({
     messages,
@@ -202,84 +179,7 @@ export function useBranchOperations({
     searchKeyword
   })
 
-  /**
-   * Handle message tap (selection or branching)
-   */
-  const handleMessageTap = useCallback((messageId: string) => {
-    if (isSelectionMode) {
-      setSelectedMessages(prev => {
-        const newSet = new Set(prev)
-        if (newSet.has(messageId)) {
-          newSet.delete(messageId)
-        } else {
-          newSet.add(messageId)
-        }
-        return newSet
-      })
-    } else {
-      // Branching mode
-      if (selectedBaseMessage === messageId) {
-        setSelectedBaseMessage(null)
-      } else {
-        setSelectedBaseMessage(messageId)
-      }
-    }
-  }, [isSelectionMode, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
-
-
-
-  /**
-   * Save scroll position
-   */
-  const saveScrollPosition = useCallback((lineId: string) => {
-    if (messagesContainerRef.current) {
-      const scrollTop = messagesContainerRef.current.scrollTop
-      setScrollPositions(prev => new Map(prev).set(lineId, scrollTop))
-    }
-  }, [messagesContainerRef])
-
-  /**
-   * Restore scroll position
-   */
-  const restoreScrollPosition = useCallback((lineId: string) => {
-    const savedPosition = scrollPositions.get(lineId)
-    if (savedPosition !== undefined && messagesContainerRef.current) {
-      // 少し遅延させてDOMの更新を待つ
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = savedPosition
-        }
-      }, 50)
-    }
-  }, [scrollPositions, messagesContainerRef])
-
-  /**
-   * Switch to line (with scroll position preservation)
-   */
-  const switchToLine = useCallback((lineId: string) => {
-    if (lineId === TIMELINE_BRANCH_ID || lines[lineId]) {
-      // 現在のラインのスクロール位置を保存
-      if (currentLineId) {
-        saveScrollPosition(currentLineId)
-      }
-
-      setCurrentLineId(lineId)
-
-      // 外部コールバックを呼び出し
-      if (onLineChange) {
-        onLineChange(lineId)
-      }
-
-      // 新しいラインのスクロール位置を復元
-      restoreScrollPosition(lineId)
-    }
-  }, [lines, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, restoreScrollPosition])
-
-  /**
-   * Get current line object
-   */
   const getCurrentLine = useCallback((): Line | null => {
-    // タイムライン仮想ブランチの場合
     if (currentLineId === TIMELINE_BRANCH_ID) {
       const allMessages = Object.values(messages)
       return {
@@ -295,132 +195,84 @@ export function useBranchOperations({
         updated_at: new Date().toISOString()
       }
     }
-
     return lines[currentLineId] || null
   }, [currentLineId, messages, lines])
 
-  /**
-   * Start editing line
-   */
-  const handleEditLine = useCallback(() => {
-    const currentLineInfo = getCurrentLine()
-    if (currentLineInfo) {
-      setEditingBranchData({
-        name: currentLineInfo.name,
-        tagIds: [...(currentLineInfo.tagIds || [])],
-        newTag: ""
+  const {
+    isEditingBranch,
+    editingBranchData,
+    isUpdating: editIsUpdating,
+    handleEditLine,
+    handleSaveLineEdit,
+    handleAddTag,
+    handleRemoveTag,
+    setIsEditingBranch,
+    setEditingBranchData
+  } = useLineEditing({
+    currentLineId,
+    getCurrentLine,
+    setLines,
+    setTags,
+    clearAllCaches
+  })
+
+  const {
+    handleCreateLine,
+    handleDeleteLine,
+    isUpdating: crudIsUpdating
+  } = useLineCrud({
+    lines,
+    currentLineId,
+    setBranchPoints,
+    setLines,
+    setMessages,
+    setSelectedBaseMessage,
+    setSelectedMessages,
+    setIsSelectionMode,
+    setShowMoveDialog,
+    setShowBulkDeleteDialog,
+    setScrollPositions,
+    setCurrentLineId,
+    onLineChange,
+    saveScrollPosition,
+    clearTimelineCaches,
+    clearAllCaches,
+    setFooterKey,
+    messagesContainerRef
+  })
+
+  const handleMessageTap = useCallback((messageId: string) => {
+    if (isSelectionMode) {
+      setSelectedMessages(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(messageId)) {
+          newSet.delete(messageId)
+        } else {
+          newSet.add(messageId)
+        }
+        return newSet
       })
-      setIsEditingBranch(true)
-    }
-  }, [getCurrentLine])
-
-  /**
-   * Save line edit
-   */
-  const handleSaveLineEdit = useCallback(async () => {
-    setIsUpdating(true)
-    try {
-      await saveLineEdit(currentLineId, editingBranchData)
-      updateLocalLineState(currentLineId, editingBranchData, setLines)
-      clearAllCaches()
-      setIsEditingBranch(false)
-    } catch (error) {
-      console.error("Failed to save line edit:", error)
-      alert("ラインの保存に失敗しました。")
-    } finally {
-      setIsUpdating(false)
-    }
-  }, [editingBranchData, currentLineId, setLines, clearAllCaches])
-
-  const handleAddTag = useCallback(() => {
-    if (editingBranchData.newTag.trim()) {
-      const newTagId = createNewTag(editingBranchData.newTag, setTags)
-      setEditingBranchData(prev => ({
-        ...prev,
-        tagIds: [...prev.tagIds, newTagId],
-        newTag: ""
-      }))
-    }
-  }, [editingBranchData, setTags])
-
-  const handleRemoveTag = useCallback((tagIndex: number) => {
-    setEditingBranchData(prev => ({
-      ...prev,
-      tagIds: prev.tagIds.filter((_, index) => index !== tagIndex)
-    }))
-  }, [])
-
-  const handleCreateLine = useCallback(async (lineName: string, parentLineId?: string) => {
-    const trimmedName = lineName.trim()
-    if (!trimmedName) {
-      alert('ライン名を入力してください')
-      throw new Error('LINE_NAME_REQUIRED')
-    }
-
-    const branchFromMessageId = resolveParentBranchMessageId(parentLineId, lines)
-
-    setIsUpdating(true)
-    try {
-      const timestamp = new Date().toISOString()
-      const newLineId = branchFromMessageId
-        ? await createNewBranch({ name: trimmedName, branchFromMessageId }, setBranchPoints)
-        : await dataSourceManager.createLine({
-            name: trimmedName,
-            messageIds: [],
-            startMessageId: '',
-            tagIds: [],
-            created_at: timestamp,
-            updated_at: timestamp
-          })
-
-      const newLine: Line = {
-        id: newLineId,
-        name: trimmedName,
-        messageIds: [],
-        startMessageId: '',
-        tagIds: [],
-        created_at: timestamp,
-        updated_at: timestamp,
-        ...(branchFromMessageId ? { branchFromMessageId } : {})
+    } else {
+      if (selectedBaseMessage === messageId) {
+        setSelectedBaseMessage(null)
+      } else {
+        setSelectedBaseMessage(messageId)
       }
+    }
+  }, [isSelectionMode, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
 
-      setLines(prev => ({
-        ...prev,
-        [newLineId]: newLine
-      }))
-
-      setSelectedBaseMessage(null)
-      setSelectedMessages(new Set())
-      setIsSelectionMode(false)
-
+  const switchToLine = useCallback((lineId: string) => {
+    if (lineId === TIMELINE_BRANCH_ID || lines[lineId]) {
       if (currentLineId) {
         saveScrollPosition(currentLineId)
       }
-
-      setCurrentLineId(newLineId)
+      setCurrentLineId(lineId)
       if (onLineChange) {
-        onLineChange(newLineId)
+        onLineChange(lineId)
       }
-
-      clearTimelineCaches()
-      clearAllCaches()
-      setFooterKey(prev => prev + 1)
-
-      if (messagesContainerRef.current) {
-        messagesContainerRef.current.scrollTop = 0
-      }
-
-      return newLineId
-    } catch (error) {
-      console.error('Failed to create line:', error)
-      if (!(error instanceof Error && (error.message === 'PARENT_LINE_HAS_NO_MESSAGES' || error.message === 'PARENT_LINE_NOT_FOUND' || error.message === 'LINE_NAME_REQUIRED'))) {
-        alert('ラインの作成に失敗しました')
-      }
-      throw error
-    } finally {
-      setIsUpdating(false)
+      restoreScrollPosition(lineId)
     }
-  }, [lines, setBranchPoints, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, clearTimelineCaches, clearAllCaches, setFooterKey, messagesContainerRef])
+  }, [lines, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, restoreScrollPosition])
 
   return {
     showMoveDialog,
@@ -441,7 +293,7 @@ export function useBranchOperations({
     restoreScrollPosition,
     isEditingBranch,
     editingBranchData,
-    isUpdating: isUpdating || moveIsUpdating,
+    isUpdating: editIsUpdating || moveIsUpdating || crudIsUpdating,
     handleEditLine,
     handleSaveLineEdit,
     handleAddTag,
@@ -449,6 +301,7 @@ export function useBranchOperations({
     setIsEditingBranch,
     setEditingBranchData,
     handleCreateLine,
+    handleDeleteLine,
     selectedBaseMessage,
     setSelectedBaseMessage,
     handleMessageTap,

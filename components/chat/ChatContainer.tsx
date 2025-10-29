@@ -137,6 +137,7 @@ export function ChatContainer({
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
         onCreateLine={branchOps.handleCreateLine}
+        onDeleteLine={branchOps.handleDeleteLine}
         setLines={chatState.setLines}
         clearAllCaches={chatState.clearAllCaches}
       />
