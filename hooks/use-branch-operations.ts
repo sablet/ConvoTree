@@ -7,6 +7,7 @@ import { saveLineEdit, updateLocalLineState, createNewTag, type LineEditData } f
 import { dataSourceManager } from '@/lib/data-source'
 import { useMessageMove } from './helpers/use-message-move'
 import { useTimelineOperations } from './helpers/use-timeline-operations'
+import { createNewBranch } from './helpers/message-send'
 
 interface BranchOperationsProps {
   chatState: ChatState
@@ -14,6 +15,29 @@ interface BranchOperationsProps {
   selectedBaseMessage: string | null
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
   onLineChange?: (lineId: string) => void
+}
+
+function resolveParentBranchMessageId(
+  parentLineId: string | undefined,
+  lines: Record<string, Line>
+): string | undefined {
+  if (!parentLineId) {
+    return undefined
+  }
+
+  const parentLine = lines[parentLineId]
+  if (!parentLine) {
+    alert('指定された親ラインが見つかりません')
+    throw new Error('PARENT_LINE_NOT_FOUND')
+  }
+
+  const candidate = parentLine.endMessageId || parentLine.messageIds[parentLine.messageIds.length - 1]
+  if (!candidate) {
+    alert('選択したラインにはメッセージがないため、子ラインを作成できません')
+    throw new Error('PARENT_LINE_HAS_NO_MESSAGES')
+  }
+
+  return candidate
 }
 
 interface BranchOperations {
@@ -44,7 +68,7 @@ interface BranchOperations {
   handleRemoveTag: (tagIndex: number) => void
   setIsEditingBranch: React.Dispatch<React.SetStateAction<boolean>>
   setEditingBranchData: React.Dispatch<React.SetStateAction<{ name: string; tagIds: string[]; newTag: string }>>
-  handleCreateLine: (lineName: string) => Promise<void>
+  handleCreateLine: (lineName: string, parentLineId?: string) => Promise<string>
 
   // メッセージタップ処理
   selectedBaseMessage: string | null
@@ -99,6 +123,7 @@ export function useBranchOperations({
     lines,
     setLines,
     branchPoints,
+    setBranchPoints,
     setTags,
     currentLineId,
     setCurrentLineId,
@@ -307,9 +332,6 @@ export function useBranchOperations({
     }
   }, [editingBranchData, currentLineId, setLines, clearAllCaches])
 
-  /**
-   * Add tag
-   */
   const handleAddTag = useCallback(() => {
     if (editingBranchData.newTag.trim()) {
       const newTagId = createNewTag(editingBranchData.newTag, setTags)
@@ -321,9 +343,6 @@ export function useBranchOperations({
     }
   }, [editingBranchData, setTags])
 
-  /**
-   * Remove tag
-   */
   const handleRemoveTag = useCallback((tagIndex: number) => {
     setEditingBranchData(prev => ({
       ...prev,
@@ -331,24 +350,28 @@ export function useBranchOperations({
     }))
   }, [])
 
-  const handleCreateLine = useCallback(async (lineName: string) => {
+  const handleCreateLine = useCallback(async (lineName: string, parentLineId?: string) => {
     const trimmedName = lineName.trim()
     if (!trimmedName) {
       alert('ライン名を入力してください')
-      return
+      throw new Error('LINE_NAME_REQUIRED')
     }
+
+    const branchFromMessageId = resolveParentBranchMessageId(parentLineId, lines)
 
     setIsUpdating(true)
     try {
       const timestamp = new Date().toISOString()
-      const newLineId = await dataSourceManager.createLine({
-        name: trimmedName,
-        messageIds: [],
-        startMessageId: '',
-        tagIds: [],
-        created_at: timestamp,
-        updated_at: timestamp
-      })
+      const newLineId = branchFromMessageId
+        ? await createNewBranch({ name: trimmedName, branchFromMessageId }, setBranchPoints)
+        : await dataSourceManager.createLine({
+            name: trimmedName,
+            messageIds: [],
+            startMessageId: '',
+            tagIds: [],
+            created_at: timestamp,
+            updated_at: timestamp
+          })
 
       const newLine: Line = {
         id: newLineId,
@@ -357,7 +380,8 @@ export function useBranchOperations({
         startMessageId: '',
         tagIds: [],
         created_at: timestamp,
-        updated_at: timestamp
+        updated_at: timestamp,
+        ...(branchFromMessageId ? { branchFromMessageId } : {})
       }
 
       setLines(prev => ({
@@ -385,14 +409,18 @@ export function useBranchOperations({
       if (messagesContainerRef.current) {
         messagesContainerRef.current.scrollTop = 0
       }
+
+      return newLineId
     } catch (error) {
       console.error('Failed to create line:', error)
-      alert('ラインの作成に失敗しました')
+      if (!(error instanceof Error && (error.message === 'PARENT_LINE_HAS_NO_MESSAGES' || error.message === 'PARENT_LINE_NOT_FOUND' || error.message === 'LINE_NAME_REQUIRED'))) {
+        alert('ラインの作成に失敗しました')
+      }
       throw error
     } finally {
       setIsUpdating(false)
     }
-  }, [clearTimelineCaches, clearAllCaches, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, setFooterKey, messagesContainerRef])
+  }, [lines, setBranchPoints, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, clearTimelineCaches, clearAllCaches, setFooterKey, messagesContainerRef])
 
   return {
     showMoveDialog,

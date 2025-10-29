@@ -1,14 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
-import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus } from "lucide-react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
+import { ChevronRight, ChevronDown, Folder, Plus } from "lucide-react"
 import type { Line, Tag, Message } from "@/lib/types"
-import { buildLineTree, getTreePrefix } from "@/lib/line-tree-builder"
+import { buildLineTree, type LineTreeNode } from "@/lib/line-tree-builder"
 import { MAIN_LINE_ID } from "@/lib/constants"
 import { toast } from "sonner"
 import { reparentLine, updateLocalStateAfterReparent, wouldCreateCircularReference } from "@/hooks/helpers/line-reparent"
-import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
 import { LineSidebarNewLineForm } from "./LineSidebarNewLineForm"
+import { LineSidebarItem } from "./LineSidebarItem"
 
 const EXPANDED_LINES_KEY = 'chat-line-sidebar-expanded-lines-v2' // v2: Only expand root level by default
 
@@ -49,7 +49,7 @@ interface LineSidebarProps {
   getLineAncestry: (lineId: string) => string[]
   onLineSelect: (lineId: string) => void
   onDrop: (targetLineId: string, messageId: string) => void
-  onCreateLine: (lineName: string) => Promise<void>
+  onCreateLine: (lineName: string, parentLineId?: string) => Promise<string>
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   clearAllCaches: () => void
 }
@@ -86,6 +86,31 @@ export function LineSidebar({
   const [newLineName, setNewLineName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createInputRef = useRef<HTMLInputElement | null>(null)
+  const [selectedParentLineId, setSelectedParentLineId] = useState<string>("")
+
+  const treeNodes = useMemo(() => buildLineTree(lines, undefined), [lines])
+
+  const parentOptions = useMemo(() => {
+    const options: Array<{ id: string; label: string; disabled: boolean }> = []
+
+    const traverse = (nodes: LineTreeNode[]) => {
+      nodes.forEach(node => {
+        const indentation = node.depth > 0 ? `${"\u00A0\u00A0".repeat(node.depth)}└ ` : ""
+        options.push({
+          id: node.line.id,
+          label: `${indentation}${node.line.name}`,
+          disabled: node.line.messageIds.length === 0
+        })
+
+        if (node.children && node.children.length > 0) {
+          traverse(node.children)
+        }
+      })
+    }
+
+    traverse(treeNodes)
+    return options
+  }, [treeNodes])
 
   // Load collapsed state and expanded lines from localStorage
   useEffect(() => {
@@ -188,21 +213,31 @@ export function LineSidebar({
   const handleStartCreateLine = useCallback(() => {
     if (isSubmitting || isCreatingLine) return
 
+    let defaultParent = ""
+    const currentLine = lines[currentLineId]
+    if (currentLine && currentLine.messageIds.length > 0) {
+      defaultParent = currentLine.id
+    }
+
+    const openForm = () => {
+      setSelectedParentLineId(defaultParent)
+      setIsCreatingLine(true)
+    }
+
     if (isCollapsed) {
       setIsCollapsed(false)
       window.localStorage.setItem(COLLAPSED_KEY, 'false')
-      setTimeout(() => {
-        setIsCreatingLine(true)
-      }, 0)
+      setTimeout(openForm, 0)
     } else {
-      setIsCreatingLine(true)
+      openForm()
     }
-  }, [isCollapsed, isSubmitting, isCreatingLine])
+  }, [isCollapsed, isSubmitting, isCreatingLine, lines, currentLineId])
 
   const handleCancelCreate = useCallback(() => {
     if (isSubmitting) return
     setIsCreatingLine(false)
     setNewLineName("")
+    setSelectedParentLineId("")
   }, [isSubmitting])
 
   const handleCreateLineSubmit = useCallback(async () => {
@@ -215,15 +250,28 @@ export function LineSidebar({
 
     setIsSubmitting(true)
     try {
-      await onCreateLine(trimmed)
+      const parentId = selectedParentLineId || undefined
+      const newLineId = await onCreateLine(trimmed, parentId)
+
+      setExpandedLines(prev => {
+        const newSet = new Set(prev)
+        if (parentId) {
+          newSet.add(parentId)
+        }
+        newSet.add(newLineId)
+        window.localStorage.setItem(EXPANDED_LINES_KEY, JSON.stringify(Array.from(newSet)))
+        return newSet
+      })
+
       setNewLineName("")
+      setSelectedParentLineId("")
       setIsCreatingLine(false)
     } catch {
       // Error is handled within onCreateLine
     } finally {
       setIsSubmitting(false)
     }
-  }, [isSubmitting, newLineName, onCreateLine])
+  }, [isSubmitting, newLineName, onCreateLine, selectedParentLineId])
 
   // Handle line drag and drop - reparent source line under target line
   const handleLineDrop = useCallback(async (targetLineId: string, sourceLineId: string) => {
@@ -258,8 +306,6 @@ export function LineSidebar({
       })
     }
   }, [lines, messages, setLines, clearAllCaches])
-
-  const treeNodes = buildLineTree(lines, undefined)
 
   if (!isVisible) {
     return null
@@ -317,6 +363,9 @@ export function LineSidebar({
               }}
               onCancel={handleCancelCreate}
               inputRef={createInputRef}
+              parentOptions={parentOptions}
+              selectedParentId={selectedParentLineId}
+              onParentChange={setSelectedParentLineId}
             />
           )}
           {treeNodes.length === 0 ? (
@@ -326,17 +375,15 @@ export function LineSidebar({
             </div>
           ) : (
             treeNodes.map((node) => (
-              <LineItem
+              <LineSidebarItem
                 key={node.line.id}
                 node={node}
-                _lines={lines}
                 messages={messages}
                 tags={tags}
                 currentLineId={currentLineId}
                 dragOverLineId={dragOverLineId}
                 draggedLineId={draggedLineId}
                 expandedLines={expandedLines}
-                _getLineAncestry={getLineAncestry}
                 onLineSelect={onLineSelect}
                 onDrop={onDrop}
                 onLineDrop={handleLineDrop}
@@ -350,226 +397,6 @@ export function LineSidebar({
         </div>
       )}
     </aside>
-  )
-}
-
-interface LineItemProps {
-  node: ReturnType<typeof buildLineTree>[number]
-  _lines?: Record<string, Line>
-  messages: Record<string, Message>
-  tags: Record<string, Tag>
-  currentLineId: string
-  dragOverLineId: string | null
-  draggedLineId: string | null
-  expandedLines: Set<string>
-  _getLineAncestry?: (lineId: string) => string[]
-  onLineSelect: (lineId: string) => void
-  onDrop: (targetLineId: string, messageId: string) => void
-  onLineDrop: (targetLineId: string, sourceLineId: string) => void
-  onDragOver: (lineId: string | null) => void
-  onToggleExpand: (lineId: string) => void
-  onDragStart: (lineId: string) => void
-  onDragEnd: () => void
-}
-
-/**
- * Individual line item in the sidebar tree
- */
-// eslint-disable-next-line complexity
-function LineItem({
-  node,
-  _lines,
-  messages,
-  tags,
-  currentLineId,
-  dragOverLineId,
-  draggedLineId,
-  expandedLines,
-  _getLineAncestry,
-  onLineSelect,
-  onDrop,
-  onLineDrop,
-  onDragOver,
-  onToggleExpand,
-  onDragStart,
-  onDragEnd
-}: LineItemProps) {
-  const { line, depth } = node
-  const isCurrent = line.id === currentLineId
-  const isDragOver = dragOverLineId === line.id
-  const isDragging = draggedLineId === line.id
-  const treePrefix = getTreePrefix(node)
-  const hasChildren = node.children && node.children.length > 0
-  const isExpanded = expandedLines.has(line.id)
-  const charCount = calculateLineCharCount(line.messageIds, messages)
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    onDragOver(line.id)
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    onDragOver(null)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    
-    const data = e.dataTransfer.getData('text/plain')
-    const dragType = e.dataTransfer.getData('application/x-drag-type')
-    
-    if (dragType === 'line') {
-      // Line drag and drop
-      if (data && data !== line.id) {
-        onLineDrop(line.id, data)
-      }
-    } else {
-      // Message drag and drop
-      if (data) {
-        onDrop(line.id, data)
-      }
-    }
-    
-    onDragOver(null)
-  }
-
-  const handleLineDragStart = (e: React.DragEvent) => {
-    e.stopPropagation()
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', line.id)
-    e.dataTransfer.setData('application/x-drag-type', 'line')
-    onDragStart(line.id)
-  }
-
-  const handleLineDragEnd = (e: React.DragEvent) => {
-    e.stopPropagation()
-    onDragEnd()
-  }
-
-  // Show children only if expanded
-  const shouldShowChildren = hasChildren && isExpanded
-
-  return (
-    <>
-      <div
-        draggable
-        onDragStart={handleLineDragStart}
-        onDragEnd={handleLineDragEnd}
-        className={`relative rounded-md transition-all cursor-move ${
-          isDragging
-            ? 'opacity-50'
-            : isCurrent
-            ? 'bg-blue-100 border border-blue-300'
-            : isDragOver
-            ? 'bg-green-100 border border-green-400'
-            : 'hover:bg-gray-100 border border-transparent'
-        }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        <div
-          className="flex items-center w-full text-left px-2 py-1.5 text-sm"
-          style={{ paddingLeft: `${0.5 + depth * 0.75}rem` }}
-        >
-          {/* Expand/collapse button */}
-          {hasChildren && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                onToggleExpand(line.id)
-              }}
-              className="mr-1 p-0.5 hover:bg-gray-200 rounded"
-            >
-              {isExpanded ? (
-                <ChevronDown className="h-3 w-3 text-gray-600" />
-              ) : (
-                <ChevronRight className="h-3 w-3 text-gray-600" />
-              )}
-            </button>
-          )}
-
-          {/* Tree prefix */}
-          {treePrefix && !hasChildren && (
-            <span className="text-gray-400 font-mono text-xs whitespace-pre mr-1">
-              {treePrefix}
-            </span>
-          )}
-
-          {/* Folder icon */}
-          {hasChildren ? (
-            isExpanded ? (
-              <FolderOpen className="h-4 w-4 text-gray-500 flex-shrink-0 mr-1.5" />
-            ) : (
-              <Folder className="h-4 w-4 text-gray-500 flex-shrink-0 mr-1.5" />
-            )
-          ) : (
-            <Folder className="h-4 w-4 text-gray-400 flex-shrink-0 mr-1.5" />
-          )}
-
-          {/* Line name and info */}
-          <button
-            onClick={() => onLineSelect(line.id)}
-            className="flex-1 min-w-0 overflow-hidden text-left"
-          >
-            <div className="text-xs font-medium text-gray-700 truncate">
-              {line.name}
-            </div>
-            
-            {/* Message count, character count, and tags */}
-            <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
-              <span>{line.messageIds.length} msgs</span>
-              <span>·</span>
-              <span>{charCount} chars</span>
-              {line.tagIds && line.tagIds.length > 0 && (
-                <>
-                  <span>·</span>
-                  <span className="truncate">
-                    {line.tagIds
-                      .slice(0, 2)
-                      .map((tagId) => tags[tagId])
-                      .filter(Boolean)
-                      .map((tag) => `#${tag.name}`)
-                      .join(' ')}
-                  </span>
-                </>
-              )}
-            </div>
-          </button>
-        </div>
-      </div>
-      
-      {/* Render children recursively if expanded */}
-      {shouldShowChildren && node.children && (
-        <div className="ml-2">
-          {node.children.map((childNode) => (
-            <LineItem
-              key={childNode.line.id}
-              node={childNode}
-              _lines={_lines}
-              messages={messages}
-              tags={tags}
-              currentLineId={currentLineId}
-              dragOverLineId={dragOverLineId}
-              draggedLineId={draggedLineId}
-              expandedLines={expandedLines}
-              _getLineAncestry={_getLineAncestry}
-              onLineSelect={onLineSelect}
-              onDrop={onDrop}
-              onLineDrop={onLineDrop}
-              onDragOver={onDragOver}
-              onToggleExpand={onToggleExpand}
-              onDragStart={onDragStart}
-              onDragEnd={onDragEnd}
-            />
-          ))}
-        </div>
-      )}
-    </>
   )
 }
 
