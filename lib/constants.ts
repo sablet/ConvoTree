@@ -45,6 +45,7 @@ export const SLASH_COMMAND_TASK_HIGH = "/task_high";
 export const SLASH_COMMAND_TASK_MEDIUM = "/task_medium";
 export const SLASH_COMMAND_TASK_LOW = "/task_low";
 export const SLASH_COMMAND_TASK_COMPLETED = "/task_completed";
+export const SLASH_COMMAND_TASK_PROGRESS = "/task_progress";
 export const SLASH_COMMAND_DOCUMENT = "/document";
 export const SLASH_COMMAND_SESSION = "/session";
 

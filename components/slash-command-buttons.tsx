@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Check, CheckSquare, FileText, Timer, AlertTriangle, Zap } from "lucide-react"
+import { Check, CheckSquare, FileText, Timer, AlertTriangle, Zap, PlayCircle } from "lucide-react"
 import {
   SLASH_COMMAND_TASK,
   SLASH_COMMAND_TASK_HIGH,
   SLASH_COMMAND_TASK_LOW,
   SLASH_COMMAND_TASK_COMPLETED,
+  SLASH_COMMAND_TASK_PROGRESS,
   SLASH_COMMAND_DOCUMENT,
   SLASH_COMMAND_SESSION
 } from "@/lib/constants"
@@ -16,6 +17,7 @@ import {
   LABEL_TASK_MEDIUM,
   LABEL_TASK_LOW,
   LABEL_TASK_COMPLETED,
+  LABEL_TASK_PROGRESS,
   LABEL_DOCUMENT,
   LABEL_SESSION
 } from "@/lib/ui-strings"
@@ -53,6 +55,13 @@ const SLASH_COMMANDS: SlashCommand[] = [
     icon: <Check className="h-3 w-3" />,
     description: "完了済みのタスクを作成",
     color: "bg-white hover:bg-green-50 text-gray-700 hover:text-green-700 border-gray-200 hover:border-green-300"
+  },
+  {
+    command: `${SLASH_COMMAND_TASK_PROGRESS} `,
+    label: LABEL_TASK_PROGRESS,
+    icon: <PlayCircle className="h-3 w-3" />,
+    description: "進行中で未完了のタスクを作成（作業開始状態）",
+    color: "bg-white hover:bg-yellow-50 text-gray-700 hover:text-yellow-700 border-gray-200 hover:border-yellow-300"
   },
   {
     command: `${SLASH_COMMAND_TASK_LOW} `,

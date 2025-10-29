@@ -9,6 +9,7 @@ import {
   SLASH_COMMAND_TASK_MEDIUM,
   SLASH_COMMAND_TASK_LOW,
   SLASH_COMMAND_TASK_COMPLETED,
+  SLASH_COMMAND_TASK_PROGRESS,
   SLASH_COMMAND_DOCUMENT,
   SLASH_COMMAND_SESSION
 } from '@/lib/constants'
@@ -59,6 +60,12 @@ const COMMAND_PATTERNS: SlashCommandPattern[] = [
   createTaskCommand(SLASH_COMMAND_TASK_LOW, 'low'),
   createTaskCommand(SLASH_COMMAND_TASK, 'medium'),
   createTaskCommand(SLASH_COMMAND_TASK_COMPLETED, 'medium', { completed: true }),
+  createTaskCommand(SLASH_COMMAND_TASK_PROGRESS, 'medium', { 
+    completed: false,
+    checkedInAt: new Date().toISOString(),
+    checkedOutAt: null,
+    timeSpent: 0
+  }),
   {
     pattern: buildCommandPattern(SLASH_COMMAND_DOCUMENT),
     type: MESSAGE_TYPE_DOCUMENT,

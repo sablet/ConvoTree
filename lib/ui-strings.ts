@@ -78,6 +78,7 @@ export const LABEL_TASK_HIGH = "高優先度タスク";
 export const LABEL_TASK_MEDIUM = "通常タスク";
 export const LABEL_TASK_LOW = "低優先度タスク";
 export const LABEL_TASK_COMPLETED = "完了済みタスク";
+export const LABEL_TASK_PROGRESS = "進行中タスク";
 export const LABEL_DOCUMENT = "ドキュメント";
 export const LABEL_SESSION = "作業セッション";
 export const ACTION_CONVERT_TO_TASK = "タスク化";
