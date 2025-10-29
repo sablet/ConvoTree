@@ -1,11 +1,12 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback } from 'react'
 import type { Line } from '@/lib/types'
 import type { ChatState } from './use-chat-state'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
-import { calculateLineAncestry, calculateOptimizedPath, type LineAncestryResult } from './helpers/branch-ancestry'
-import { filterTimeline } from './helpers/timeline-filter'
+import type { LineAncestryResult } from './helpers/branch-ancestry'
 import { saveLineEdit, updateLocalLineState, createNewTag, type LineEditData } from './helpers/line-edit'
-import { useMessageMove, type MessageMoveOperations } from './helpers/use-message-move'
+import { dataSourceManager } from '@/lib/data-source'
+import { useMessageMove } from './helpers/use-message-move'
+import { useTimelineOperations } from './helpers/use-timeline-operations'
 
 interface BranchOperationsProps {
   chatState: ChatState
@@ -15,7 +16,7 @@ interface BranchOperationsProps {
   onLineChange?: (lineId: string) => void
 }
 
-interface BranchOperations extends MessageMoveOperations {
+interface BranchOperations {
   // ライン切り替え
   switchToLine: (lineId: string) => void
   getCurrentLine: () => Line | null
@@ -43,6 +44,29 @@ interface BranchOperations extends MessageMoveOperations {
   handleRemoveTag: (tagIndex: number) => void
   setIsEditingBranch: React.Dispatch<React.SetStateAction<boolean>>
   setEditingBranchData: React.Dispatch<React.SetStateAction<{ name: string; tagIds: string[]; newTag: string }>>
+  handleCreateLine: (lineName: string) => Promise<void>
+
+  // メッセージタップ処理
+  selectedBaseMessage: string | null
+  setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
+  handleMessageTap: (messageId: string) => void
+
+  // メッセージ選択と削除
+  selectedMessages: Set<string>
+  setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
+  isSelectionMode: boolean
+  handleToggleSelectionMode: () => void
+  handleDeleteMessages: () => void
+  handleMoveMessages: () => void
+  handleConfirmMove: (targetLineId: string) => Promise<void>
+  handleConfirmBulkDelete: () => Promise<void>
+  showMoveDialog: boolean
+  setShowMoveDialog: React.Dispatch<React.SetStateAction<boolean>>
+  showBulkDeleteDialog: boolean
+  setShowBulkDeleteDialog: React.Dispatch<React.SetStateAction<boolean>>
+
+  // 更新状態
+  isUpdating: boolean
 
   // フッター更新
   footerKey: number
@@ -102,126 +126,82 @@ export function useBranchOperations({
   // フッター更新
   const [footerKey, setFooterKey] = useState(0)
 
-  // メッセージ移動関連の処理
   const messageMoveOps = useMessageMove({
     messages,
     setMessages,
     lines,
     setLines,
-    setCurrentLineId,
     clearAllCaches,
-    selectedBaseMessage,
     setSelectedBaseMessage
   })
 
-  /**
-   * Get branching lines from a branch point
-   */
-  const getBranchingLines = useCallback((messageId: string): Line[] => {
-    const branchPoint = branchPoints[messageId]
-    if (!branchPoint || !branchPoint.lines.length) return []
-    return branchPoint.lines.map(lineId => lines[lineId]).filter(Boolean)
-  }, [branchPoints, lines])
+  const {
+    selectedMessages,
+    isSelectionMode,
+    showMoveDialog,
+    showBulkDeleteDialog,
+    isUpdating: moveIsUpdating,
+    handleToggleSelectionMode,
+    handleMoveMessages,
+    handleDeleteMessages,
+    handleConfirmBulkDelete,
+    handleConfirmMove,
+    setSelectedMessages,
+    setShowMoveDialog,
+    setShowBulkDeleteDialog,
+    setIsSelectionMode
+  } = messageMoveOps
+
+  const {
+    getBranchingLines,
+    getLineAncestry,
+    getOptimizedPath,
+    getCompleteTimeline,
+    completeTimeline,
+    filteredTimeline,
+    clearTimelineCaches
+  } = useTimelineOperations({
+    messages,
+    lines,
+    branchPoints,
+    currentLineId,
+    pathCache,
+    setPathCache,
+    lineAncestryCache,
+    setLineAncestryCache,
+    filterMessageType,
+    filterTaskCompleted,
+    filterDateStart,
+    filterDateEnd,
+    filterTag,
+    searchKeyword
+  })
 
   /**
-   * Get line ancestry chain (memoized with cache)
+   * Handle message tap (selection or branching)
    */
-  const getLineAncestry = useCallback((lineId: string): string[] => {
-    // キャッシュチェック
-    if (lineAncestryCache.has(lineId)) {
-      const cached = lineAncestryCache.get(lineId)
-      if (cached) return cached
-    }
-
-    const ancestry = calculateLineAncestry(lineId, lines, messages, lineAncestryCache)
-
-    setLineAncestryCache(prev => {
-      const newCache = new Map(prev)
-      newCache.set(lineId, ancestry)
-      return newCache
-    })
-
-    return ancestry
-  }, [lines, messages, lineAncestryCache, setLineAncestryCache])
-
-  /**
-   * Get optimized path (with cache)
-   */
-  const getOptimizedPath = useCallback((lineId: string): LineAncestryResult => {
-    if (pathCache.has(lineId)) {
-      const cached = pathCache.get(lineId)
-      if (cached) return cached
-    }
-
-    const result = calculateOptimizedPath(lineId, lines, messages, lineAncestryCache)
-
-    setPathCache(prev => {
-      const newCache = new Map(prev)
-      newCache.set(lineId, result)
-      return newCache
-    })
-
-    return result
-  }, [lines, messages, lineAncestryCache, pathCache, setPathCache])
-
-  /**
-   * Get complete timeline
-   */
-  const getCompleteTimeline = useCallback((): LineAncestryResult => {
-    // タイムライン仮想ブランチの場合
-    if (currentLineId === TIMELINE_BRANCH_ID) {
-      const allMessages = Object.values(messages).sort((a, b) => {
-        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-      })
-
-      // ライン切り替わり情報を生成
-      const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
-      let prevLineId: string | null = null
-
-      allMessages.forEach((msg, index) => {
-        if (msg.lineId !== prevLineId) {
-          const line = lines[msg.lineId]
-          transitions.push({
-            index,
-            lineId: msg.lineId,
-            lineName: line?.name || msg.lineId
-          })
-          prevLineId = msg.lineId
+  const handleMessageTap = useCallback((messageId: string) => {
+    if (isSelectionMode) {
+      setSelectedMessages(prev => {
+        const newSet = new Set(prev)
+        if (newSet.has(messageId)) {
+          newSet.delete(messageId)
+        } else {
+          newSet.add(messageId)
         }
+        return newSet
       })
-
-      return { messages: allMessages, transitions }
+    } else {
+      // Branching mode
+      if (selectedBaseMessage === messageId) {
+        setSelectedBaseMessage(null)
+      } else {
+        setSelectedBaseMessage(messageId)
+      }
     }
+  }, [isSelectionMode, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
 
-    // 通常のライン表示
-    if (!currentLineId || !lines[currentLineId]) {
-      return { messages: [], transitions: [] }
-    }
 
-    const result = getOptimizedPath(currentLineId)
-    return result
-  }, [currentLineId, lines, messages, getOptimizedPath])
-
-  /**
-   * Memoized timeline
-   */
-  const completeTimeline = useMemo(() => {
-    return getCompleteTimeline()
-  }, [getCompleteTimeline])
-
-  /**
-   * Filtered timeline
-   */
-  const filteredTimeline = useMemo(() => {
-    return filterTimeline(completeTimeline, {
-      filterMessageType,
-      filterTaskCompleted,
-      filterDateStart,
-      filterDateEnd,
-      filterTag,
-      searchKeyword
-    })
-  }, [completeTimeline, filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword])
 
   /**
    * Save scroll position
@@ -351,16 +331,74 @@ export function useBranchOperations({
     }))
   }, [])
 
-  /** 
-   * Clear timeline caches
-   */
-  const clearTimelineCaches = useCallback(() => {
-    setPathCache(new Map());
-    setLineAncestryCache(new Map());
-  }, [setPathCache, setLineAncestryCache]);
+  const handleCreateLine = useCallback(async (lineName: string) => {
+    const trimmedName = lineName.trim()
+    if (!trimmedName) {
+      alert('ライン名を入力してください')
+      return
+    }
+
+    setIsUpdating(true)
+    try {
+      const timestamp = new Date().toISOString()
+      const newLineId = await dataSourceManager.createLine({
+        name: trimmedName,
+        messageIds: [],
+        startMessageId: '',
+        tagIds: [],
+        created_at: timestamp,
+        updated_at: timestamp
+      })
+
+      const newLine: Line = {
+        id: newLineId,
+        name: trimmedName,
+        messageIds: [],
+        startMessageId: '',
+        tagIds: [],
+        created_at: timestamp,
+        updated_at: timestamp
+      }
+
+      setLines(prev => ({
+        ...prev,
+        [newLineId]: newLine
+      }))
+
+      setSelectedBaseMessage(null)
+      setSelectedMessages(new Set())
+      setIsSelectionMode(false)
+
+      if (currentLineId) {
+        saveScrollPosition(currentLineId)
+      }
+
+      setCurrentLineId(newLineId)
+      if (onLineChange) {
+        onLineChange(newLineId)
+      }
+
+      clearTimelineCaches()
+      clearAllCaches()
+      setFooterKey(prev => prev + 1)
+
+      if (messagesContainerRef.current) {
+        messagesContainerRef.current.scrollTop = 0
+      }
+    } catch (error) {
+      console.error('Failed to create line:', error)
+      alert('ラインの作成に失敗しました')
+      throw error
+    } finally {
+      setIsUpdating(false)
+    }
+  }, [clearTimelineCaches, clearAllCaches, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, setFooterKey, messagesContainerRef])
 
   return {
-    ...messageMoveOps,
+    showMoveDialog,
+    setShowMoveDialog,
+    handleMoveMessages,
+    handleConfirmMove,
     switchToLine,
     getCurrentLine,
     getBranchingLines,
@@ -375,13 +413,25 @@ export function useBranchOperations({
     restoreScrollPosition,
     isEditingBranch,
     editingBranchData,
-    isUpdating: isUpdating || messageMoveOps.isUpdating,
+    isUpdating: isUpdating || moveIsUpdating,
     handleEditLine,
     handleSaveLineEdit,
     handleAddTag,
     handleRemoveTag,
     setIsEditingBranch,
     setEditingBranchData,
+    handleCreateLine,
+    selectedBaseMessage,
+    setSelectedBaseMessage,
+    handleMessageTap,
+    selectedMessages,
+    setSelectedMessages,
+    isSelectionMode,
+    handleToggleSelectionMode,
+    handleDeleteMessages,
+    handleConfirmBulkDelete,
+    showBulkDeleteDialog,
+    setShowBulkDeleteDialog,
     footerKey,
     setFooterKey
   }

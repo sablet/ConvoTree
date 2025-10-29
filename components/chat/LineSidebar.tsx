@@ -1,13 +1,14 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
-import { ChevronRight, ChevronDown, Folder, FolderOpen } from "lucide-react"
+import { useState, useEffect, useCallback, useRef } from "react"
+import { ChevronRight, ChevronDown, Folder, FolderOpen, Plus } from "lucide-react"
 import type { Line, Tag, Message } from "@/lib/types"
 import { buildLineTree, getTreePrefix } from "@/lib/line-tree-builder"
 import { MAIN_LINE_ID } from "@/lib/constants"
 import { toast } from "sonner"
 import { reparentLine, updateLocalStateAfterReparent, wouldCreateCircularReference } from "@/hooks/helpers/line-reparent"
 import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
+import { LineSidebarNewLineForm } from "./LineSidebarNewLineForm"
 
 const EXPANDED_LINES_KEY = 'chat-line-sidebar-expanded-lines-v2' // v2: Only expand root level by default
 
@@ -48,6 +49,7 @@ interface LineSidebarProps {
   getLineAncestry: (lineId: string) => string[]
   onLineSelect: (lineId: string) => void
   onDrop: (targetLineId: string, messageId: string) => void
+  onCreateLine: (lineName: string) => Promise<void>
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   clearAllCaches: () => void
 }
@@ -69,6 +71,7 @@ export function LineSidebar({
   getLineAncestry,
   onLineSelect,
   onDrop,
+  onCreateLine,
   setLines,
   clearAllCaches
 }: LineSidebarProps) {
@@ -79,6 +82,10 @@ export function LineSidebar({
     // Initialize with root lines and path to current line expanded
     return getDefaultExpandedLines(lines, currentLineId, getLineAncestry)
   })
+  const [isCreatingLine, setIsCreatingLine] = useState(false)
+  const [newLineName, setNewLineName] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const createInputRef = useRef<HTMLInputElement | null>(null)
 
   // Load collapsed state and expanded lines from localStorage
   useEffect(() => {
@@ -105,6 +112,13 @@ export function LineSidebar({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (isCreatingLine && createInputRef.current) {
+      createInputRef.current.focus()
+      createInputRef.current.select()
+    }
+  }, [isCreatingLine])
 
   // Expand newly added root-level lines automatically
   useEffect(() => {
@@ -171,6 +185,46 @@ export function LineSidebar({
     })
   }, [])
 
+  const handleStartCreateLine = useCallback(() => {
+    if (isSubmitting || isCreatingLine) return
+
+    if (isCollapsed) {
+      setIsCollapsed(false)
+      window.localStorage.setItem(COLLAPSED_KEY, 'false')
+      setTimeout(() => {
+        setIsCreatingLine(true)
+      }, 0)
+    } else {
+      setIsCreatingLine(true)
+    }
+  }, [isCollapsed, isSubmitting, isCreatingLine])
+
+  const handleCancelCreate = useCallback(() => {
+    if (isSubmitting) return
+    setIsCreatingLine(false)
+    setNewLineName("")
+  }, [isSubmitting])
+
+  const handleCreateLineSubmit = useCallback(async () => {
+    if (isSubmitting) return
+    const trimmed = newLineName.trim()
+    if (!trimmed) {
+      toast.error('ライン名を入力してください')
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      await onCreateLine(trimmed)
+      setNewLineName("")
+      setIsCreatingLine(false)
+    } catch {
+      // Error is handled within onCreateLine
+    } finally {
+      setIsSubmitting(false)
+    }
+  }, [isSubmitting, newLineName, onCreateLine])
+
   // Handle line drag and drop - reparent source line under target line
   const handleLineDrop = useCallback(async (targetLineId: string, sourceLineId: string) => {
     if (targetLineId === sourceLineId) return
@@ -218,7 +272,7 @@ export function LineSidebar({
       }`}
     >
       {/* Header */}
-      <div className="h-14 border-b border-gray-200 flex items-center px-3 bg-white">
+      <div className="h-14 border-b border-gray-200 flex items-center px-3 bg-white gap-2">
         <button
           onClick={handleToggleCollapse}
           className="p-1 hover:bg-gray-100 rounded transition-colors"
@@ -231,8 +285,20 @@ export function LineSidebar({
           )}
         </button>
         {!isCollapsed && (
-          <h2 className="ml-2 text-sm font-semibold text-gray-700">Lines</h2>
+          <h2 className="text-sm font-semibold text-gray-700">Lines</h2>
         )}
+        <button
+          onClick={handleStartCreateLine}
+          className={`ml-auto p-1.5 rounded transition-colors ${
+            isCollapsed ? 'hover:bg-blue-50 text-blue-600' : 'hover:bg-blue-100 text-blue-600'
+          } disabled:opacity-40 disabled:cursor-not-allowed`}
+          title="新しいラインを作成"
+          aria-label="新しいラインを作成"
+          disabled={isSubmitting}
+          type="button"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
       </div>
 
       {/* Line Tree */}
@@ -241,6 +307,18 @@ export function LineSidebar({
           className="overflow-y-auto h-[calc(100vh-14rem)] p-2 space-y-1 pb-4"
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
         >
+          {isCreatingLine && (
+            <LineSidebarNewLineForm
+              value={newLineName}
+              isSubmitting={isSubmitting}
+              onChange={setNewLineName}
+              onSubmit={() => {
+                void handleCreateLineSubmit()
+              }}
+              onCancel={handleCancelCreate}
+              inputRef={createInputRef}
+            />
+          )}
           {treeNodes.length === 0 ? (
             <div className="text-center py-8 text-gray-500 text-sm">
               <Folder className="w-6 h-6 mx-auto mb-2 text-gray-400" />

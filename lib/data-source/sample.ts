@@ -109,8 +109,4 @@ export class SampleDataSource implements IDataSource {
   ): Promise<string> {
     throw new Error('Sample data source is read-only');
   }
-
-  async createLineAndMoveMessages(_messageIds: string[], _lineName: string): Promise<string> {
-    throw new Error('Sample data source is read-only');
-  }
 }

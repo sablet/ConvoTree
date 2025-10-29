@@ -136,6 +136,7 @@ export function ChatContainer({
         getLineAncestry={branchOps.getLineAncestry}
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
+        onCreateLine={branchOps.handleCreateLine}
         setLines={chatState.setLines}
         clearAllCaches={chatState.clearAllCaches}
       />
@@ -302,7 +303,6 @@ export function ChatContainer({
         isUpdating={branchOps.isUpdating}
         getLineAncestry={branchOps.getLineAncestry}
         onConfirm={branchOps.handleConfirmMove}
-        onCreateNewLine={branchOps.handleCreateNewLineAndMove}
         onCancel={() => branchOps.setShowMoveDialog(false)}
       />
 

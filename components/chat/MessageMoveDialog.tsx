@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { GitBranch, Plus, Link2, AlertCircle } from "lucide-react"
+import { GitBranch, Link2, AlertCircle } from "lucide-react"
 import type { Line, Tag } from "@/lib/types"
 import { buildLineTree, type LineTreeNode } from "@/lib/line-tree-builder"
 import { LineBreadcrumb } from "./LineBreadcrumb"
@@ -35,67 +35,7 @@ interface MessageMoveDialogProps {
   isUpdating: boolean
   getLineAncestry: (lineId: string) => string[]
   onConfirm: (targetLineId: string) => void
-  onCreateNewLine?: (lineName: string) => void
   onCancel: () => void
-}
-
-/** New line creation UI */
-function NewLineCreator({
-  isCreatingNew,
-  newLineName,
-  isUpdating,
-  onSetCreating,
-  onSetName,
-  onCreate,
-  onCancel
-}: {
-  isCreatingNew: boolean
-  newLineName: string
-  isUpdating: boolean
-  onSetCreating: (v: boolean) => void
-  onSetName: (v: string) => void
-  onCreate: () => void
-  onCancel: () => void
-}) {
-  if (!isCreatingNew) {
-    return (
-      <button
-        onClick={() => onSetCreating(true)}
-        disabled={isUpdating}
-        className="w-full text-left p-3 border-2 border-dashed border-blue-300 rounded-md hover:bg-blue-50 hover:border-blue-400 transition-colors disabled:opacity-50 flex items-center gap-2 text-blue-600"
-      >
-        <Plus className="h-5 w-5" />
-        <span className="font-medium">新しいラインを作成</span>
-      </button>
-    )
-  }
-  return (
-    <div className="p-3 border-2 border-blue-300 rounded-md bg-blue-50">
-      <div className="flex flex-col gap-2">
-        <input
-          type="text"
-          value={newLineName}
-          onChange={(e) => onSetName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') onCreate()
-            else if (e.key === 'Escape') onCancel()
-          }}
-          placeholder="新しいライン名を入力..."
-          disabled={isUpdating}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          autoFocus
-        />
-        <div className="flex gap-2">
-          <Button onClick={onCreate} disabled={isUpdating || !newLineName.trim()} className="flex-1">
-            作成して移動
-          </Button>
-          <Button onClick={onCancel} variant="outline" disabled={isUpdating}>
-            キャンセル
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
 }
 
 /** Line selection button component */
@@ -223,11 +163,8 @@ export function MessageMoveDialog({
   isUpdating,
   getLineAncestry,
   onConfirm,
-  onCreateNewLine,
   onCancel
 }: MessageMoveDialogProps) {
-  const [newLineName, setNewLineName] = useState("")
-  const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [selectedTargetLineId, setSelectedTargetLineId] = useState<string | null>(null)
 
   if (!isOpen) return null
@@ -240,13 +177,6 @@ export function MessageMoveDialog({
     : null
   const canConnect = checkCanConnect(config.isLineConnectionMode, selectedTargetLineId, currentLineId, connectionInfo)
 
-  const handleCreateNew = () => {
-    if (!newLineName.trim() || !onCreateNewLine) return
-    onCreateNewLine(newLineName.trim())
-    setNewLineName("")
-    setIsCreatingNew(false)
-  }
-
   const handleLineSelect = (targetLineId: string) => {
     if (!config.isLineConnectionMode) return onConfirm(targetLineId)
     setSelectedTargetLineId(targetLineId)
@@ -255,11 +185,6 @@ export function MessageMoveDialog({
   const handleConfirmConnection = () => {
     if (!selectedTargetLineId) return
     onConfirm(selectedTargetLineId)
-  }
-
-  const handleCancelCreation = () => {
-    setIsCreatingNew(false)
-    setNewLineName("")
   }
 
   return (
@@ -271,19 +196,6 @@ export function MessageMoveDialog({
             <h3 className="text-lg font-semibold text-gray-900">{config.title}</h3>
           </div>
           <p className="text-gray-600 mb-4">{config.promptMessage}</p>
-          {!config.isLineConnectionMode && onCreateNewLine && (
-            <div className="mb-4">
-              <NewLineCreator
-                isCreatingNew={isCreatingNew}
-                newLineName={newLineName}
-                isUpdating={isUpdating}
-                onSetCreating={setIsCreatingNew}
-                onSetName={setNewLineName}
-                onCreate={handleCreateNew}
-                onCancel={handleCancelCreation}
-              />
-            </div>
-          )}
 
           <div className="max-h-96 overflow-y-auto space-y-2 mb-4">
             {flattenedNodes.map((node) => (

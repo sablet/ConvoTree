@@ -7,7 +7,7 @@ import type { BranchPoint, Line, Message } from '@/lib/types';
 import type { FirestoreMessageOperations } from './firestore-message';
 import type { FirestoreLineOperations } from './firestore-line';
 import type * as FirebaseFirestore from 'firebase/firestore';
-import { buildMessageChain, unlinkMessageFromCurrentPosition, readTransactionData } from './firestore-branch-helpers';
+import { buildMessageChain, unlinkMessageFromCurrentPosition } from './firestore-branch-helpers';
 
 interface BranchPointWithTimestamp {
   messageId: string;
@@ -375,109 +375,6 @@ export class FirestoreBranchOperations {
 
     } catch (error) {
       console.error(`❌ Failed to move message ${messageId} to line ${targetLineId}:`, error);
-      throw error;
-    }
-  }
-
-  async createLineAndMoveMessages(messageIds: string[], lineName: string): Promise<string> {
-    try {
-      if (messageIds.length === 0) {
-        throw new Error('At least one message is required');
-      }
-
-      if (!lineName || lineName.trim() === '') {
-        throw new Error('Line name is required');
-      }
-
-      // Check line name uniqueness BEFORE transaction
-      const linesRef = collection(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION);
-      const nameCheckQuery = query(linesRef, where('name', '==', lineName));
-      const nameCheckSnapshot = await getDocs(nameCheckQuery);
-
-      if (!nameCheckSnapshot.empty) {
-        throw new Error(`Line with name "${lineName}" already exists`);
-      }
-
-      let newLineId = '';
-
-      await runTransaction(db, async (transaction) => {
-        // PHASE 1: All reads first
-        const { messageDocs, messageRefs, oldLineDocsMap, branchFromMessageId, existingBranchPoint } =
-          await readTransactionData(this.conversationId, messageIds, transaction);
-
-        // PHASE 2: All writes
-
-        // 1. Create new line
-        const newLineRef = doc(linesRef);
-        newLineId = newLineRef.id;
-
-        const now = new Date().toISOString();
-        const lineData = {
-          name: lineName,
-          messageIds,
-          startMessageId: messageIds[0],
-          branchFromMessageId,
-          created_at: now,
-          updated_at: now,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        };
-
-        transaction.set(newLineRef, lineData);
-
-        // 2. Update branch point if we have a branchFromMessageId
-        if (branchFromMessageId) {
-          const branchPointRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, BRANCH_POINTS_SUBCOLLECTION, branchFromMessageId);
-
-          if (existingBranchPoint) {
-            const updatedLines = [...existingBranchPoint.lines, newLineId];
-            transaction.update(branchPointRef, {
-              lines: updatedLines,
-              updatedAt: serverTimestamp()
-            });
-          } else {
-            const newBranchPointData = {
-              messageId: branchFromMessageId,
-              lines: [newLineId],
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp()
-            };
-            transaction.set(branchPointRef, newBranchPointData);
-          }
-        }
-
-        // 3. Unlink all messages from current positions
-        messageDocs.forEach(messageDoc => {
-          const messageData = messageDoc.data() as MessageWithTimestamp;
-          unlinkMessageFromCurrentPosition(this.conversationId, messageData, transaction);
-        });
-
-        // 4. Update all messages to new line
-        messageRefs.forEach((messageRef) => {
-          transaction.update(messageRef, {
-            lineId: newLineId,
-            prevInLine: null,
-            nextInLine: null,
-            updatedAt: serverTimestamp()
-          });
-        });
-
-        // 5. Update old lines' messageIds - remove moved messages
-        for (const [oldLineId, oldLineData] of Array.from(oldLineDocsMap.entries())) {
-          const oldLineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, oldLineId);
-          const updatedMessageIds = oldLineData.messageIds.filter(id => !messageIds.includes(id));
-          transaction.update(oldLineRef, {
-            messageIds: updatedMessageIds,
-            updated_at: now,
-            updatedAt: serverTimestamp()
-          });
-        }
-      });
-
-      return newLineId;
-
-    } catch (error) {
-      console.error('❌ Failed to create line and move messages:', error);
       throw error;
     }
   }
