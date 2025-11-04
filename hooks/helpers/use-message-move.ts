@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { Message, Line } from '@/lib/types'
+import type { ChatRepository } from '@/lib/repositories/chat-repository'
 import { executeBulkDelete } from './message-bulk-delete'
 import { moveMessagesToLine, updateLocalStateAfterMove } from './message-move'
 
@@ -10,6 +11,7 @@ interface MessageMoveProps {
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   clearAllCaches: () => void
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
+  chatRepository: ChatRepository
 }
 
 interface MessageMoveOperations {
@@ -35,7 +37,8 @@ export function useMessageMove({
   lines,
   setLines,
   clearAllCaches,
-  setSelectedBaseMessage
+  setSelectedBaseMessage,
+  chatRepository
 }: MessageMoveProps): MessageMoveOperations {
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
@@ -80,7 +83,8 @@ export function useMessageMove({
         clearAllCaches,
         setSelectedMessages,
         setShowBulkDeleteDialog,
-        setIsSelectionMode
+        setIsSelectionMode,
+        chatRepository
       })
     } catch (error) {
       console.error('Failed to delete messages:', error)
@@ -88,7 +92,7 @@ export function useMessageMove({
     } finally {
       setIsUpdating(false)
     }
-  }, [selectedMessages, setMessages, setLines, clearAllCaches])
+  }, [selectedMessages, setMessages, setLines, clearAllCaches, chatRepository])
 
   const handleConfirmMove = useCallback(async (targetLineId: string) => {
     if (selectedMessages.size === 0) return

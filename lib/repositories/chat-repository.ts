@@ -4,8 +4,8 @@ import { config } from '@/lib/config';
 import type { ChatData, DataSource } from '@/lib/data-source/base';
 import { DataSourceFactory, dataSourceManager } from '@/lib/data-source/factory';
 import type { IDataSource } from '@/lib/data-source/base';
-import { FirestoreRealtimeListener } from '@/lib/data-source/firestore-realtime';
-import type { ChatDataChangeHandler, ErrorHandler } from '@/lib/data-source/firestore-realtime';
+import { loadChatDataCache, saveChatDataCache, clearChatDataCache } from '@/lib/data-source/indexed-db-storage';
+import { clearAllLastFetchTimestamps } from '@/lib/data-source/indexed-db-timestamp-storage';
 
 interface LoadChatDataOptions {
   source?: DataSource;
@@ -23,184 +23,51 @@ interface LoadChatDataResult {
 const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['sample'];
 
 /**
- * リアルタイムリスナーベースのChatRepository
- * LocalStorageを使用せず、Firestoreの永続化キャッシュのみを使用
+ * タイムスタンプベースの差分取得を使用するChatRepository
  */
 export class ChatRepository {
   private readonly conversationId: string;
-  private realtimeListener: FirestoreRealtimeListener | null = null;
   private currentData: ChatData | null = null;
-  private dataChangeCallbacks: Set<ChatDataChangeHandler> = new Set();
+  private initPromise: Promise<void> | null = null;
 
   constructor(conversationId?: string) {
     this.conversationId = conversationId ?? config.conversationId;
+    // 初期化を非同期で開始（loadChatDataで自動的に呼ばれる）
   }
 
   /**
-   * リアルタイムリスナーを開始
+   * IndexedDBからキャッシュを復元（初回のみ）
    */
-  startRealtimeListener(
-    onChange: ChatDataChangeHandler,
-    onError?: ErrorHandler
-  ): void {
-    if (this.realtimeListener) {
-      console.debug('[ChatRepository] Listener already started, reusing existing listener');
-      return;
+  private async ensureInitialized(): Promise<void> {
+    if (this.initPromise) {
+      return this.initPromise;
     }
 
-    console.debug('[ChatRepository] Starting new realtime listener');
-    this.realtimeListener = new FirestoreRealtimeListener(this.conversationId);
-
-    const wrappedOnChange: ChatDataChangeHandler = (data, fromCache) => {
-      this.currentData = data;
-
-      // すべてのコールバックを実行
-      this.dataChangeCallbacks.forEach(callback => {
-        try {
-          callback(data, fromCache);
-        } catch (error) {
-          console.error('[ChatRepository] Error in data change callback:', error);
+    this.initPromise = (async () => {
+      try {
+        this.currentData = await loadChatDataCache(this.conversationId);
+        if (this.currentData) {
+          console.log('[ChatRepository] Restored cached data from IndexedDB');
         }
-      });
+      } catch (error) {
+        console.warn('[ChatRepository] Failed to restore cache:', error);
+        this.currentData = null;
+      }
+    })();
 
-      // 主要なonChangeコールバックも実行
-      onChange(data, fromCache);
-    };
-
-    this.realtimeListener.start(wrappedOnChange, onError);
-  }
-
-  /**
-   * リアルタイムリスナーを停止
-   */
-  stopRealtimeListener(): void {
-    if (this.realtimeListener) {
-      console.debug('[ChatRepository] Stopping realtime listener');
-      this.realtimeListener.stop();
-      this.realtimeListener = null;
-    }
-    this.dataChangeCallbacks.clear();
-    this.currentData = null;
-  }
-
-  /**
-   * データ変更コールバックを登録
-   */
-  subscribeToDataChanges(callback: ChatDataChangeHandler): () => void {
-    this.dataChangeCallbacks.add(callback);
-
-    // 既にデータがある場合は即座にコールバックを実行
-    if (this.currentData) {
-      callback(this.currentData, false);
-    }
-
-    // unsubscribe関数を返す
-    return () => {
-      this.dataChangeCallbacks.delete(callback);
-    };
-  }
-
-  /**
-   * 現在のデータを取得（リアルタイムリスナーから）
-   */
-  getCurrentData(): ChatData | null {
-    if (this.realtimeListener) {
-      return this.realtimeListener.getCurrentData();
-    }
-    return this.currentData;
+    return this.initPromise;
   }
 
   /**
    * 初回ロード用（フォールバック対応）
    */
   async loadChatData(options: LoadChatDataOptions = {}): Promise<LoadChatDataResult> {
+    // 初回はIndexedDBからキャッシュを復元
+    await this.ensureInitialized();
+
     const source = options.source ?? dataSourceManager.getCurrentSource();
     const fallbackSources = this.buildFallbackSources(source, options.fallbackSources);
 
-    // Firestoreの場合はリアルタイムリスナーを使用
-    if (source === 'firestore') {
-      // 既にリスナーが起動していてデータがある場合は即座に返す
-      if (this.realtimeListener && this.currentData) {
-        console.debug('[ChatRepository] Listener already running, returning cached data');
-        return Promise.resolve({
-          data: this.currentData,
-          source: 'firestore',
-          fromCache: true
-        });
-      }
-
-      return new Promise<LoadChatDataResult>((resolve, reject) => {
-        let resolved = false;
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let unsubscribe: (() => void) | undefined;
-
-        const cleanup = () => {
-          if (unsubscribe) {
-            unsubscribe();
-            unsubscribe = undefined;
-          }
-          if (timeoutId !== undefined) {
-            clearTimeout(timeoutId);
-            timeoutId = undefined;
-          }
-        };
-
-        const onError: ErrorHandler = (error) => {
-          if (!resolved) {
-            resolved = true;
-            cleanup();
-            reject(error);
-          }
-        };
-
-        unsubscribe = this.subscribeToDataChanges((data, fromCache) => {
-          if (!resolved && !fromCache) {
-            // サーバーからの初回データ取得完了
-            resolved = true;
-            cleanup();
-            resolve({
-              data,
-              source: 'firestore',
-              fromCache: false
-            });
-          }
-        });
-
-        if (resolved) {
-          cleanup();
-          return;
-        }
-
-        // Firestoreリスナー起動（既存リスナーがある場合は再利用）
-        this.startRealtimeListener(() => {}, onError);
-
-        // タイムアウト設定（10秒）
-        timeoutId = setTimeout(() => {
-          if (!resolved) {
-            const currentData = this.getCurrentData();
-            if (currentData && Object.keys(currentData.messages).length > 0) {
-              // キャッシュデータがある場合はそれを返す
-              resolved = true;
-              cleanup();
-              resolve({
-                data: currentData,
-                source: 'firestore',
-                fromCache: true
-              });
-            } else {
-              resolved = true;
-              cleanup();
-              reject(new Error('Firestore data load timeout'));
-            }
-          }
-        }, 10000);
-      }).catch(async (primaryError) => {
-        console.error(`[ChatRepository] Firestore failed:`, primaryError);
-        return await this.handleLoadError(primaryError, fallbackSources, source);
-      });
-    }
-
-    // その他のデータソース（サンプルデータなど）
     try {
       return await this.loadFromSource(source);
     } catch (primaryError) {
@@ -250,14 +117,119 @@ export class ChatRepository {
 
   private async loadFromSource(source: DataSource): Promise<LoadChatDataResult> {
     const dataSource = this.resolveDataSource(source);
-    const data = await dataSource.loadChatData();
+    const fetchedData = await dataSource.loadChatData();
+
+    // 既存データとマージ（差分取得の場合）
+    let mergedData = fetchedData;
+    if (this.currentData) {
+      const mergedMessages = { ...this.currentData.messages, ...fetchedData.messages };
+
+      // deleted=true のメッセージを除外
+      const filteredMessages: typeof mergedMessages = {};
+      Object.entries(mergedMessages).forEach(([id, msg]) => {
+        if (!msg.deleted) {
+          filteredMessages[id] = msg;
+        }
+      });
+
+      mergedData = {
+        messages: filteredMessages,
+        lines: [...this.currentData.lines, ...fetchedData.lines].reduce((acc, line) => {
+          const existing = acc.find(l => l.id === line.id);
+          if (existing) {
+            return acc.map(l => l.id === line.id ? line : l);
+          }
+          return [...acc, line];
+        }, [] as typeof fetchedData.lines),
+        branchPoints: { ...this.currentData.branchPoints, ...fetchedData.branchPoints },
+        tags: { ...this.currentData.tags, ...fetchedData.tags },
+        tagGroups: { ...this.currentData.tagGroups, ...fetchedData.tagGroups }
+      };
+    } else {
+      // 初回取得時もフィルタ適用
+      const filteredMessages: typeof fetchedData.messages = {};
+      Object.entries(fetchedData.messages).forEach(([id, msg]) => {
+        if (!msg.deleted) {
+          filteredMessages[id] = msg;
+        }
+      });
+      mergedData = {
+        ...fetchedData,
+        messages: filteredMessages
+      };
+    }
+
+    // マージしたデータをメモリとIndexedDBにキャッシュ
+    this.currentData = mergedData;
+    await saveChatDataCache(this.conversationId, mergedData);
 
     return {
-      data,
+      data: mergedData,
       source,
       fromCache: false
     };
   }
-}
 
-export const chatRepository = new ChatRepository();
+  /**
+   * メッセージを削除し、キャッシュを即座に更新
+   */
+  async deleteMessage(id: string): Promise<void> {
+    await this.ensureInitialized();
+
+    const dataSource = dataSourceManager.getDataSource();
+    await dataSource.deleteMessage(id);
+
+    // キャッシュからメッセージを削除
+    if (this.currentData) {
+      const { [id]: _, ...remainingMessages } = this.currentData.messages;
+      this.currentData = {
+        ...this.currentData,
+        messages: remainingMessages
+      };
+      await saveChatDataCache(this.conversationId, this.currentData);
+      console.log(`[ChatRepository] Message ${id} deleted and removed from cache`);
+    }
+  }
+
+  /**
+   * メッセージを作成し、キャッシュを即座に更新
+   */
+  async createMessage(message: Parameters<IDataSource['createMessage']>[0]): Promise<string> {
+    await this.ensureInitialized();
+
+    const dataSource = dataSourceManager.getDataSource();
+    const messageId = await dataSource.createMessage(message);
+
+    // 作成したメッセージを再取得してキャッシュに追加
+    // （loadChatDataを呼んで差分取得することで、updatedAtなどの値も正確に取得）
+    await this.loadChatData();
+
+    return messageId;
+  }
+
+  /**
+   * メッセージを更新し、キャッシュを即座に更新
+   */
+  async updateMessage(id: string, updates: Parameters<IDataSource['updateMessage']>[1]): Promise<void> {
+    await this.ensureInitialized();
+
+    const dataSource = dataSourceManager.getDataSource();
+    await dataSource.updateMessage(id, updates);
+
+    // 更新したメッセージを再取得してキャッシュに反映
+    await this.loadChatData();
+  }
+
+  /**
+   * 全てのキャッシュをクリア（ChatDataとタイムスタンプ）
+   */
+  async clearAllCache(): Promise<void> {
+    this.currentData = null;
+    this.initPromise = null; // 初期化フラグをリセット
+    await Promise.all([
+      clearChatDataCache(this.conversationId),
+      clearAllLastFetchTimestamps(this.conversationId)
+    ]);
+    console.log('[ChatRepository] Cleared all caches (data + timestamps)');
+  }
+}

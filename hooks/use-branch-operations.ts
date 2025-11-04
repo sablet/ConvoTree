@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import type { Line } from '@/lib/types'
 import type { ChatState } from './use-chat-state'
+import type { ChatRepository } from '@/lib/repositories/chat-repository'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import type { LineAncestryResult } from './helpers/branch-ancestry'
 import { useMessageMove } from './helpers/use-message-move'
@@ -15,6 +16,7 @@ interface BranchOperationsProps {
   selectedBaseMessage: string | null
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
   onLineChange?: (lineId: string) => void
+  chatRepository: ChatRepository
 }
 
 
@@ -94,7 +96,8 @@ export function useBranchOperations({
   messagesContainerRef,
   selectedBaseMessage,
   setSelectedBaseMessage,
-  onLineChange
+  onLineChange,
+  chatRepository
 }: BranchOperationsProps): BranchOperations {
   const {
     messages,
@@ -134,7 +137,8 @@ export function useBranchOperations({
     lines,
     setLines,
     clearAllCaches,
-    setSelectedBaseMessage
+    setSelectedBaseMessage,
+    chatRepository
   })
 
   const {

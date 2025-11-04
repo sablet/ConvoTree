@@ -23,9 +23,8 @@ function ChatPageContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [lineNotFound, setLineNotFound] = useState(false)
 
-  const { messages, lines, branchPoints, tags, loadChatData } = useChatData({
+  const { messages, lines, branchPoints, tags, loadChatData, chatRepository } = useChatData({
     setIsLoading,
-    enableRealtime: false,
     onDataLoaded: (data) => {
       // 指定されたライン名でラインを検索
       const targetLine = Object.values(data.lines).find(
@@ -120,6 +119,7 @@ function ChatPageContent() {
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}
+          chatRepository={chatRepository}
         />
       </ChatLayout>
     </TagProvider>

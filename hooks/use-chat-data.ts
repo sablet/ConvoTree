@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback } from "react"
 import { dataSourceManager } from "@/lib/data-source"
 import { useChatRepository } from "@/lib/chat-repository-context"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
@@ -14,7 +14,6 @@ interface ChatData {
 interface UseChatDataOptions {
   onDataLoaded?: (data: ChatData) => void
   setIsLoading?: (loading: boolean) => void
-  enableRealtime?: boolean // リアルタイム更新を有効にするかどうか
 }
 
 const transformChatData = (data: SourceChatData): ChatData => {
@@ -28,11 +27,12 @@ const transformChatData = (data: SourceChatData): ChatData => {
       const rawMessage = msg as Message & {
         timestamp: string | number | Date
         updatedAt?: string | number | Date
+        deletedAt?: string | number | Date
       }
-      const { updatedAt, timestamp, ...rest } = rawMessage
+      const { updatedAt, timestamp, deletedAt, ...rest } = rawMessage
       const timestampDate = new Date(timestamp)
       const normalizedMessage: Message = {
-        ...(rest as Omit<Message, 'timestamp' | 'updatedAt'>),
+        ...(rest as Omit<Message, 'timestamp' | 'updatedAt' | 'deletedAt'>),
         timestamp: Number.isNaN(timestampDate.getTime()) ? new Date() : timestampDate
       }
       if (updatedAt) {
@@ -41,7 +41,17 @@ const transformChatData = (data: SourceChatData): ChatData => {
           normalizedMessage.updatedAt = updatedAtDate
         }
       }
-      newMessages[id] = normalizedMessage
+      if (deletedAt) {
+        const deletedAtDate = new Date(deletedAt)
+        if (!Number.isNaN(deletedAtDate.getTime())) {
+          normalizedMessage.deletedAt = deletedAtDate
+        }
+      }
+
+      // deleted=true のメッセージは除外
+      if (!normalizedMessage.deleted) {
+        newMessages[id] = normalizedMessage
+      }
     })
   }
 
@@ -82,6 +92,7 @@ const applyLoadedData = (
   setters.setLines(chatData.lines)
   setters.setBranchPoints(chatData.branchPoints)
   setters.setTags(chatData.tags)
+
   if (onDataLoaded) {
     onDataLoaded(chatData)
   }
@@ -102,7 +113,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [error, setError] = useState<Error | null>(null)
 
-  const loadChatData = useCallback(async () => {
+  const loadChatData = useCallback(async (clearCache = false) => {
     const setters: DataSetters = { setMessages, setLines, setBranchPoints, setTags }
 
     try {
@@ -110,6 +121,11 @@ export function useChatData(options: UseChatDataOptions = {}) {
         options.setIsLoading(true)
       }
       setError(null)
+
+      // キャッシュクリアが要求された場合
+      if (clearCache) {
+        chatRepository.clearAllCache()
+      }
 
       const result = await chatRepository.loadChatData({
         source: dataSourceManager.getCurrentSource()
@@ -136,30 +152,13 @@ export function useChatData(options: UseChatDataOptions = {}) {
     }
   }, [chatRepository, options])
 
-  // リアルタイム更新を監視
-  useEffect(() => {
-    if (!options.enableRealtime) return
-
-    const setters: DataSetters = { setMessages, setLines, setBranchPoints, setTags }
-
-    const unsubscribe = chatRepository.subscribeToDataChanges((data, fromCache) => {
-      if (!fromCache) {
-        const chatData = transformChatData(data)
-        applyLoadedData(chatData, setters, options.onDataLoaded)
-      }
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [chatRepository, options.enableRealtime, options.onDataLoaded])
-
   return {
     messages,
     lines,
     branchPoints,
     tags,
     error,
-    loadChatData
+    loadChatData,
+    chatRepository
   }
 }

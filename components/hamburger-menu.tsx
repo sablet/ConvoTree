@@ -8,7 +8,7 @@ import { ROUTE_HOME, ROUTE_BRANCHES, ROUTE_MANAGEMENT, ROUTE_TASKS, ROUTE_DEBUG 
 import { DataSourceMenuAction } from "@/components/data-source-menu-action"
 import { DataSource } from "@/lib/data-source"
 import { useAuth } from "@/lib/auth-context"
-import { useLines } from "@/hooks/use-lines"
+import { useChatData } from "@/hooks/use-chat-data"
 import { LineHistoryMenu } from "@/components/line-history-menu"
 import {
   NAV_CHAT,
@@ -41,11 +41,17 @@ export function HamburgerMenu({
   onDataReload,
   currentDataSource
 }: HamburgerMenuProps) {
-  const { lines, reloadLines } = useLines()
+  const { lines: linesRecord, loadChatData } = useChatData()
+  const lines = Object.values(linesRecord)
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
   const { user, signOut } = useAuth()
+
+  // キャッシュクリア付きのリロード関数
+  const handleDataReloadWithCacheClear = async () => {
+    await loadChatData(true) // clearCache = true
+  }
 
   const navItems = [
     {
@@ -185,7 +191,7 @@ export function HamburgerMenu({
           </div>
 
           <DataSourceMenuAction
-            onReload={onDataReload ?? reloadLines}
+            onReload={onDataReload ?? handleDataReloadWithCacheClear}
             currentSource={currentDataSource}
           />
 

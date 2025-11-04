@@ -22,6 +22,7 @@ import { useMessageDragDrop } from "@/hooks/use-message-drag-drop"
 import { useWindowWidth } from "@/hooks/use-window-width"
 import { useDeviceType } from "@/hooks/use-device-type"
 import type { Message, Line, BranchPoint, Tag } from "@/lib/types"
+import type { ChatRepository } from "@/lib/repositories/chat-repository"
 import { getRelativeTime, formatDateForSeparator, isSameDay } from "@/lib/utils"
 import { useLineConnection } from "./use-line-connection"
 import { useMessageInsert } from "./use-message-insert"
@@ -33,6 +34,7 @@ interface ChatContainerProps {
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
+  chatRepository: ChatRepository
 }
 
 /** Main container that integrates all hooks and components */
@@ -42,7 +44,8 @@ export function ChatContainer({
   initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
-  onLineChange
+  onLineChange,
+  chatRepository
 }: ChatContainerProps) {
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -73,7 +76,8 @@ export function ChatContainer({
     messagesContainerRef,
     selectedBaseMessage,
     setSelectedBaseMessage,
-    onLineChange
+    onLineChange,
+    chatRepository
   })
   const inputOps = useInputOperations({
     messageOps,

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, ReactNode, useRef } from 'react';
 import { ChatRepository } from '@/lib/repositories/chat-repository';
 import { config } from '@/lib/config';
 
@@ -25,7 +25,7 @@ interface ChatRepositoryProviderProps {
 
 /**
  * ChatRepositoryをReact Contextで管理し、
- * アプリケーション全体で単一のリスナーインスタンスを保証する
+ * アプリケーション全体で単一のインスタンスを保証する
  */
 export function ChatRepositoryProvider({ children, conversationId }: ChatRepositoryProviderProps) {
   const repositoryRef = useRef<ChatRepository | null>(null);
@@ -36,13 +36,6 @@ export function ChatRepositoryProvider({ children, conversationId }: ChatReposit
   }
 
   const repository = repositoryRef.current;
-
-  // クリーンアップ: コンポーネントがアンマウントされたらリスナーを停止
-  useEffect(() => {
-    return () => {
-      repository.stopRealtimeListener();
-    };
-  }, [repository]);
 
   return (
     <ChatRepositoryContext.Provider value={{ repository }}>

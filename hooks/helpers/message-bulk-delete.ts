@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
-import { dataSourceManager } from '@/lib/data-source'
 import type { Line, Message } from '@/lib/types'
+import type { ChatRepository } from '@/lib/repositories/chat-repository'
 
 interface ExecuteBulkDeleteParams {
   selectedMessages: Set<string>
@@ -10,6 +10,7 @@ interface ExecuteBulkDeleteParams {
   setSelectedMessages: Dispatch<SetStateAction<Set<string>>>
   setShowBulkDeleteDialog: Dispatch<SetStateAction<boolean>>
   setIsSelectionMode: Dispatch<SetStateAction<boolean>>
+  chatRepository: ChatRepository
 }
 
 export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promise<void> {
@@ -20,7 +21,8 @@ export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promis
     clearAllCaches,
     setSelectedMessages,
     setShowBulkDeleteDialog,
-    setIsSelectionMode
+    setIsSelectionMode,
+    chatRepository
   } = params
 
   const messageIds = Array.from(selectedMessages)
@@ -30,7 +32,7 @@ export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promis
 
   const deletedCount = messageIds.length
 
-  await Promise.all(messageIds.map(id => dataSourceManager.deleteMessage(id)))
+  await Promise.all(messageIds.map(id => chatRepository.deleteMessage(id)))
 
   setMessages(prev => {
     const updated = { ...prev }

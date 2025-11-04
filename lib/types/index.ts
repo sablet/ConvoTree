@@ -17,6 +17,8 @@ export interface Message {
   images?: string[]
   type?: MessageType
   metadata?: Record<string, unknown>
+  deleted?: boolean
+  deletedAt?: Date
 }
 
 export interface Line {

@@ -22,7 +22,7 @@ function HomeContent() {
   const { user, signOut } = useAuth()
   const isOnline = useOnlineStatus()
 
-  const { messages, lines, branchPoints, tags, error, loadChatData } = useChatData({
+  const { messages, lines, branchPoints, tags, error, loadChatData, chatRepository } = useChatData({
     onDataLoaded: (data) => {
       // URLからライン名を取得
       const lineFromUrl = searchParams.get('line')
@@ -107,6 +107,7 @@ function HomeContent() {
         initialTags={tags}
         initialCurrentLineId={currentLineId}
         onLineChange={handleLineChange}
+        chatRepository={chatRepository}
       />
     </PageLayout>
   )

@@ -207,14 +207,10 @@ export function TagProvider({ children }: TagProviderProps) {
   const [state, dispatch] = useReducer(tagReducer, initialState)
 
   const loadTags = useCallback(async () => {
-    const currentData = chatRepository.getCurrentData()
-    if (!currentData) {
-      dispatch({ type: "SET_ERROR", payload: "データがまだロードされていません" })
-      return
-    }
-
     try {
-      const { tags, tagGroups } = buildHierarchicalTags(currentData)
+      dispatch({ type: "SET_LOADING", payload: true })
+      const result = await chatRepository.loadChatData()
+      const { tags, tagGroups } = buildHierarchicalTags(result.data)
       dispatch({
         type: "SET_TAGS_AND_GROUPS",
         payload: { tags, tagGroups }
@@ -286,31 +282,8 @@ export function TagProvider({ children }: TagProviderProps) {
   }
 
   useEffect(() => {
-    dispatch({ type: "SET_LOADING", payload: true })
-
-    // リアルタイムリスナーからのデータ変更を監視
-    const unsubscribe = chatRepository.subscribeToDataChanges((chatData, fromCache) => {
-      if (!fromCache) {
-        // サーバーからのデータのみで更新（キャッシュは無視）
-        try {
-          const { tags, tagGroups } = buildHierarchicalTags(chatData)
-          dispatch({
-            type: "SET_TAGS_AND_GROUPS",
-            payload: { tags, tagGroups }
-          })
-        } catch (error) {
-          dispatch({ type: "SET_ERROR", payload: error instanceof Error ? error.message : "タグの読み込みに失敗しました" })
-        }
-      }
-    })
-
-    // 初回ロード
     loadTags()
-
-    return () => {
-      unsubscribe()
-    }
-  }, [chatRepository, loadTags])
+  }, [loadTags])
 
   const actions = {
     loadTags,

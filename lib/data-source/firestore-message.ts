@@ -1,4 +1,4 @@
-import { doc, getDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, collection } from 'firebase/firestore';
+import { doc, getDoc, addDoc, updateDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION } from '@/lib/firestore-constants';
 import type { Message } from '@/lib/types';
@@ -69,7 +69,12 @@ export class FirestoreMessageOperations {
         throw new Error(`Message with ID ${id} not found`);
       }
 
-      await deleteDoc(messageRef);
+      // 論理削除: deleted フラグを true に設定
+      await updateDoc(messageRef, {
+        deleted: true,
+        deletedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
 
     } catch (error) {
       console.error(`❌ Failed to delete message ${id}:`, error);

@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { dataSourceManager } from '@/lib/data-source';
+import { useChatRepository } from '@/lib/chat-repository-context';
 
 export function MessageCrudTest() {
+  const repository = useChatRepository();
   const [result, setResult] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [messageContent, setMessageContent] = useState('テストメッセージです');
@@ -23,7 +24,7 @@ export function MessageCrudTest() {
         author: 'テストユーザー'
       };
 
-      const id = await dataSourceManager.createMessage(newMessage);
+      const id = await repository.createMessage(newMessage);
       setMessageId(id);
       setResult(`✅ メッセージが作成されました！\nID: ${id}`);
     } catch (error) {
@@ -43,7 +44,7 @@ export function MessageCrudTest() {
     setResult('📝 メッセージを更新中...');
 
     try {
-      await dataSourceManager.updateMessage(messageId, {
+      await repository.updateMessage(messageId, {
         content: `${messageContent} (更新済み)`,
         hasBookmark: true
       });
@@ -65,7 +66,7 @@ export function MessageCrudTest() {
     setResult('🗑️ メッセージを削除中...');
 
     try {
-      await dataSourceManager.deleteMessage(messageId);
+      await repository.deleteMessage(messageId);
       setResult(`✅ メッセージ ${messageId} が削除されました！`);
       setMessageId('');
     } catch (error) {

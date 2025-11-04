@@ -1,6 +1,6 @@
 'use client';
 
-import { collection, getDocs, doc, getDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, serverTimestamp, runTransaction, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
 import type { Message, Line, Tag, TagGroup, BranchPoint } from '@/lib/types';
@@ -10,6 +10,10 @@ import { FirestoreTagOperations } from './firestore-tag';
 import { FirestoreLineOperations } from './firestore-line';
 import { FirestoreBranchOperations } from './firestore-branch';
 import { normalizeDateValue } from './firestore-utils';
+import {
+  getAllLastFetchTimestamps,
+  saveLastFetchTimestamp
+} from './indexed-db-timestamp-storage';
 
 export class FirestoreDataSource implements IDataSource {
   private conversationId: string;
@@ -26,6 +30,174 @@ export class FirestoreDataSource implements IDataSource {
     this.branchOps = new FirestoreBranchOperations(conversationId, this.messageOps, this.lineOps);
   }
 
+  private async fetchMessages(lastFetchTime: Date | null): Promise<Record<string, Message>> {
+    const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
+    const messagesQuery = lastFetchTime
+      ? query(messagesRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
+      : messagesRef;
+
+    const messagesSnapshot = await getDocs(messagesQuery);
+    const messages: Record<string, Message> = {};
+
+    if (lastFetchTime) {
+      console.log(`📊 [Firestore Query] Messages: ${messagesSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
+    } else {
+      console.log(`📊 [Firestore Query] Messages: ${messagesSnapshot.size} documents read (initial full fetch)`);
+    }
+
+    messagesSnapshot.forEach((doc) => {
+      const data = doc.data();
+      const timestampValue = normalizeDateValue(data.timestamp)
+        ?? normalizeDateValue(data.createdAt)
+        ?? normalizeDateValue(data.created_at)
+        ?? new Date();
+      const updatedAtValue = normalizeDateValue(data.updatedAt) ?? normalizeDateValue(data.updated_at);
+
+      const deletedAtValue = normalizeDateValue(data.deletedAt);
+
+      messages[doc.id] = {
+        id: doc.id,
+        content: data.content || '',
+        timestamp: timestampValue,
+        ...(updatedAtValue ? { updatedAt: updatedAtValue } : {}),
+        lineId: data.lineId || '',
+        prevInLine: data.prevInLine,
+        nextInLine: data.nextInLine,
+        branchFromMessageId: data.branchFromMessageId,
+        tags: data.tags,
+        hasBookmark: data.hasBookmark,
+        author: data.author,
+        images: data.images,
+        type: data.type,
+        metadata: data.metadata,
+        ...(data.deleted !== undefined ? { deleted: data.deleted } : {}),
+        ...(deletedAtValue ? { deletedAt: deletedAtValue } : {})
+      };
+    });
+
+    await saveLastFetchTimestamp(this.conversationId, 'messages');
+    return messages;
+  }
+
+  private async fetchLines(lastFetchTime: Date | null): Promise<Line[]> {
+    const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
+    const linesQuery = lastFetchTime
+      ? query(linesRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
+      : linesRef;
+
+    const linesSnapshot = await getDocs(linesQuery);
+    const lines: Line[] = [];
+
+    if (lastFetchTime) {
+      console.log(`📊 [Firestore Query] Lines: ${linesSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
+    } else {
+      console.log(`📊 [Firestore Query] Lines: ${linesSnapshot.size} documents read (initial full fetch)`);
+    }
+
+    linesSnapshot.forEach((doc) => {
+      const data = doc.data();
+      lines.push({
+        id: doc.id,
+        name: data.name || '',
+        messageIds: data.messageIds || [],
+        startMessageId: data.startMessageId || '',
+        endMessageId: data.endMessageId,
+        branchFromMessageId: data.branchFromMessageId,
+        tagIds: data.tagIds || [],
+        created_at: data.created_at || data.createdAt?.toDate?.()?.toISOString() || '',
+        updated_at: data.updated_at || data.updatedAt?.toDate?.()?.toISOString() || ''
+      });
+    });
+
+    await saveLastFetchTimestamp(this.conversationId, 'lines');
+    return lines;
+  }
+
+  private async fetchBranchPoints(lastFetchTime: Date | null): Promise<Record<string, BranchPoint>> {
+    const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
+    const branchPointsQuery = lastFetchTime
+      ? query(branchPointsRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
+      : branchPointsRef;
+
+    const branchPointsSnapshot = await getDocs(branchPointsQuery);
+    const branchPoints: Record<string, BranchPoint> = {};
+
+    if (lastFetchTime) {
+      console.log(`📊 [Firestore Query] BranchPoints: ${branchPointsSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
+    } else {
+      console.log(`📊 [Firestore Query] BranchPoints: ${branchPointsSnapshot.size} documents read (initial full fetch)`);
+    }
+
+    branchPointsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      branchPoints[doc.id] = {
+        messageId: data.messageId || doc.id,
+        lines: data.lines || []
+      };
+    });
+
+    await saveLastFetchTimestamp(this.conversationId, 'branchPoints');
+    return branchPoints;
+  }
+
+  private async fetchTags(lastFetchTime: Date | null): Promise<Record<string, Tag>> {
+    const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
+    const tagsQuery = lastFetchTime
+      ? query(tagsRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
+      : tagsRef;
+
+    const tagsSnapshot = await getDocs(tagsQuery);
+    const tags: Record<string, Tag> = {};
+
+    if (lastFetchTime) {
+      console.log(`📊 [Firestore Query] Tags: ${tagsSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
+    } else {
+      console.log(`📊 [Firestore Query] Tags: ${tagsSnapshot.size} documents read (initial full fetch)`);
+    }
+
+    tagsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      tags[doc.id] = {
+        id: doc.id,
+        name: data.name || '',
+        color: data.color,
+        groupId: data.groupId
+      };
+    });
+
+    await saveLastFetchTimestamp(this.conversationId, 'tags');
+    return tags;
+  }
+
+  private async fetchTagGroups(lastFetchTime: Date | null): Promise<Record<string, TagGroup>> {
+    const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
+    const tagGroupsQuery = lastFetchTime
+      ? query(tagGroupsRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
+      : tagGroupsRef;
+
+    const tagGroupsSnapshot = await getDocs(tagGroupsQuery);
+    const tagGroups: Record<string, TagGroup> = {};
+
+    if (lastFetchTime) {
+      console.log(`📊 [Firestore Query] TagGroups: ${tagGroupsSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
+    } else {
+      console.log(`📊 [Firestore Query] TagGroups: ${tagGroupsSnapshot.size} documents read (initial full fetch)`);
+    }
+
+    tagGroupsSnapshot.forEach((doc) => {
+      const data = doc.data();
+      tagGroups[doc.id] = {
+        id: doc.id,
+        name: data.name || '',
+        color: data.color || '',
+        order: data.order || 0
+      };
+    });
+
+    await saveLastFetchTimestamp(this.conversationId, 'tagGroups');
+    return tagGroups;
+  }
+
   async loadChatData(): Promise<ChatData> {
     try {
       if (!this.conversationId) {
@@ -33,95 +205,32 @@ export class FirestoreDataSource implements IDataSource {
       }
 
       const conversationRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId);
-
       const conversationDoc = await getDoc(conversationRef);
+
       if (!conversationDoc.exists()) {
         throw new Error(`Conversation ${this.conversationId} not found in Firestore`);
       }
 
-      const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
-      const messagesSnapshot = await getDocs(messagesRef);
-      const messages: Record<string, Message> = {};
-      messagesSnapshot.forEach((doc) => {
-        const data = doc.data();
-        const timestampValue = normalizeDateValue(data.timestamp)
-          ?? normalizeDateValue(data.createdAt)
-          ?? normalizeDateValue(data.created_at)
-          ?? new Date();
-        const updatedAtValue = normalizeDateValue(data.updatedAt) ?? normalizeDateValue(data.updated_at);
+      const lastFetchTimestamps = await getAllLastFetchTimestamps(this.conversationId);
+      const isInitialFetch = !lastFetchTimestamps.messages && !lastFetchTimestamps.lines;
 
-        messages[doc.id] = {
-          id: doc.id,
-          content: data.content || '',
-          timestamp: timestampValue,
-          ...(updatedAtValue ? { updatedAt: updatedAtValue } : {}),
-          lineId: data.lineId || '',
-          prevInLine: data.prevInLine,
-          nextInLine: data.nextInLine,
-          branchFromMessageId: data.branchFromMessageId,
-          tags: data.tags,
-          hasBookmark: data.hasBookmark,
-          author: data.author,
-          images: data.images,
-          type: data.type,
-          metadata: data.metadata
-        };
-      });
+      if (isInitialFetch) {
+        console.log('📊 [Firestore] Starting initial full fetch...');
+      } else {
+        console.log('📊 [Firestore] Starting incremental fetch...');
+      }
 
-      const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
-      const linesSnapshot = await getDocs(linesRef);
-      const lines: Line[] = [];
-      linesSnapshot.forEach((doc) => {
-        const data = doc.data();
-        lines.push({
-          id: doc.id,
-          name: data.name || '',
-          messageIds: data.messageIds || [],
-          startMessageId: data.startMessageId || '',
-          endMessageId: data.endMessageId,
-          branchFromMessageId: data.branchFromMessageId,
-          tagIds: data.tagIds || [],
-          created_at: data.created_at || data.createdAt?.toDate?.()?.toISOString() || '',
-          updated_at: data.updated_at || data.updatedAt?.toDate?.()?.toISOString() || ''
-        });
-      });
+      const messages = await this.fetchMessages(lastFetchTimestamps.messages);
+      const lines = await this.fetchLines(lastFetchTimestamps.lines);
+      const branchPoints = await this.fetchBranchPoints(lastFetchTimestamps.branchPoints);
+      const tags = await this.fetchTags(lastFetchTimestamps.tags);
+      const tagGroups = await this.fetchTagGroups(lastFetchTimestamps.tagGroups);
 
-      const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
-      const branchPointsSnapshot = await getDocs(branchPointsRef);
-      const branchPoints: Record<string, BranchPoint> = {};
-      branchPointsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        branchPoints[doc.id] = {
-          messageId: data.messageId || doc.id,
-          lines: data.lines || []
-        };
-      });
+      const totalDocuments = Object.keys(messages).length + lines.length +
+                             Object.keys(branchPoints).length + Object.keys(tags).length +
+                             Object.keys(tagGroups).length;
 
-      const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
-      const tagsSnapshot = await getDocs(tagsRef);
-      const tags: Record<string, Tag> = {};
-      tagsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        tags[doc.id] = {
-          id: doc.id,
-          name: data.name || '',
-          color: data.color,
-          groupId: data.groupId
-        };
-      });
-
-      const tagGroupsRef = collection(db, 'conversations', this.conversationId, 'tagGroups');
-      const tagGroupsSnapshot = await getDocs(tagGroupsRef);
-      const tagGroups: Record<string, TagGroup> = {};
-      tagGroupsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        tagGroups[doc.id] = {
-          id: doc.id,
-          name: data.name || '',
-          color: data.color || '',
-          order: data.order || 0
-        };
-      });
+      console.log(`📊 [Firestore] Total documents read in this fetch: ${totalDocuments}`);
 
       const chatData: ChatData = {
         messages,
