@@ -25,7 +25,7 @@ function ChatPageContent() {
 
   const { messages, lines, branchPoints, tags, loadChatData } = useChatData({
     setIsLoading,
-    enableRealtime: true, // Enable real-time updates
+    enableRealtime: false,
     onDataLoaded: (data) => {
       // 指定されたライン名でラインを検索
       const targetLine = Object.values(data.lines).find(
