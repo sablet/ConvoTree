@@ -6,7 +6,7 @@ from pathlib import Path
 from app.models import Message
 
 
-def load_messages_from_csv(file_path: str) -> list[Message]:
+def load_messages_from_csv(file_path: str | Path) -> list[Message]:
     """CSVファイルからメッセージを読み込む"""
     messages: list[Message] = []
 
@@ -39,7 +39,7 @@ def load_messages_from_csv(file_path: str) -> list[Message]:
     return messages
 
 
-def save_json(data: list | dict, file_path: str) -> None:
+def save_json(data: list | dict, file_path: str | Path) -> None:
     """JSONファイルに保存"""
     # ディレクトリを作成
     Path(file_path).parent.mkdir(parents=True, exist_ok=True)
@@ -59,7 +59,7 @@ def save_json(data: list | dict, file_path: str) -> None:
     print(f"Saved: {file_path}")
 
 
-def load_json(file_path: str) -> list | dict:
+def load_json(file_path: str | Path) -> list | dict:
     """JSONファイルから読み込む"""
     with open(file_path, "r", encoding="utf-8") as f:
         return json.load(f)

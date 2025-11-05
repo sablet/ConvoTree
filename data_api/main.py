@@ -16,6 +16,7 @@ Data API - Message Intent Analysis
     python main.py --pipelines 5 --intents output/intents_embedded.json --group-id group_000 --output output/
 """
 import argparse
+from pathlib import Path
 from tqdm import tqdm
 from app.utils import load_messages_from_csv, save_json, load_json
 from app.pipelines.pipeline1 import run_pipeline1
@@ -43,7 +44,7 @@ def main():
     args = parser.parse_args()
 
     pipelines = [p.strip() for p in args.pipelines.split(",")]
-    output_dir = args.output
+    output_dir = Path(args.output)
 
     messages = []
     groups = []
@@ -64,7 +65,7 @@ def main():
         groups = run_pipeline1(messages, args.threshold)
         print(f"作成グループ数: {len(groups)}")
 
-        save_json(groups, f"{output_dir}/groups.json")
+        save_json(groups, output_dir / "groups.json")
 
     # Pipeline 2: Intent抽出
     if "2" in pipelines:
@@ -99,7 +100,7 @@ def main():
         intents = run_pipeline2(groups, messages_dict)
         print(f"抽出Intent数: {len(intents)}")
 
-        save_json(intents, f"{output_dir}/intents.json")
+        save_json(intents, output_dir / "intents.json")
 
     # Pipeline 3: Embedding生成
     if "3" in pipelines:
@@ -126,7 +127,7 @@ def main():
         intents = run_pipeline3(intents)
         print(f"Embedding生成数: {len([i for i in intents if i.embedding])}")
 
-        save_json(intents, f"{output_dir}/intents_embedded.json")
+        save_json(intents, output_dir / "intents_embedded.json")
 
     # Pipeline 4: 類似検索
     if "4" in pipelines:
@@ -156,7 +157,7 @@ def main():
             print(f"対象Intent: {args.intent_id}")
             print(f"時系列近傍: {len(similar.temporal_neighbors)}")
             print(f"類似近傍: {len(similar.similarity_neighbors)}")
-            save_json(similar, f"{output_dir}/similar.json")
+            save_json(similar, output_dir / "similar.json")
         else:
             # 全Intentに対して処理
             similar_list = []
@@ -164,7 +165,7 @@ def main():
                 similar = run_pipeline4(intents, intent.id, args.n_temporal, args.m_similarity)
                 similar_list.append(similar)
             print(f"処理件数: {len(similar_list)}")
-            save_json(similar_list, f"{output_dir}/similar.json")
+            save_json(similar_list, output_dir / "similar.json")
 
     # Pipeline 5: Why/How関係抽出（グループ単位）
     if "5" in pipelines:
@@ -193,14 +194,14 @@ def main():
             relations = run_pipeline5(intents, args.group_id, args.top_k_similar)
             print(f"対象グループ: {args.group_id}")
             print(f"抽出関係数: {len(relations)}")
-            save_json(relations, f"{output_dir}/relations.json")
+            save_json(relations, output_dir / "relations.json")
         elif args.intent_id:
             # intent_idから自動抽出
             group_id = args.intent_id.rsplit("_intent_", 1)[0]
             print(f"Intent IDから自動抽出: group_id={group_id}")
             relations = run_pipeline5(intents, group_id, args.top_k_similar)
             print(f"抽出関係数: {len(relations)}")
-            save_json(relations, f"{output_dir}/relations.json")
+            save_json(relations, output_dir / "relations.json")
         else:
             # 全グループに対して処理
             all_relations = []
@@ -209,7 +210,7 @@ def main():
                 relations = run_pipeline5(intents, group_id, args.top_k_similar)
                 all_relations.extend(relations)
             print(f"\n総抽出関係数: {len(all_relations)}")
-            save_json(all_relations, f"{output_dir}/relations.json")
+            save_json(all_relations, output_dir / "relations.json")
 
     print("\n" + "=" * 60)
     print("完了")

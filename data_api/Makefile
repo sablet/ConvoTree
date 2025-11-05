@@ -1,4 +1,4 @@
-.PHONY: help test-api run-all run-1 run-2 run-3 run-4 run-5 clean
+.PHONY: help test-api run-all run-1 run-2 run-3 run-4 run-5 report clean
 
 help: ## ヘルプを表示
 	@echo "使用可能なコマンド:"
@@ -74,3 +74,6 @@ run-5: ## Pipeline 5のみ実行（intents_embedded.json, similar.json必要、I
 		--intents output/intents_embedded.json \
 		--intent-id $(INTENT_ID) \
 		--output output/
+
+report: ## 依存関係レポートを生成（intents.json, relations.json必要）
+	uv run python scripts/generate_report.py
