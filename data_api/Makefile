@@ -7,14 +7,7 @@ help: ## ヘルプを表示
 test-api: ## Gemini API の動作確認
 	uv run python scripts/test_gemini_api.py
 
-run-all: ## 全パイプライン実行 (Pipeline 1-3)
-	uv run python main.py \
-		--input data/messagees_sample.csv \
-		--pipelines 1,2,3 \
-		--threshold 30 \
-		--output output/
-
-run-full: ## 全パイプライン実行 (Pipeline 1-5, 最初のIntentでテスト)
+run-full: ## 全パイプライン実行 (Pipeline 1-5)
 	@echo "Pipeline 1-3を実行..."
 	uv run python main.py \
 		--input data/messagees_sample.csv \
@@ -22,17 +15,18 @@ run-full: ## 全パイプライン実行 (Pipeline 1-5, 最初のIntentでテス
 		--threshold 30 \
 		--output output/
 	@echo ""
-	@echo "最初のIntent IDを取得..."
-	$(eval INTENT_ID := $(shell python -c "import json; data = json.load(open('output/intents_embedded.json')); print(data[0]['id'])"))
-	@echo "Intent ID: $(INTENT_ID)"
-	@echo ""
-	@echo "Pipeline 4-5を実行..."
+	@echo "Pipeline 4を実行（全Intent対象）..."
 	uv run python main.py \
-		--pipelines 4,5 \
+		--pipelines 4 \
 		--intents output/intents_embedded.json \
-		--intent-id $(INTENT_ID) \
 		--n-temporal 5 \
 		--m-similarity 5 \
+		--output output/
+	@echo ""
+	@echo "Pipeline 5を実行（全グループ対象）..."
+	uv run python main.py \
+		--pipelines 5 \
+		--intents output/intents_embedded.json \
 		--output output/
 
 run-1: ## Pipeline 1のみ実行
@@ -80,7 +74,3 @@ run-5: ## Pipeline 5のみ実行（intents_embedded.json, similar.json必要、I
 		--intents output/intents_embedded.json \
 		--intent-id $(INTENT_ID) \
 		--output output/
-
-clean: ## 出力ファイルをクリア
-	rm -rf output/*
-	@echo "output/ ディレクトリをクリアしました"

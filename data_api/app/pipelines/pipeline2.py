@@ -1,10 +1,12 @@
 """Pipeline 2: Intent抽出（LLM）"""
 import json
 import os
+import hashlib
 from dotenv import load_dotenv
 import google.generativeai as genai
 from tqdm import tqdm
 from app.models import Message, MessageGroup, Intent
+from app.cache import get_cache
 
 
 # .env ファイルから環境変数を読み込み
@@ -30,7 +32,7 @@ def run_pipeline2(
     """
     intents: list[Intent] = []
 
-    for group in groups:
+    for group in tqdm(groups, desc="Intent抽出", unit="group"):
         # グループ内のメッセージを取得
         group_messages = [
             messages_dict[msg_id]
@@ -55,6 +57,25 @@ def _extract_intents(group: MessageGroup, messages: list[Message]) -> list[Inten
         f"[{msg.timestamp.strftime('%Y-%m-%d %H:%M:%S')}] ({msg.message_type})\n{msg.text}"
         for msg in messages
     ])
+
+    # キャッシュキーを生成（メッセージ内容のハッシュ）
+    cache_key = hashlib.sha256(messages_text.encode("utf-8")).hexdigest()
+    cache = get_cache("pipeline2")
+
+    # キャッシュから取得を試みる
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        # キャッシュヒット: Intent オブジェクトを復元
+        intents: list[Intent] = []
+        for intent_dict in cached_result:
+            intent = Intent(
+                id=intent_dict["id"],
+                group_id=intent_dict["group_id"],
+                summary=intent_dict["summary"],
+                embedding=intent_dict.get("embedding"),
+            )
+            intents.append(intent)
+        return intents
 
     # プロンプト作成
     prompt = f"""以下のメッセージグループから、ユーザーが「〜したい」という意図を抽出してください。
@@ -110,6 +131,9 @@ def _extract_intents(group: MessageGroup, messages: list[Message]) -> list[Inten
                 embedding=None,
             )
             intents.append(intent)
+
+        # キャッシュに保存
+        cache.set(cache_key, [intent.to_dict() for intent in intents])
 
         return intents
 

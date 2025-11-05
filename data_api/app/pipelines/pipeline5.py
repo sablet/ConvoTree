@@ -2,9 +2,11 @@
 import json
 import os
 import math
+import hashlib
 from dotenv import load_dotenv
 import google.generativeai as genai
 from app.models import Intent, IntentRelation
+from app.cache import get_cache
 
 
 # .env ファイルから環境変数を読み込み
@@ -61,9 +63,7 @@ def run_pipeline5(
                 candidate_intent_ids.add(intent.id)
 
     # 3. 各Intentごとに類似度上位k件
-    print(f"\n類似Intent検索中...")
-    for i, intent in enumerate(target_intents, 1):
-        print(f"  {i}/{len(target_intents)}: {intent.id}")
+    for intent in target_intents:
         similar_ids = _find_top_k_similar(intent, intents, top_k_similar)
         candidate_intent_ids.update(similar_ids)
 
@@ -77,13 +77,8 @@ def run_pipeline5(
     if len(candidate_intents) <= 1:
         return []
 
-    # 候補選定の詳細を出力
-    _print_candidate_summary(target_intents, candidate_intents, prev_group_id)
-
     # LLMで関係抽出
-    print(f"\nLLMでWhy/How関係を抽出中...")
     relations = _extract_relations(target_intents, candidate_intents)
-    print(f"  抽出された関係数（フィルタ前）: {len(relations)}")
 
     # グループ内Intentが含まれるリレーションのみフィルタリング
     target_intent_ids = {intent.id for intent in target_intents}
@@ -91,7 +86,6 @@ def run_pipeline5(
         rel for rel in relations
         if rel.source_intent_id in target_intent_ids or rel.target_intent_id in target_intent_ids
     ]
-    print(f"  フィルタ後の関係数: {len(filtered_relations)}")
 
     return filtered_relations
 
@@ -133,28 +127,6 @@ def _find_top_k_similar(
     return [intent_id for intent_id, _ in similarities[:k]]
 
 
-def _print_candidate_summary(
-    target_intents: list[Intent],
-    candidate_intents: list[Intent],
-    prev_group_id: str | None,
-) -> None:
-    """候補選定の詳細を出力"""
-    print(f"\n【候補選定の詳細】")
-    print(f"  対象グループのIntent数: {len(target_intents)}")
-    print(f"  前グループ追加: {'Yes' if prev_group_id else 'No'} ({prev_group_id or 'N/A'})")
-    print(f"  総候補Intent数: {len(candidate_intents)}")
-    print(f"  候補内訳:")
-    print(f"    - 対象グループ: {len(target_intents)}件")
-    if prev_group_id:
-        prev_count = len([i for i in candidate_intents if i.group_id == prev_group_id])
-        print(f"    - 前グループ: {prev_count}件")
-    similar_count = len(candidate_intents) - len(target_intents)
-    if prev_group_id:
-        prev_count = len([i for i in candidate_intents if i.group_id == prev_group_id])
-        similar_count -= prev_count
-    print(f"    - 類似Intent: 最大{similar_count}件")
-
-
 def _cosine_similarity(vec1: list[float], vec2: list[float]) -> float:
     """コサイン類似度を計算"""
     if len(vec1) != len(vec2):
@@ -175,6 +147,29 @@ def _extract_relations(
     candidates: list[Intent],
 ) -> list[IntentRelation]:
     """LLMを使用してWhy/How関係を抽出（グループ単位）"""
+    # キャッシュキーを生成（対象IntentsとcandidatesのIDリストのハッシュ）
+    cache_key_data = (
+        ",".join([intent.id for intent in target_intents])
+        + "|"
+        + ",".join([candidate.id for candidate in candidates])
+    )
+    cache_key = hashlib.sha256(cache_key_data.encode("utf-8")).hexdigest()
+    cache = get_cache("pipeline5")
+
+    # キャッシュから取得を試みる
+    cached_result = cache.get(cache_key)
+    if cached_result is not None:
+        # キャッシュヒット: IntentRelation オブジェクトを復元
+        relations: list[IntentRelation] = []
+        for rel_dict in cached_result:
+            relation = IntentRelation(
+                source_intent_id=rel_dict["source_intent_id"],
+                target_intent_id=rel_dict["target_intent_id"],
+                relation_type=rel_dict["relation_type"],
+            )
+            relations.append(relation)
+        return relations
+
     # 対象グループのIntentsを整形
     target_intents_text = "\n".join([
         f"{i+1}. \"{intent.summary}\" (ID: {intent.id})"
@@ -259,6 +254,9 @@ def _extract_relations(
                 relation_type=rel_type,
             )
             relations.append(relation)
+
+        # キャッシュに保存
+        cache.set(cache_key, [rel.to_dict() for rel in relations])
 
         return relations
 
