@@ -51,7 +51,7 @@ async function exportFirestoreToMarkdown() {
       lineMap[line.id] = line;
     });
 
-    // ラインの祖先チェーンを取得（UIと同じロジック）
+    // ラインの祖先チェーンを取得（新データ構造: parent_line_id ベース）
     function getLineAncestry(lineId, visited = new Set()) {
       // 循環参照チェック
       if (visited.has(lineId)) {
@@ -66,14 +66,10 @@ async function exportFirestoreToMarkdown() {
 
       let ancestry = [];
 
-      // 分岐元がある場合は親ラインの祖先を取得
-      if (line.branchFromMessageId) {
-        const branchFromMessage = messages[line.branchFromMessageId];
-        if (branchFromMessage) {
-          const parentLineId = branchFromMessage.lineId;
-          const parentAncestry = getLineAncestry(parentLineId, visited);
-          ancestry = [...parentAncestry, parentLineId];
-        }
+      // 親ラインがある場合は祖先を再帰的に取得
+      if (line.parent_line_id) {
+        const parentAncestry = getLineAncestry(line.parent_line_id, visited);
+        ancestry = [...parentAncestry, line.parent_line_id];
       }
 
       return ancestry;
@@ -115,10 +111,18 @@ async function exportFirestoreToMarkdown() {
 
       markdown += `## ${breadcrumbs}\n\n`;
 
-      // このラインに属するメッセージを取得
-      const lineMessages = line.messageIds
-        .map(msgId => ({ id: msgId, ...messages[msgId] }))
-        .filter(msg => msg.content); // content が存在するもののみ
+      // このラインに属するメッセージを取得（新データ構造: lineId でフィルタリング）
+      const lineMessages = Object.entries(messages)
+        .filter(([_, msg]) => msg.lineId === line.id && msg.content)
+        .map(([id, msg]) => ({ id, ...msg }))
+        .sort((a, b) => {
+          // タイムスタンプでソート
+          const timeA = a.timestamp ? new Date(a.timestamp).getTime() :
+                       (a.createdAt?.toDate ? a.createdAt.toDate().getTime() : 0);
+          const timeB = b.timestamp ? new Date(b.timestamp).getTime() :
+                       (b.createdAt?.toDate ? b.createdAt.toDate().getTime() : 0);
+          return timeA - timeB;
+        });
 
       if (lineMessages.length === 0) {
         markdown += `_（メッセージなし）_\n\n`;
