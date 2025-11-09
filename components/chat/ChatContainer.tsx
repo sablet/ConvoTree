@@ -38,6 +38,7 @@ interface ChatContainerProps {
 }
 
 /** Main container that integrates all hooks and components */
+// eslint-disable-next-line max-lines-per-function
 export function ChatContainer({
   initialMessages = {},
   initialLines = {},
@@ -104,15 +105,9 @@ export function ChatContainer({
     const success = await handleLineConnect(targetLineId)
     if (success) setShowLineConnectionDialog(false)
   }, [handleLineConnect])
-  
-  // Window width detection for sidebar auto-collapse
   const { shouldAutoCollapse } = useWindowWidth()
-  
-  // Device type detection for drag-drop
   const deviceType = useDeviceType()
   const isDesktop = deviceType === 'desktop'
-  
-  // Drag and drop operations
   const dragDropOps = useMessageDragDrop({
     messages: chatState.messages,
     setMessages: chatState.setMessages,
@@ -128,10 +123,8 @@ export function ChatContainer({
     scrollToBottom()
   }, [branchOps.completeTimeline.messages.length, scrollToBottom])
   const currentLineInfo = branchOps.getCurrentLine()
-
   return (
     <div className="flex h-screen bg-white overflow-hidden">
-      {/* Line Sidebar - Hidden on small screens unless temporarily expanded */}
       <LineSidebar
         lines={chatState.lines}
         messages={chatState.messages}
@@ -148,8 +141,6 @@ export function ChatContainer({
         setLines={chatState.setLines}
         clearAllCaches={chatState.clearAllCaches}
       />
-      
-      {/* Main Content - Force width to prevent flex item overflow */}
       <div className="relative flex flex-col flex-1 overflow-hidden" style={{ minWidth: 0, maxWidth: '100%', width: 0 }}>
         <HamburgerMenu />
         <BranchSelector
@@ -246,8 +237,6 @@ export function ChatContainer({
         onDragStart={isDesktop ? dragDropOps.handleDragStart : undefined}
         onDragEnd={isDesktop ? dragDropOps.handleDragEnd : undefined}
       />
-
-      {/* Input Area - Fixed at bottom */}
       <div className="border-t border-gray-100 bg-white p-2 sm:p-4 shrink-0">
         {showInsertMode ? (
           <InsertMessageInput
@@ -259,9 +248,11 @@ export function ChatContainer({
         ) : (branchOps.isSelectionMode || branchOps.selectedMessages.size > 0) ? (
           <SelectionToolbar
             isSelectionMode={branchOps.isSelectionMode}
+            isRangeSelectionMode={branchOps.isRangeSelectionMode}
             selectedMessagesCount={branchOps.selectedMessages.size}
             isUpdating={branchOps.isUpdating}
             onToggleSelectionMode={branchOps.handleToggleSelectionMode}
+            onToggleRangeSelectionMode={branchOps.handleToggleRangeSelectionMode}
             onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
             onMoveMessages={branchOps.handleMoveMessages}
             onDeleteMessages={branchOps.handleDeleteMessages}
@@ -289,8 +280,6 @@ export function ChatContainer({
           />
         )}
       </div>
-
-      {/* Recent Lines Footer - Fixed at bottom */}
       <div className="border-t border-gray-200 bg-white shrink-0">
         <RecentLinesFooter
           key={branchOps.footerKey}

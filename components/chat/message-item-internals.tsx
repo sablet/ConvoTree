@@ -8,7 +8,7 @@ import { calculateMessageCharCount } from "@/lib/utils/line-char-counter"
 interface MessageSelectionCheckboxProps {
   messageId: string
   isChecked: boolean
-  onToggle: (messageId: string) => void
+  onToggle: (messageId: string, shiftKey?: boolean) => void
 }
 
 export function MessageSelectionCheckbox({ messageId, isChecked, onToggle }: MessageSelectionCheckboxProps) {
@@ -17,7 +17,7 @@ export function MessageSelectionCheckbox({ messageId, isChecked, onToggle }: Mes
       className="flex items-center pt-0.5 cursor-pointer"
       onClick={(event) => {
         event.stopPropagation()
-        onToggle(messageId)
+        onToggle(messageId, event.shiftKey)
       }}
     >
       <input

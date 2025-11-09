@@ -24,7 +24,7 @@ interface MessageRowActions {
   onDelete: (messageId: string) => void
   onCopy: (messageId: string) => void
   onImageDelete: (messageId: string, imageIndex: number) => void
-  onMessageTap: (messageId: string) => void
+  onMessageTap: (messageId: string, shiftKey?: boolean) => void
   onSwitchLine: (lineId: string) => void
   onHoverMessage: (messageId: string | null) => void
   onHoverImage: (imageId: string | null) => void

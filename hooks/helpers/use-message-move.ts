@@ -17,10 +17,12 @@ interface MessageMoveProps {
 interface MessageMoveOperations {
   selectedMessages: Set<string>
   isSelectionMode: boolean
+  isRangeSelectionMode: boolean
   showMoveDialog: boolean
   showBulkDeleteDialog: boolean
   isUpdating: boolean
   handleToggleSelectionMode: () => void
+  handleToggleRangeSelectionMode: () => void
   handleMoveMessages: () => void
   handleDeleteMessages: () => void
   handleConfirmBulkDelete: () => Promise<void>
@@ -42,6 +44,7 @@ export function useMessageMove({
 }: MessageMoveProps): MessageMoveOperations {
   const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set())
   const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [isRangeSelectionMode, setIsRangeSelectionMode] = useState(false)
   const [showMoveDialog, setShowMoveDialog] = useState(false)
   const [showBulkDeleteDialog, setShowBulkDeleteDialog] = useState(false)
   const [isUpdating, setIsUpdating] = useState(false)
@@ -52,12 +55,17 @@ export function useMessageMove({
         setSelectedMessages(new Set())
         setShowMoveDialog(false)
         setShowBulkDeleteDialog(false)
+        setIsRangeSelectionMode(false)
       } else {
         setSelectedBaseMessage(null)
       }
       return !prev
     })
   }, [setSelectedBaseMessage])
+
+  const handleToggleRangeSelectionMode = useCallback(() => {
+    setIsRangeSelectionMode(prev => !prev)
+  }, [])
 
   const handleMoveMessages = useCallback(() => {
     if (selectedMessages.size > 0) {
@@ -125,10 +133,12 @@ export function useMessageMove({
   return {
     selectedMessages,
     isSelectionMode,
+    isRangeSelectionMode,
     showMoveDialog,
     showBulkDeleteDialog,
     isUpdating,
     handleToggleSelectionMode,
+    handleToggleRangeSelectionMode,
     handleMoveMessages,
     handleDeleteMessages,
     handleConfirmBulkDelete,

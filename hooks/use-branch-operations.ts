@@ -60,7 +60,9 @@ interface BranchOperations {
   selectedMessages: Set<string>
   setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
   isSelectionMode: boolean
+  isRangeSelectionMode: boolean
   handleToggleSelectionMode: () => void
+  handleToggleRangeSelectionMode: () => void
   handleDeleteMessages: () => void
   handleMoveMessages: () => void
   handleConfirmMove: (targetLineId: string) => Promise<void>
@@ -123,6 +125,7 @@ export function useBranchOperations({
   } = chatState
 
   const [footerKey, setFooterKey] = useState(0)
+  const [lastSelectedMessageId, setLastSelectedMessageId] = useState<string | null>(null)
 
   const {
     scrollPositions,
@@ -144,10 +147,12 @@ export function useBranchOperations({
   const {
     selectedMessages,
     isSelectionMode,
+    isRangeSelectionMode,
     showMoveDialog,
     showBulkDeleteDialog,
     isUpdating: moveIsUpdating,
     handleToggleSelectionMode,
+    handleToggleRangeSelectionMode,
     handleMoveMessages,
     handleDeleteMessages,
     handleConfirmBulkDelete,
@@ -245,17 +250,42 @@ export function useBranchOperations({
     messagesContainerRef
   })
 
-  const handleMessageTap = useCallback((messageId: string) => {
+  const handleMessageTap = useCallback((messageId: string, shiftKey?: boolean) => {
     if (isSelectionMode) {
       setSelectedMessages(prev => {
         const newSet = new Set(prev)
-        if (newSet.has(messageId)) {
-          newSet.delete(messageId)
+
+        // Shift+クリック または 範囲選択モード: 範囲選択
+        const shouldRangeSelect = (shiftKey || isRangeSelectionMode) && lastSelectedMessageId !== null
+        if (shouldRangeSelect && lastSelectedMessageId !== null) {
+          const messageIds = completeTimeline.messages.map(m => m.id)
+          const startIndex = messageIds.indexOf(lastSelectedMessageId)
+          const endIndex = messageIds.indexOf(messageId)
+
+          if (startIndex !== -1 && endIndex !== -1) {
+            const [min, max] = [Math.min(startIndex, endIndex), Math.max(startIndex, endIndex)]
+            const isDeselecting = newSet.has(messageId)
+
+            for (let i = min; i <= max; i++) {
+              if (isDeselecting) {
+                newSet.delete(messageIds[i])
+              } else {
+                newSet.add(messageIds[i])
+              }
+            }
+          }
         } else {
-          newSet.add(messageId)
+          // 通常クリック: 個別トグル
+          if (newSet.has(messageId)) {
+            newSet.delete(messageId)
+          } else {
+            newSet.add(messageId)
+          }
         }
+
         return newSet
       })
+      setLastSelectedMessageId(messageId)
     } else {
       if (selectedBaseMessage === messageId) {
         setSelectedBaseMessage(null)
@@ -263,7 +293,7 @@ export function useBranchOperations({
         setSelectedBaseMessage(messageId)
       }
     }
-  }, [isSelectionMode, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
+  }, [isSelectionMode, isRangeSelectionMode, lastSelectedMessageId, completeTimeline, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
 
   const switchToLine = useCallback((lineId: string) => {
     if (lineId === TIMELINE_BRANCH_ID || lines[lineId]) {
@@ -312,7 +342,9 @@ export function useBranchOperations({
     selectedMessages,
     setSelectedMessages,
     isSelectionMode,
+    isRangeSelectionMode,
     handleToggleSelectionMode,
+    handleToggleRangeSelectionMode,
     handleDeleteMessages,
     handleConfirmBulkDelete,
     showBulkDeleteDialog,

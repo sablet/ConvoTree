@@ -1,13 +1,15 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { CalendarPlus, Trash2 } from "lucide-react"
+import { CalendarPlus, Trash2, ListChecks } from "lucide-react"
 
 interface SelectionToolbarProps {
   isSelectionMode: boolean
+  isRangeSelectionMode: boolean
   selectedMessagesCount: number
   isUpdating: boolean
   onToggleSelectionMode: () => void
+  onToggleRangeSelectionMode: () => void
   onToggleInsertMode: () => void
   onMoveMessages: () => void
   onDeleteMessages: () => void
@@ -21,9 +23,11 @@ interface SelectionToolbarProps {
  */
 export function SelectionToolbar({
   isSelectionMode,
+  isRangeSelectionMode,
   selectedMessagesCount,
   isUpdating,
   onToggleSelectionMode,
+  onToggleRangeSelectionMode,
   onToggleInsertMode,
   onMoveMessages,
   onDeleteMessages,
@@ -36,6 +40,17 @@ export function SelectionToolbar({
           <span className="text-sm font-medium text-gray-700">
             {selectedMessagesCount > 0 ? `${selectedMessagesCount}件選択中` : '選択モード'}
           </span>
+          <Button
+            onClick={onToggleRangeSelectionMode}
+            size="sm"
+            variant={isRangeSelectionMode ? "default" : "outline"}
+            disabled={isUpdating}
+            title="範囲選択モード（クリックで範囲選択）"
+            className={isRangeSelectionMode ? "bg-purple-500 hover:bg-purple-600 text-white" : ""}
+          >
+            <ListChecks className="h-4 w-4 mr-1" />
+            範囲選択
+          </Button>
           {selectedMessagesCount > 0 && (
             <>
               <Button
