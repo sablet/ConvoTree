@@ -1,13 +1,14 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { ChevronRight, ChevronDown, Folder, Plus, Trash2 } from "lucide-react"
+import { Folder } from "lucide-react"
 import type { Line, Tag, Message } from "@/lib/types"
 import { toast } from "sonner"
 import { reparentLine, updateLocalStateAfterReparent, wouldCreateCircularReference } from "@/hooks/helpers/line-reparent"
 import { LineSidebarNewLineForm } from "./LineSidebarNewLineForm"
 import { LineSidebarDeleteLineForm } from "./LineSidebarDeleteLineForm"
 import { LineSidebarItem } from "./LineSidebarItem"
+import { LineSidebarHeader } from "./LineSidebarHeader"
 import { useLineTreeData } from "./useLineSidebarTree"
 import { useLineSidebarExpansion, COLLAPSED_KEY, EXPANDED_LINES_KEY } from "./useLineSidebarExpansion"
 import { useLineDeletionControls } from "./useLineSidebarDeletion"
@@ -17,7 +18,7 @@ interface LineSidebarProps {
   messages: Record<string, Message>
   tags: Record<string, Tag>
   currentLineId: string
-  isVisible: boolean
+  forceCollapsed: boolean
   getLineAncestry: (lineId: string) => string[]
   onLineSelect: (lineId: string) => void
   onDrop: (targetLineId: string, messageId: string) => void
@@ -38,7 +39,7 @@ export function LineSidebar({
   messages,
   tags,
   currentLineId,
-  isVisible,
+  forceCollapsed,
   getLineAncestry,
   onLineSelect,
   onDrop,
@@ -52,6 +53,7 @@ export function LineSidebar({
   const [isCreatingLine, setIsCreatingLine] = useState(false)
   const [newLineName, setNewLineName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isTemporarilyExpanded, setIsTemporarilyExpanded] = useState(false)
   const createInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedParentLineId, setSelectedParentLineId] = useState<string>("")
   const { treeNodes, parentOptions, deleteOptions } = useLineTreeData(lines)
@@ -85,6 +87,18 @@ export function LineSidebar({
     setExpandedLines
   })
 
+  // Apply force collapse when window is small, unless temporarily expanded
+  const effectiveIsCollapsed = forceCollapsed ? !isTemporarilyExpanded : isCollapsed
+
+  // Handle toggle when force collapsed - show as overlay
+  const handleToggleWhenForceCollapsed = useCallback(() => {
+    if (forceCollapsed) {
+      setIsTemporarilyExpanded(prev => !prev)
+    } else {
+      handleToggleCollapse()
+    }
+  }, [forceCollapsed, handleToggleCollapse])
+
   useEffect(() => {
     if (isCreatingLine && createInputRef.current) {
       createInputRef.current.focus()
@@ -107,14 +121,14 @@ export function LineSidebar({
       setIsCreatingLine(true)
     }
 
-    if (isCollapsed) {
+    if (effectiveIsCollapsed && !forceCollapsed) {
       setIsCollapsed(false)
       window.localStorage.setItem(COLLAPSED_KEY, 'false')
       setTimeout(openForm, 0)
-    } else {
+    } else if (!forceCollapsed) {
       openForm()
     }
-  }, [isCollapsed, setIsCollapsed, isSubmitting, isCreatingLine, lines, currentLineId, cancelDeletion])
+  }, [effectiveIsCollapsed, forceCollapsed, setIsCollapsed, isSubmitting, isCreatingLine, lines, currentLineId, cancelDeletion])
 
   const handleCancelCreate = useCallback(() => {
     if (isSubmitting) return
@@ -198,62 +212,34 @@ export function LineSidebar({
     }
   }, [lines, messages, setLines, clearAllCaches])
 
-  if (!isVisible) {
-    return null
-  }
-
   return (
-    <aside
-      className={`bg-gray-50 border-r border-gray-200 flex-shrink-0 transition-all duration-300 ${
-        isCollapsed ? 'w-12' : 'w-64'
-      }`}
-    >
-      {/* Header */}
-      <div className="h-14 border-b border-gray-200 flex items-center px-3 bg-white gap-2">
-        <button
-          onClick={handleToggleCollapse}
-          className="p-1 hover:bg-gray-100 rounded transition-colors"
-          title={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {isCollapsed ? (
-            <ChevronRight className="h-5 w-5 text-gray-600" />
-          ) : (
-            <ChevronDown className="h-5 w-5 text-gray-600" />
-          )}
-        </button>
-        {!isCollapsed && (
-          <h2 className="text-sm font-semibold text-gray-700">Lines</h2>
-        )}
-        <div className="ml-auto flex items-center gap-1">
-          <button
-            onClick={handleStartDeleteLine}
-            className={`p-1.5 rounded transition-colors ${
-              isCollapsed ? 'hover:bg-red-50 text-red-500' : 'hover:bg-red-100 text-red-600'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            title="既存ラインを削除"
-            aria-label="既存ラインを削除"
-            disabled={isDeleting || isSubmitting || !hasDeletableLines}
-            type="button"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-          <button
-            onClick={handleStartCreateLine}
-            className={`p-1.5 rounded transition-colors ${
-              isCollapsed ? 'hover:bg-blue-50 text-blue-600' : 'hover:bg-blue-100 text-blue-600'
-            } disabled:opacity-40 disabled:cursor-not-allowed`}
-            title="新しいラインを作成"
-            aria-label="新しいラインを作成"
-            disabled={isSubmitting}
-            type="button"
-          >
-            <Plus className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
+    <>
+      {/* Overlay backdrop for small screens when expanded */}
+      {forceCollapsed && isTemporarilyExpanded && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-40"
+          onClick={() => setIsTemporarilyExpanded(false)}
+        />
+      )}
+
+      <aside
+        className={`bg-gray-50 border-r border-gray-200 flex-shrink-0 transition-all duration-300 ${
+          effectiveIsCollapsed ? 'w-12' : 'w-64'
+        } ${forceCollapsed && isTemporarilyExpanded ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
+      >
+        <LineSidebarHeader
+          effectiveIsCollapsed={effectiveIsCollapsed}
+          forceCollapsed={forceCollapsed}
+          isDeleting={isDeleting}
+          isSubmitting={isSubmitting}
+          hasDeletableLines={hasDeletableLines}
+          onToggleCollapse={handleToggleWhenForceCollapsed}
+          onStartDeleteLine={handleStartDeleteLine}
+          onStartCreateLine={handleStartCreateLine}
+        />
 
       {/* Line Tree */}
-      {!isCollapsed && (
+      {!effectiveIsCollapsed && (
         <div
           className="overflow-y-auto h-[calc(100vh-14rem)] p-2 space-y-1 pb-4"
           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
@@ -314,6 +300,7 @@ export function LineSidebar({
         </div>
       )}
     </aside>
+    </>
   )
 }
 

@@ -4,11 +4,11 @@ const SIDEBAR_WIDTH = 256 // px
 const MIN_WIDTH_MULTIPLIER = 2
 
 /**
- * Hook to track window width and determine if sidebar should be visible
- * 
+ * Hook to track window width and determine sidebar display mode
+ *
  * @returns Object containing:
  *   - windowWidth: Current window width in pixels
- *   - shouldShowSidebar: True if window width >= SIDEBAR_WIDTH * MIN_WIDTH_MULTIPLIER
+ *   - shouldAutoCollapse: True if window width < SIDEBAR_WIDTH * MIN_WIDTH_MULTIPLIER (sidebar should be auto-collapsed)
  */
 export function useWindowWidth() {
   const [windowWidth, setWindowWidth] = useState<number>(
@@ -32,8 +32,8 @@ export function useWindowWidth() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  const shouldShowSidebar = windowWidth >= SIDEBAR_WIDTH * MIN_WIDTH_MULTIPLIER
+  const shouldAutoCollapse = windowWidth < SIDEBAR_WIDTH * MIN_WIDTH_MULTIPLIER
 
-  return { windowWidth, shouldShowSidebar }
+  return { windowWidth, shouldAutoCollapse }
 }
 

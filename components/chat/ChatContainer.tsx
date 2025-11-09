@@ -104,8 +104,8 @@ export function ChatContainer({
     if (success) setShowLineConnectionDialog(false)
   }, [handleLineConnect])
   
-  // Window width detection for sidebar visibility
-  const { shouldShowSidebar } = useWindowWidth()
+  // Window width detection for sidebar auto-collapse
+  const { shouldAutoCollapse } = useWindowWidth()
   
   // Device type detection for drag-drop
   const deviceType = useDeviceType()
@@ -130,13 +130,13 @@ export function ChatContainer({
 
   return (
     <div className="flex h-screen bg-white overflow-hidden">
-      {/* Line Sidebar - Visible when window width >= sidebar width * 2 */}
+      {/* Line Sidebar - Always visible, auto-collapsed on small screens */}
       <LineSidebar
         lines={chatState.lines}
         messages={chatState.messages}
         tags={chatState.tags}
         currentLineId={chatState.currentLineId}
-        isVisible={shouldShowSidebar}
+        forceCollapsed={shouldAutoCollapse}
         getLineAncestry={branchOps.getLineAncestry}
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
