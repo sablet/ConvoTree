@@ -19,6 +19,8 @@ interface LineSidebarProps {
   tags: Record<string, Tag>
   currentLineId: string
   forceCollapsed: boolean
+  isTemporarilyExpanded: boolean
+  onToggleTemporaryExpansion: () => void
   getLineAncestry: (lineId: string) => string[]
   onLineSelect: (lineId: string) => void
   onDrop: (targetLineId: string, messageId: string) => void
@@ -40,6 +42,8 @@ export function LineSidebar({
   tags,
   currentLineId,
   forceCollapsed,
+  isTemporarilyExpanded,
+  onToggleTemporaryExpansion,
   getLineAncestry,
   onLineSelect,
   onDrop,
@@ -53,7 +57,6 @@ export function LineSidebar({
   const [isCreatingLine, setIsCreatingLine] = useState(false)
   const [newLineName, setNewLineName] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isTemporarilyExpanded, setIsTemporarilyExpanded] = useState(false)
   const createInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedParentLineId, setSelectedParentLineId] = useState<string>("")
   const { treeNodes, parentOptions, deleteOptions } = useLineTreeData(lines)
@@ -93,11 +96,11 @@ export function LineSidebar({
   // Handle toggle when force collapsed - show as overlay
   const handleToggleWhenForceCollapsed = useCallback(() => {
     if (forceCollapsed) {
-      setIsTemporarilyExpanded(prev => !prev)
+      onToggleTemporaryExpansion()
     } else {
       handleToggleCollapse()
     }
-  }, [forceCollapsed, handleToggleCollapse])
+  }, [forceCollapsed, handleToggleCollapse, onToggleTemporaryExpansion])
 
   useEffect(() => {
     if (isCreatingLine && createInputRef.current) {
@@ -218,15 +221,17 @@ export function LineSidebar({
       {forceCollapsed && isTemporarilyExpanded && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40"
-          onClick={() => setIsTemporarilyExpanded(false)}
+          onClick={onToggleTemporaryExpansion}
         />
       )}
 
-      <aside
-        className={`bg-gray-50 border-r border-gray-200 flex-shrink-0 transition-all duration-300 ${
-          effectiveIsCollapsed ? 'w-12' : 'w-64'
-        } ${forceCollapsed && isTemporarilyExpanded ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
-      >
+      {/* Sidebar - hidden on small screens unless temporarily expanded */}
+      {(!forceCollapsed || isTemporarilyExpanded) && (
+        <aside
+          className={`bg-gray-50 border-r border-gray-200 flex-shrink-0 transition-all duration-300 ${
+            effectiveIsCollapsed ? 'w-12' : 'w-64'
+          } ${forceCollapsed && isTemporarilyExpanded ? 'fixed left-0 top-0 bottom-0 z-50' : ''}`}
+        >
         <LineSidebarHeader
           effectiveIsCollapsed={effectiveIsCollapsed}
           forceCollapsed={forceCollapsed}
@@ -299,7 +304,8 @@ export function LineSidebar({
           )}
         </div>
       )}
-    </aside>
+      </aside>
+      )}
     </>
   )
 }

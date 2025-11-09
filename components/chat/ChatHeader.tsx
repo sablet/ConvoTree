@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Edit3, CheckSquare, CalendarPlus, Link2, Copy } from "lucide-react"
+import { Edit3, CheckSquare, CalendarPlus, Link2, Copy, Menu } from "lucide-react"
 import type { Line, Message, Tag } from "@/lib/types"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -15,6 +15,8 @@ interface ChatHeaderProps {
   onToggleSelectionMode?: () => void
   onToggleInsertMode?: () => void
   onToggleLineConnection?: () => void
+  onToggleSidebar?: () => void
+  showSidebarButton?: boolean
   isSelectionMode?: boolean
 }
 
@@ -33,6 +35,8 @@ export function ChatHeader({
   onToggleSelectionMode,
   onToggleInsertMode,
   onToggleLineConnection,
+  onToggleSidebar,
+  showSidebarButton = false,
   isSelectionMode = false
 }: ChatHeaderProps) {
   const [copied, setCopied] = useState(false)
@@ -115,13 +119,26 @@ export function ChatHeader({
   return (
     <div className="px-2 sm:px-4 py-3 border-b border-gray-100 bg-gray-50">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-medium text-gray-800">{currentLine.name}</h2>
-          {currentLine.branchFromMessageId && (
-            <p className="text-xs text-blue-500">
-              分岐元: {messages[currentLine.branchFromMessageId]?.content.slice(0, 20)}...
-            </p>
+        <div className="flex items-center gap-2">
+          {showSidebarButton && onToggleSidebar && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onToggleSidebar}
+              className="h-8 w-8 p-0 bg-white border border-gray-300 hover:bg-gray-50 text-gray-600 shadow-sm"
+              title="ラインサイドバーを開く"
+            >
+              <Menu className="h-4 w-4" />
+            </Button>
           )}
+          <div>
+            <h2 className="font-medium text-gray-800">{currentLine.name}</h2>
+            {currentLine.branchFromMessageId && (
+              <p className="text-xs text-blue-500">
+                分岐元: {messages[currentLine.branchFromMessageId]?.content.slice(0, 20)}...
+              </p>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           {onToggleSelectionMode && (

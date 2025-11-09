@@ -53,6 +53,7 @@ export function ChatContainer({
   const [hoveredImageId, setHoveredImageId] = useState<string | null>(null)
   const [showInsertMode, setShowInsertMode] = useState<boolean>(false)
   const [showLineConnectionDialog, setShowLineConnectionDialog] = useState<boolean>(false)
+  const [isSidebarTemporarilyExpanded, setIsSidebarTemporarilyExpanded] = useState<boolean>(false)
   const chatState = useChatState({
     initialMessages,
     initialLines,
@@ -130,13 +131,15 @@ export function ChatContainer({
 
   return (
     <div className="flex h-screen bg-white overflow-hidden">
-      {/* Line Sidebar - Always visible, auto-collapsed on small screens */}
+      {/* Line Sidebar - Hidden on small screens unless temporarily expanded */}
       <LineSidebar
         lines={chatState.lines}
         messages={chatState.messages}
         tags={chatState.tags}
         currentLineId={chatState.currentLineId}
         forceCollapsed={shouldAutoCollapse}
+        isTemporarilyExpanded={isSidebarTemporarilyExpanded}
+        onToggleTemporaryExpansion={() => setIsSidebarTemporarilyExpanded(prev => !prev)}
         getLineAncestry={branchOps.getLineAncestry}
         onLineSelect={branchOps.switchToLine}
         onDrop={dragDropOps.handleDrop}
@@ -193,6 +196,8 @@ export function ChatContainer({
           onToggleSelectionMode={branchOps.handleToggleSelectionMode}
           onToggleInsertMode={() => setShowInsertMode(prev => !prev)}
           onToggleLineConnection={() => setShowLineConnectionDialog(prev => !prev)}
+          onToggleSidebar={() => setIsSidebarTemporarilyExpanded(prev => !prev)}
+          showSidebarButton={shouldAutoCollapse}
           isSelectionMode={branchOps.isSelectionMode}
         />
       )}
