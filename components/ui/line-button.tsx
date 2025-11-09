@@ -1,14 +1,18 @@
 "use client"
 
-import { Line } from "@/lib/types"
+import type { Line, Message } from "@/lib/types"
+import { getLineMessageCount } from "@/lib/data-helpers"
 
 interface LineButtonProps {
   line: Line
+  messages: Record<string, Message>
   isActive?: boolean
   onClick: (lineId: string) => void
 }
 
-export function LineButton({ line, isActive = false, onClick }: LineButtonProps) {
+export function LineButton({ line, messages, isActive = false, onClick }: LineButtonProps) {
+  const messageCount = getLineMessageCount(messages, line.id)
+
   return (
     <button
       key={line.id}
@@ -21,7 +25,7 @@ export function LineButton({ line, isActive = false, onClick }: LineButtonProps)
     >
       <div className="font-medium truncate">{line.name}</div>
       <div className="text-xs text-gray-500 mt-1">
-        {line.messageIds.length}件のメッセージ
+        {messageCount}件のメッセージ
       </div>
     </button>
   )

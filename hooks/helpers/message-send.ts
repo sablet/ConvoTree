@@ -1,27 +1,25 @@
 import { dataSourceManager } from '@/lib/data-source'
 import { parseSlashCommand } from '@/lib/slash-command-parser'
-import type { Line, Message, BranchPoint } from '@/lib/types'
+import type { Line, Message } from '@/lib/types'
 
 interface NewLineParams {
   name: string
-  branchFromMessageId: string
+  parent_line_id: string | null
 }
 
 interface NewMessageParams {
   content: string
   images: string[]
   targetLineId: string
-  baseMessageId: string | undefined
 }
 
 /**
  * Create new branch/line
  */
 export async function createNewBranch(
-  params: NewLineParams,
-  setBranchPoints: (updater: (prev: Record<string, BranchPoint>) => Record<string, BranchPoint>) => void
+  params: NewLineParams
 ): Promise<string> {
-  const { name, branchFromMessageId } = params
+  const { name, parent_line_id: parentLineId } = params
   const currentTimestamp = new Date()
 
   if (name.length >= 20) {
@@ -35,30 +33,10 @@ export async function createNewBranch(
 
   const newLineId = await dataSourceManager.createLine({
     name,
-    messageIds: [],
-    startMessageId: "",
-    branchFromMessageId,
+    parent_line_id: parentLineId,
     tagIds: [],
     created_at: currentTimestamp.toISOString(),
     updated_at: currentTimestamp.toISOString()
-  })
-
-  await dataSourceManager.addLineToBranchPoint(branchFromMessageId, newLineId)
-
-  setBranchPoints((prev) => {
-    const updated = { ...prev }
-    if (updated[branchFromMessageId]) {
-      updated[branchFromMessageId] = {
-        ...updated[branchFromMessageId],
-        lines: [...updated[branchFromMessageId].lines, newLineId]
-      }
-    } else {
-      updated[branchFromMessageId] = {
-        messageId: branchFromMessageId,
-        lines: [newLineId]
-      }
-    }
-    return updated
   })
 
   return newLineId
@@ -68,7 +46,7 @@ export async function createNewBranch(
  * Create new message in existing line
  */
 export async function createNewMessage(params: NewMessageParams): Promise<{ messageId: string; message: Message }> {
-  const { content, images, targetLineId, baseMessageId } = params
+  const { content, images, targetLineId } = params
   const parsedMessage = parseSlashCommand(content)
   const currentTimestamp = new Date()
 
@@ -76,7 +54,6 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
     content: parsedMessage.content,
     timestamp: currentTimestamp.toISOString(),
     lineId: targetLineId,
-    prevInLine: baseMessageId || undefined,
     author: "User",
     type: parsedMessage.type,
     ...(images.length > 0 && { images: [...images] }),
@@ -85,8 +62,7 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
 
   const newMessageId = await dataSourceManager.createMessageWithLineUpdate(
     messageData,
-    targetLineId,
-    baseMessageId || undefined
+    targetLineId
   )
 
   const newMessage: Message = {
@@ -95,7 +71,6 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
     timestamp: currentTimestamp,
     updatedAt: currentTimestamp,
     lineId: targetLineId,
-    prevInLine: baseMessageId || undefined,
     author: "User",
     type: parsedMessage.type,
     ...(parsedMessage.metadata !== undefined && { metadata: parsedMessage.metadata }),
@@ -111,37 +86,21 @@ export async function createNewMessage(params: NewMessageParams): Promise<{ mess
 export function updateLocalStateAfterMessage(
   messageId: string,
   message: Message,
-  baseMessageId: string | undefined,
   setMessages: (updater: (prev: Record<string, Message>) => Record<string, Message>) => void,
   setLines: (updater: (prev: Record<string, Line>) => Record<string, Line>) => void
 ): void {
   const currentTimestamp = new Date()
 
-  setMessages((prev) => {
-    const updated = { ...prev }
-    updated[messageId] = message
-
-    if (baseMessageId && updated[baseMessageId]) {
-      updated[baseMessageId] = {
-        ...updated[baseMessageId],
-        nextInLine: messageId,
-      }
-    }
-
-    return updated
-  })
+  setMessages((prev) => ({
+    ...prev,
+    [messageId]: message,
+  }))
 
   setLines((prev) => {
     const updated = { ...prev }
     if (updated[message.lineId]) {
-      const updatedMessageIds = [...updated[message.lineId].messageIds, messageId]
-      const isFirstMessage = updated[message.lineId].messageIds.length === 0
-
       updated[message.lineId] = {
         ...updated[message.lineId],
-        messageIds: updatedMessageIds,
-        endMessageId: messageId,
-        ...(isFirstMessage && { startMessageId: messageId }),
         updated_at: currentTimestamp.toISOString()
       }
     }

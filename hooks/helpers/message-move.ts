@@ -15,20 +15,20 @@ export async function moveMessagesToLine(
   const selectedMessageIds = Array.from(selectedMessages)
   const updateTimestamp = new Date().toISOString()
 
-  const messagesByOldLine = new Map<string, string[]>()
+  // Track which lines are affected
+  const affectedLineIds = new Set<string>()
+  affectedLineIds.add(targetLineId) // Target line is always affected
+
   for (const messageId of selectedMessageIds) {
     const message = messages[messageId]
     if (message) {
-      const oldLineId = message.lineId
-      if (!messagesByOldLine.has(oldLineId)) {
-        messagesByOldLine.set(oldLineId, [])
-      }
-      messagesByOldLine.get(oldLineId)?.push(messageId)
+      affectedLineIds.add(message.lineId) // Add old line
     }
   }
 
   const updatePromises: Promise<unknown>[] = []
 
+  // Update each message's lineId
   for (const messageId of selectedMessageIds) {
     updatePromises.push(
       dataSourceManager.updateMessage(messageId, {
@@ -37,27 +37,15 @@ export async function moveMessagesToLine(
     )
   }
 
-  for (const [oldLineId, messageIds] of Array.from(messagesByOldLine.entries())) {
-    if (lines[oldLineId]) {
-      const updatedMessageIds = lines[oldLineId].messageIds.filter(id => !messageIds.includes(id))
+  // Update timestamps for affected lines
+  for (const lineId of Array.from(affectedLineIds)) {
+    if (lines[lineId]) {
       updatePromises.push(
-        dataSourceManager.updateLine(oldLineId, {
-          messageIds: updatedMessageIds,
+        dataSourceManager.updateLine(lineId, {
           updated_at: updateTimestamp
         })
       )
     }
-  }
-
-  if (lines[targetLineId]) {
-    const currentMessageIds = lines[targetLineId].messageIds
-    const newMessageIds = [...currentMessageIds, ...selectedMessageIds.filter(id => !currentMessageIds.includes(id))]
-    updatePromises.push(
-      dataSourceManager.updateLine(targetLineId, {
-        messageIds: newMessageIds,
-        updated_at: updateTimestamp
-      })
-    )
   }
 
   await Promise.all(updatePromises)
@@ -95,31 +83,26 @@ export function updateLocalStateAfterMove(params: UpdateLocalStateParams): void 
 
   setLines(prev => {
     const updated = { ...prev }
+    const affectedLineIds = new Set<string>()
+    affectedLineIds.add(targetLineId)
 
+    // Find all affected lines (old lines that messages are being moved from)
     Array.from(selectedMessages).forEach(messageId => {
       const message = messages[messageId]
-      if (message && updated[message.lineId]) {
-        updated[message.lineId] = {
-          ...updated[message.lineId],
-          messageIds: updated[message.lineId].messageIds.filter(id => id !== messageId),
+      if (message) {
+        affectedLineIds.add(message.lineId)
+      }
+    })
+
+    // Update timestamps for all affected lines
+    affectedLineIds.forEach(lineId => {
+      if (updated[lineId]) {
+        updated[lineId] = {
+          ...updated[lineId],
           updated_at: updateTimestamp
         }
       }
     })
-
-    if (updated[targetLineId]) {
-      const newMessageIds = [...updated[targetLineId].messageIds]
-      Array.from(selectedMessages).forEach(messageId => {
-        if (!newMessageIds.includes(messageId)) {
-          newMessageIds.push(messageId)
-        }
-      })
-      updated[targetLineId] = {
-        ...updated[targetLineId],
-        messageIds: newMessageIds,
-        updated_at: updateTimestamp
-      }
-    }
 
     return updated
   })

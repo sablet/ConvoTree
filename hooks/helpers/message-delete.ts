@@ -1,10 +1,10 @@
 import { dataSourceManager } from '@/lib/data-source'
-import type { Message, Line, BranchPoint } from '@/lib/types'
+import type { Message, Line } from '@/lib/types'
 
 interface MessageDeleteParams {
   messageId: string
   message: Message
-  branchPoints: Record<string, BranchPoint>
+  lines: Record<string, Line>
   deleteImageFromStorage: (url: string) => Promise<void>
   isValidImageUrl: (url: string) => boolean
 }
@@ -13,13 +13,14 @@ interface MessageDeleteParams {
  * Delete message from Firestore
  */
 export async function deleteMessageFromFirestore(params: MessageDeleteParams): Promise<void> {
-  const { messageId, message, branchPoints, deleteImageFromStorage, isValidImageUrl } = params
+  const { messageId, message, lines, deleteImageFromStorage, isValidImageUrl } = params
 
-  const isBranchPoint = branchPoints[messageId] && branchPoints[messageId].lines.length > 0
+  // Check if any lines have this message's line as parent (branch from this message's line)
+  const hasBranchingLines = Object.values(lines).some(line => line.parent_line_id === message.lineId)
 
-  if (isBranchPoint) {
+  if (hasBranchingLines) {
     const confirmBranchDelete = window.confirm(
-      'このメッセージは分岐の起点です。削除すると関連する分岐も影響を受けます。本当に削除しますか？'
+      'このメッセージのラインには分岐があります。削除すると関連する分岐も影響を受けます。本当に削除しますか？'
     )
     if (!confirmBranchDelete) {
       throw new Error('Delete cancelled')
@@ -60,7 +61,6 @@ export function updateLocalStateAfterDelete(
     if (updated[lineId]) {
       updated[lineId] = {
         ...updated[lineId],
-        messageIds: updated[lineId].messageIds.filter(id => id !== messageId),
         updated_at: deleteTimestamp.toISOString()
       }
     }

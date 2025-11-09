@@ -4,6 +4,7 @@ import type { ChatRepository } from '@/lib/repositories/chat-repository'
 
 interface ExecuteBulkDeleteParams {
   selectedMessages: Set<string>
+  messages: Record<string, Message>
   setMessages: Dispatch<SetStateAction<Record<string, Message>>>
   setLines: Dispatch<SetStateAction<Record<string, Line>>>
   clearAllCaches: () => void
@@ -16,6 +17,7 @@ interface ExecuteBulkDeleteParams {
 export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promise<void> {
   const {
     selectedMessages,
+    messages,
     setMessages,
     setLines,
     clearAllCaches,
@@ -44,15 +46,22 @@ export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promis
 
   const updateTimestamp = new Date().toISOString()
 
+  // Find which lines are affected by the deletion
+  const affectedLineIds = new Set<string>()
+  messageIds.forEach(id => {
+    const msg = messages[id]
+    if (msg) {
+      affectedLineIds.add(msg.lineId)
+    }
+  })
+
   setLines(prev => {
     const updated = { ...prev }
-    Object.entries(updated).forEach(([lineId, line]) => {
-      if (!line) return
-      const filteredMessageIds = line.messageIds.filter(id => !selectedMessages.has(id))
-      if (filteredMessageIds.length !== line.messageIds.length) {
+    // Update timestamps for affected lines
+    affectedLineIds.forEach(lineId => {
+      if (updated[lineId]) {
         updated[lineId] = {
-          ...line,
-          messageIds: filteredMessageIds,
+          ...updated[lineId],
           updated_at: updateTimestamp
         }
       }

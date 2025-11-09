@@ -2,12 +2,11 @@ import { useState, useCallback } from "react"
 import { dataSourceManager } from "@/lib/data-source"
 import { useChatRepository } from "@/lib/chat-repository-context"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
-import { Message, Line, BranchPoint, Tag } from "@/lib/types"
+import { Message, Line, Tag } from "@/lib/types"
 
 interface ChatData {
   messages: Record<string, Message>
   lines: Record<string, Line>
-  branchPoints: Record<string, BranchPoint>
   tags: Record<string, Tag>
 }
 
@@ -19,7 +18,6 @@ interface UseChatDataOptions {
 const transformChatData = (data: SourceChatData): ChatData => {
   const newMessages: Record<string, Message> = {}
   const newLines: Record<string, Line> = {}
-  const newBranchPoints: Record<string, BranchPoint> = {}
   const newTags: Record<string, Tag> = {}
 
   if (data.messages) {
@@ -61,25 +59,18 @@ const transformChatData = (data: SourceChatData): ChatData => {
     })
   }
 
-  if (data.branchPoints) {
-    Object.entries(data.branchPoints).forEach(([id, branchPoint]) => {
-      newBranchPoints[id] = branchPoint as BranchPoint
-    })
-  }
-
   if (data.tags) {
     Object.entries(data.tags).forEach(([id, tag]) => {
       newTags[id] = tag as Tag
     })
   }
 
-  return { messages: newMessages, lines: newLines, branchPoints: newBranchPoints, tags: newTags }
+  return { messages: newMessages, lines: newLines, tags: newTags }
 }
 
 interface DataSetters {
   setMessages: (messages: Record<string, Message>) => void
   setLines: (lines: Record<string, Line>) => void
-  setBranchPoints: (branchPoints: Record<string, BranchPoint>) => void
   setTags: (tags: Record<string, Tag>) => void
 }
 
@@ -90,7 +81,6 @@ const applyLoadedData = (
 ) => {
   setters.setMessages(chatData.messages)
   setters.setLines(chatData.lines)
-  setters.setBranchPoints(chatData.branchPoints)
   setters.setTags(chatData.tags)
 
   if (onDataLoaded) {
@@ -101,7 +91,6 @@ const applyLoadedData = (
 const clearAllData = (setters: DataSetters) => {
   setters.setMessages({})
   setters.setLines({})
-  setters.setBranchPoints({})
   setters.setTags({})
 }
 
@@ -109,12 +98,11 @@ export function useChatData(options: UseChatDataOptions = {}) {
   const chatRepository = useChatRepository();
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
-  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [error, setError] = useState<Error | null>(null)
 
   const loadChatData = useCallback(async (clearCache = false) => {
-    const setters: DataSetters = { setMessages, setLines, setBranchPoints, setTags }
+    const setters: DataSetters = { setMessages, setLines, setTags }
 
     try {
       if (options.setIsLoading) {
@@ -155,7 +143,6 @@ export function useChatData(options: UseChatDataOptions = {}) {
   return {
     messages,
     lines,
-    branchPoints,
     tags,
     error,
     loadChatData,

@@ -8,9 +8,6 @@ export interface Message {
   timestamp: Date
   updatedAt?: Date
   lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
   tags?: string[]
   hasBookmark?: boolean
   author?: string
@@ -24,10 +21,7 @@ export interface Message {
 export interface Line {
   id: string
   name: string
-  messageIds: string[]
-  startMessageId: string
-  endMessageId?: string
-  branchFromMessageId?: string
+  parent_line_id: string | null
   tagIds?: string[]
   created_at: string
   updated_at: string
@@ -38,11 +32,6 @@ export interface Tag {
   name: string
   color?: string
   groupId?: string
-}
-
-export interface BranchPoint {
-  messageId: string
-  lines: string[]
 }
 
 export interface TagGroup {

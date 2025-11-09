@@ -1,4 +1,5 @@
 import type { Line, Message } from '@/lib/types'
+import { getLineMessages } from '@/lib/data-helpers'
 
 export interface LineAncestryResult {
   messages: Message[]
@@ -31,16 +32,13 @@ export function calculateLineAncestry(
 
   let ancestry: string[] = []
 
-  if (line.branchFromMessageId) {
-    const branchFromMessage = messages[line.branchFromMessageId]
-    if (branchFromMessage) {
-      const parentLineId = branchFromMessage.lineId
-      // 訪問済みセットに現在のラインIDを追加
-      const newVisited = new Set(visited)
-      newVisited.add(lineId)
-      const parentAncestry = calculateLineAncestry(parentLineId, lines, messages, cache, newVisited)
-      ancestry = [...parentAncestry, parentLineId]
-    }
+  if (line.parent_line_id) {
+    const parentLineId = line.parent_line_id
+    // 訪問済みセットに現在のラインIDを追加
+    const newVisited = new Set(visited)
+    newVisited.add(lineId)
+    const parentAncestry = calculateLineAncestry(parentLineId, lines, messages, cache, newVisited)
+    ancestry = [...parentAncestry, parentLineId]
   }
 
   return ancestry
@@ -73,26 +71,9 @@ export function calculateOptimizedPath(
       })
     }
 
-    if (i < fullLineChain.length - 1) {
-      const nextLine = lines[fullLineChain[i + 1]]
-      if (nextLine?.branchFromMessageId) {
-        const branchPointIndex = currentLineInChain.messageIds.indexOf(nextLine.branchFromMessageId)
-        if (branchPointIndex >= 0) {
-          const segmentMessages = currentLineInChain.messageIds
-            .slice(0, branchPointIndex + 1)
-            .map(msgId => messages[msgId])
-            .filter(Boolean)
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()) // Sort by timestamp
-          allMessages.push(...segmentMessages)
-        }
-      }
-    } else {
-      const lineMessages = currentLineInChain.messageIds
-        .map(msgId => messages[msgId])
-        .filter(Boolean)
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()) // Sort by timestamp
-      allMessages.push(...lineMessages)
-    }
+    // Simply get all messages for this line - no need for branch point logic anymore
+    const lineMessages = getLineMessages(messages, currentLineInChain.id)
+    allMessages.push(...lineMessages)
   }
 
   return { messages: allMessages, transitions }

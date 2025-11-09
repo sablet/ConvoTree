@@ -12,10 +12,9 @@ interface UseMessageInsertProps {
   handleCreateMessageWithTimestamp: (
     content: string,
     images: string[],
-    prevMessageId: string | undefined,
     lineId: string,
     timestamp: Date
-  ) => Promise<{ messageId: string }>
+  ) => Promise<{ messageId: string; message: Message }>
   setMessages: (updater: (prev: Record<string, Message>) => Record<string, Message>) => void
   clearTimelineCaches: () => void
 }
@@ -34,26 +33,9 @@ export function useMessageInsert({
   ) => {
     if (!content.trim()) return
 
-    const targetTimestamp = timestamp.getTime()
-
-    let insertIndex = 0
-    for (let i = 0; i < timelineMessages.length; i++) {
-      const message = timelineMessages[i]
-      const messageTimestamp = message.timestamp instanceof Date
-        ? message.timestamp.getTime()
-        : new Date(message.timestamp).getTime()
-
-      if (messageTimestamp > targetTimestamp) {
-        insertIndex = i
-        break
-      }
-    }
-
-    const prevMessage = insertIndex > 0 ? timelineMessages[insertIndex - 1] : null
     const { messageId: newMessageId } = await handleCreateMessageWithTimestamp(
       content,
       images || [],
-      prevMessage?.id || undefined,
       currentLineId,
       timestamp
     )

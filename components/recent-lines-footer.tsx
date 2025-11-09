@@ -1,16 +1,16 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { Message, Line, BranchPoint } from "@/lib/types"
+import type { Message, Line } from "@/lib/types"
 import { formatRelativeTime } from "@/lib/utils/date"
 import { MAIN_LINE_ID, TIMELINE_BRANCH_ID } from "@/lib/constants"
 import { TIMELINE_BRANCH_NAME, BADGE_TIMELINE, BADGE_MAIN, FOOTER_LABEL_RECENT_LINES } from "@/lib/ui-strings"
+import { getLineLastMessage, getParentLine, getChildLines } from "@/lib/data-helpers"
 
 interface RecentLinesFooterProps {
   lines: Record<string, Line>
   messages: Record<string, Message>
   currentLineId: string
-  branchPoints?: Record<string, BranchPoint>
   onLineSelect: (lineId: string) => void
 }
 
@@ -18,7 +18,6 @@ export function RecentLinesFooter({
   lines,
   messages,
   currentLineId,
-  branchPoints = {},
   onLineSelect
 }: RecentLinesFooterProps) {
   // メインブランチを取得
@@ -51,18 +50,14 @@ export function RecentLinesFooter({
 
     let ancestry: string[] = []
 
-    // 分岐元がある場合は親ラインの祖先を取得
-    if (line.branchFromMessageId) {
-      const branchFromMessage = messages[line.branchFromMessageId]
-      if (branchFromMessage) {
-        const parentLineId = branchFromMessage.lineId
-        const parentAncestry = getLineAncestry(parentLineId)
-        const parentLine = lines[parentLineId]
-        if (parentLine && parentLine.id !== MAIN_LINE_ID) { // メインライン（メインの流れ）は除外
-          ancestry = [...parentAncestry, parentLine.name]
-        } else {
-          ancestry = [...parentAncestry] // メインラインの場合は名前を追加せず祖先のみ
-        }
+    // 親ラインがある場合は親ラインの祖先を取得
+    const parentLine = getParentLine(lines, lineId)
+    if (parentLine) {
+      const parentAncestry = getLineAncestry(parentLine.id)
+      if (parentLine.id !== MAIN_LINE_ID) { // メインライン（メインの流れ）は除外
+        ancestry = [...parentAncestry, parentLine.name]
+      } else {
+        ancestry = [...parentAncestry] // メインラインの場合は名前を追加せず祖先のみ
       }
     }
 
@@ -75,11 +70,9 @@ export function RecentLinesFooter({
     const name = line.name.length > 13 ? `${line.name.slice(0, 13)}...` : line.name
     const ancestry = getLineAncestry(line.id)
 
-    // 分岐点情報を取得（このラインから分岐している場合）
-    const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
-    const branchCount = (lastMessageId && branchPoints[lastMessageId])
-      ? branchPoints[lastMessageId].lines.length
-      : 0
+    // 子ライン数を取得（このラインから分岐している場合）
+    const childLines = getChildLines(lines, line.id)
+    const branchCount = childLines.length
 
     return {
       name,
@@ -101,8 +94,7 @@ export function RecentLinesFooter({
 
   // 最終メッセージのプレビューテキストを生成
   const getLastMessagePreview = (line: Line): string => {
-    const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
-    const lastMessage = lastMessageId ? messages[lastMessageId] : null
+    const lastMessage = getLineLastMessage(messages, line.id)
     if (!lastMessage?.content) return ""
     return lastMessage.content.slice(0, 20) + (lastMessage.content.length > 20 ? "..." : "")
   }

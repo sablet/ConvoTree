@@ -59,7 +59,7 @@ export function LineSidebar({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const createInputRef = useRef<HTMLInputElement | null>(null)
   const [selectedParentLineId, setSelectedParentLineId] = useState<string>("")
-  const { treeNodes, parentOptions, deleteOptions } = useLineTreeData(lines)
+  const { treeNodes, parentOptions, deleteOptions } = useLineTreeData(lines, messages)
   const {
     isCollapsed,
     setIsCollapsed,
@@ -114,7 +114,7 @@ export function LineSidebar({
 
     let defaultParent = ""
     const currentLine = lines[currentLineId]
-    if (currentLine && currentLine.messageIds.length > 0) {
+    if (currentLine) {
       defaultParent = currentLine.id
     }
 
@@ -186,7 +186,7 @@ export function LineSidebar({
     if (targetLineId === sourceLineId) return
     
     // Check for circular reference before attempting the move
-    if (wouldCreateCircularReference(sourceLineId, targetLineId, lines, messages)) {
+    if (wouldCreateCircularReference(sourceLineId, targetLineId, lines)) {
       toast.error('Cannot move line: would create circular reference', {
         duration: 3000
       })
@@ -195,7 +195,7 @@ export function LineSidebar({
     
     try {
       // Perform the reparent operation
-      await reparentLine(sourceLineId, targetLineId, lines, messages)
+      await reparentLine(sourceLineId, targetLineId, lines)
       
       // Update local state
       updateLocalStateAfterReparent(sourceLineId, targetLineId, lines, setLines)

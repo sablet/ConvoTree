@@ -9,7 +9,7 @@ export interface LineTreeNode {
 }
 
 /**
- * Build a tree structure from lines based on branchFromMessageId relationships
+ * Build a tree structure from lines based on parent_line_id relationships
  * Returns a flat array of nodes with depth information for rendering
  */
 export function buildLineTree(
@@ -18,28 +18,18 @@ export function buildLineTree(
 ): LineTreeNode[] {
   const lineArray = Object.values(lines)
 
-  // messageToLineMap はすべてのラインを対象に構築
-  const messageToLineMap = new Map<string, string>()
-  lineArray.forEach(line => {
-    line.messageIds.forEach(msgId => {
-      messageToLineMap.set(msgId, line.id)
-    })
-  })
-
   // currentLineId の除外処理を削除（UIで disabled にして表示する）
   const filteredLines = lineArray
 
-  // ルートライン（branchFromMessageIdがない）を見つける
-  const rootLines = filteredLines.filter(line => !line.branchFromMessageId)
+  // ルートライン（parent_line_id が null）を見つける
+  const rootLines = filteredLines.filter(line => !line.parent_line_id)
 
+  // 親IDから子ラインへのマッピングを構築
   const childrenMap = new Map<string, Line[]>()
   filteredLines.forEach(line => {
-    if (line.branchFromMessageId) {
-      const parentLineId = messageToLineMap.get(line.branchFromMessageId)
-      if (parentLineId) {
-        const existing = childrenMap.get(parentLineId) || []
-        childrenMap.set(parentLineId, [...existing, line])
-      }
+    if (line.parent_line_id) {
+      const existing = childrenMap.get(line.parent_line_id) || []
+      childrenMap.set(line.parent_line_id, [...existing, line])
     }
   })
 

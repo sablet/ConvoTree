@@ -5,7 +5,7 @@ import { GitBranch } from "lucide-react"
 import { MessageItem } from "./MessageItem"
 import { getMessageLineInfo } from "./hooks/useMessageLineInfo"
 import { MessageDateNavigator } from "./MessageDateNavigator"
-import type { Message, Line, Tag, BranchPoint } from "@/lib/types"
+import type { Message, Line, Tag } from "@/lib/types"
 import type { MessageType } from "@/lib/constants"
 
 function ensureDate(value: Date | string): Date {
@@ -183,7 +183,6 @@ interface MessageListProps extends MessageRowActions {
   messages: Record<string, Message>
   lines: Record<string, Line>
   tags: Record<string, Tag>
-  branchPoints: Record<string, BranchPoint> // eslint-disable-line @typescript-eslint/no-unused-vars
   currentLineId: string
   selectedBaseMessage: string | null
   editingMessageId: string | null
@@ -219,7 +218,6 @@ export function MessageList({
   messages,
   lines,
   tags,
-  branchPoints: _branchPoints,
   currentLineId,
   selectedBaseMessage,
   editingMessageId,

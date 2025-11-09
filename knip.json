@@ -15,7 +15,8 @@
     "eslint-local-rules/**",
     "eslint-rules/**",
     ".eslintrc-local.cjs",
-    ".jscpd.json"
+    ".jscpd.json",
+    "lib/types/new-types.ts"
   ],
   "ignoreDependencies": [
     "jscpd",

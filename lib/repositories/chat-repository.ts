@@ -141,7 +141,6 @@ export class ChatRepository {
           }
           return [...acc, line];
         }, [] as typeof fetchedData.lines),
-        branchPoints: { ...this.currentData.branchPoints, ...fetchedData.branchPoints },
         tags: { ...this.currentData.tags, ...fetchedData.tags },
         tagGroups: { ...this.currentData.tagGroups, ...fetchedData.tagGroups }
       };

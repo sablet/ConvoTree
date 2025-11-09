@@ -107,34 +107,6 @@ export class DataSourceManager {
     return this.dataSource.reorderTagGroups(orderedIds);
   }
 
-  async createBranchPoint(messageId: string) {
-    return this.dataSource.createBranchPoint(messageId);
-  }
-
-  async addLineToBranchPoint(messageId: string, lineId: string) {
-    return this.dataSource.addLineToBranchPoint(messageId, lineId);
-  }
-
-  async removeLineFromBranchPoint(messageId: string, lineId: string) {
-    return this.dataSource.removeLineFromBranchPoint(messageId, lineId);
-  }
-
-  async deleteBranchPoint(messageId: string) {
-    return this.dataSource.deleteBranchPoint(messageId);
-  }
-
-  async linkMessages(prevMessageId: string, nextMessageId: string) {
-    return this.dataSource.linkMessages(prevMessageId, nextMessageId);
-  }
-
-  async unlinkMessages(messageId: string) {
-    return this.dataSource.unlinkMessages(messageId);
-  }
-
-  async moveMessageToLine(messageId: string, targetLineId: string, position?: number) {
-    return this.dataSource.moveMessageToLine(messageId, targetLineId, position);
-  }
-
   async createMessageWithLineUpdate(
     messageData: Parameters<IDataSource['createMessageWithLineUpdate']>[0],
     lineId: string,

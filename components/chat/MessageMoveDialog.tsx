@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button"
 import { GitBranch, Link2, AlertCircle } from "lucide-react"
-import type { Line, Tag } from "@/lib/types"
+import type { Line, Tag, Message } from "@/lib/types"
 import { buildLineTree, type LineTreeNode } from "@/lib/line-tree-builder"
 import { LineBreadcrumb } from "./LineBreadcrumb"
 import { useState } from "react"
 import { getLineConnectionInfo } from "@/hooks/helpers/line-connection"
+import { getLineMessageCount } from "@/lib/data-helpers"
 
 /**
  * Flatten tree structure to include all descendants
@@ -31,6 +32,7 @@ interface MessageMoveDialogProps {
   selectedMessagesCount?: number
   currentLineId: string
   lines: Record<string, Line>
+  messages: Record<string, Message>
   tags: Record<string, Tag>
   isUpdating: boolean
   getLineAncestry: (lineId: string) => string[]
@@ -46,6 +48,7 @@ function LineButton({
   isLineConnectionMode: _isLineConnectionMode,
   isUpdating,
   lines,
+  messages,
   tags,
   getLineAncestry,
   onSelect
@@ -56,6 +59,7 @@ function LineButton({
   isLineConnectionMode: boolean
   isUpdating: boolean
   lines: Record<string, Line>
+  messages: Record<string, Message>
   tags: Record<string, Tag>
   getLineAncestry: (lineId: string) => string[]
   onSelect: (lineId: string) => void
@@ -82,7 +86,7 @@ function LineButton({
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-gray-400">({line.messageIds.length})</span>
+          <span className="text-xs text-gray-400">({getLineMessageCount(messages, line.id)})</span>
           {line.tagIds && line.tagIds.length > 0 && (
             <span className="text-xs text-gray-500">
               {line.tagIds.slice(0, 2).map(tagId => tags[tagId]).filter(Boolean).map(tag => `#${tag.name}`).join(' ')}
@@ -159,6 +163,7 @@ export function MessageMoveDialog({
   selectedMessagesCount = 0,
   currentLineId,
   lines,
+  messages,
   tags,
   isUpdating,
   getLineAncestry,
@@ -207,6 +212,7 @@ export function MessageMoveDialog({
                 isLineConnectionMode={config.isLineConnectionMode}
                 isUpdating={isUpdating}
                 lines={lines}
+                messages={messages}
                 tags={tags}
                 getLineAncestry={getLineAncestry}
                 onSelect={handleLineSelect}

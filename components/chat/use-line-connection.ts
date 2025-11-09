@@ -1,9 +1,11 @@
 import { useCallback, useState } from "react"
 import { connectLineToLine } from "@/hooks/helpers/line-connection"
-import type { Line } from "@/lib/types"
+import type { Line, Message } from "@/lib/types"
+import { getLineLastMessage } from "@/lib/data-helpers"
 
 interface UseLineConnectionProps {
   lines: Record<string, Line>
+  messages: Record<string, Message>
   currentLineId: string
   setLines: (updater: (prev: Record<string, Line>) => Record<string, Line>) => void
   clearAllCaches: () => void
@@ -12,6 +14,7 @@ interface UseLineConnectionProps {
 
 export function useLineConnection({
   lines,
+  messages,
   currentLineId,
   setLines,
   clearAllCaches,
@@ -30,10 +33,9 @@ export function useLineConnection({
         throw new Error('ターゲットラインが見つかりません')
       }
 
-      const targetLastMessageId = targetLine.endMessageId ||
-        (targetLine.messageIds.length > 0 ? targetLine.messageIds[targetLine.messageIds.length - 1] : null)
+      const targetLastMessage = getLineLastMessage(messages, targetLineId)
 
-      if (!targetLastMessageId) {
+      if (!targetLastMessage) {
         throw new Error('ターゲットラインにメッセージがありません')
       }
 
@@ -43,7 +45,7 @@ export function useLineConnection({
         ...prev,
         [sourceLineId]: {
           ...prev[sourceLineId],
-          branchFromMessageId: targetLastMessageId,
+          parent_line_id: targetLineId,
           updated_at: new Date().toISOString()
         }
       }))
@@ -59,7 +61,7 @@ export function useLineConnection({
     } finally {
       setIsConnectingLine(false)
     }
-  }, [lines, currentLineId, setLines, clearAllCaches, clearTimelineCaches])
+  }, [lines, messages, currentLineId, setLines, clearAllCaches, clearTimelineCaches])
 
   return { handleLineConnect, isConnectingLine }
 }

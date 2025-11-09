@@ -2,13 +2,12 @@
 
 import { collection, getDocs, doc, getDoc, serverTimestamp, runTransaction, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
-import type { Message, Line, Tag, TagGroup, BranchPoint } from '@/lib/types';
+import { CONVERSATIONS_COLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
+import type { Message, Line, Tag, TagGroup } from '@/lib/types';
 import type { IDataSource, ChatData, MessageInput } from './base';
 import { FirestoreMessageOperations } from './firestore-message';
 import { FirestoreTagOperations } from './firestore-tag';
 import { FirestoreLineOperations } from './firestore-line';
-import { FirestoreBranchOperations } from './firestore-branch';
 import { normalizeDateValue } from './firestore-utils';
 import {
   getAllLastFetchTimestamps,
@@ -20,14 +19,12 @@ export class FirestoreDataSource implements IDataSource {
   private messageOps: FirestoreMessageOperations;
   private tagOps: FirestoreTagOperations;
   private lineOps: FirestoreLineOperations;
-  private branchOps: FirestoreBranchOperations;
 
   constructor(conversationId: string) {
     this.conversationId = conversationId;
     this.messageOps = new FirestoreMessageOperations(conversationId);
     this.tagOps = new FirestoreTagOperations(conversationId);
     this.lineOps = new FirestoreLineOperations(conversationId);
-    this.branchOps = new FirestoreBranchOperations(conversationId, this.messageOps, this.lineOps);
   }
 
   private async fetchMessages(lastFetchTime: Date | null): Promise<Record<string, Message>> {
@@ -61,9 +58,6 @@ export class FirestoreDataSource implements IDataSource {
         timestamp: timestampValue,
         ...(updatedAtValue ? { updatedAt: updatedAtValue } : {}),
         lineId: data.lineId || '',
-        prevInLine: data.prevInLine,
-        nextInLine: data.nextInLine,
-        branchFromMessageId: data.branchFromMessageId,
         tags: data.tags,
         hasBookmark: data.hasBookmark,
         author: data.author,
@@ -99,10 +93,7 @@ export class FirestoreDataSource implements IDataSource {
       lines.push({
         id: doc.id,
         name: data.name || '',
-        messageIds: data.messageIds || [],
-        startMessageId: data.startMessageId || '',
-        endMessageId: data.endMessageId,
-        branchFromMessageId: data.branchFromMessageId,
+        parent_line_id: data.parent_line_id ?? null,
         tagIds: data.tagIds || [],
         created_at: data.created_at || data.createdAt?.toDate?.()?.toISOString() || '',
         updated_at: data.updated_at || data.updatedAt?.toDate?.()?.toISOString() || ''
@@ -113,32 +104,6 @@ export class FirestoreDataSource implements IDataSource {
     return lines;
   }
 
-  private async fetchBranchPoints(lastFetchTime: Date | null): Promise<Record<string, BranchPoint>> {
-    const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
-    const branchPointsQuery = lastFetchTime
-      ? query(branchPointsRef, where('updatedAt', '>', Timestamp.fromDate(lastFetchTime)))
-      : branchPointsRef;
-
-    const branchPointsSnapshot = await getDocs(branchPointsQuery);
-    const branchPoints: Record<string, BranchPoint> = {};
-
-    if (lastFetchTime) {
-      console.log(`📊 [Firestore Query] BranchPoints: ${branchPointsSnapshot.size} documents read (incremental fetch since ${lastFetchTime.toISOString()})`);
-    } else {
-      console.log(`📊 [Firestore Query] BranchPoints: ${branchPointsSnapshot.size} documents read (initial full fetch)`);
-    }
-
-    branchPointsSnapshot.forEach((doc) => {
-      const data = doc.data();
-      branchPoints[doc.id] = {
-        messageId: data.messageId || doc.id,
-        lines: data.lines || []
-      };
-    });
-
-    await saveLastFetchTimestamp(this.conversationId, 'branchPoints');
-    return branchPoints;
-  }
 
   private async fetchTags(lastFetchTime: Date | null): Promise<Record<string, Tag>> {
     const tagsRef = collection(db, 'conversations', this.conversationId, 'tags');
@@ -222,20 +187,17 @@ export class FirestoreDataSource implements IDataSource {
 
       const messages = await this.fetchMessages(lastFetchTimestamps.messages);
       const lines = await this.fetchLines(lastFetchTimestamps.lines);
-      const branchPoints = await this.fetchBranchPoints(lastFetchTimestamps.branchPoints);
       const tags = await this.fetchTags(lastFetchTimestamps.tags);
       const tagGroups = await this.fetchTagGroups(lastFetchTimestamps.tagGroups);
 
       const totalDocuments = Object.keys(messages).length + lines.length +
-                             Object.keys(branchPoints).length + Object.keys(tags).length +
-                             Object.keys(tagGroups).length;
+                             Object.keys(tags).length + Object.keys(tagGroups).length;
 
       console.log(`📊 [Firestore] Total documents read in this fetch: ${totalDocuments}`);
 
       const chatData: ChatData = {
         messages,
         lines,
-        branchPoints,
         tags,
         tagGroups
       };
@@ -288,34 +250,6 @@ export class FirestoreDataSource implements IDataSource {
     return this.lineOps.deleteLine(id);
   }
 
-  async createBranchPoint(messageId: string): Promise<void> {
-    return this.branchOps.createBranchPoint(messageId);
-  }
-
-  async addLineToBranchPoint(messageId: string, lineId: string): Promise<void> {
-    return this.branchOps.addLineToBranchPoint(messageId, lineId);
-  }
-
-  async removeLineFromBranchPoint(messageId: string, lineId: string): Promise<void> {
-    return this.branchOps.removeLineFromBranchPoint(messageId, lineId);
-  }
-
-  async deleteBranchPoint(messageId: string): Promise<void> {
-    return this.branchOps.deleteBranchPoint(messageId);
-  }
-
-  async linkMessages(prevMessageId: string, nextMessageId: string): Promise<void> {
-    return this.branchOps.linkMessages(prevMessageId, nextMessageId);
-  }
-
-  async unlinkMessages(messageId: string): Promise<void> {
-    return this.branchOps.unlinkMessages(messageId);
-  }
-
-  async moveMessageToLine(messageId: string, targetLineId: string, position?: number): Promise<void> {
-    return this.branchOps.moveMessageToLine(messageId, targetLineId, position);
-  }
-
   async createTag(tag: Omit<Tag, 'id'>): Promise<string> {
     return this.tagOps.createTag(tag);
   }
@@ -331,24 +265,16 @@ export class FirestoreDataSource implements IDataSource {
   async createMessageWithLineUpdate(
     messageData: MessageInput,
     lineId: string,
-    prevMessageId?: string
+    _prevMessageId?: string
   ): Promise<string> {
     try {
       return await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, lineId);
         const lineDoc = await transaction.get(lineRef);
 
-        let prevMessageDoc = null;
-        if (prevMessageId) {
-          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
-          prevMessageDoc = await transaction.get(prevMessageRef);
-        }
-
         if (!lineDoc.exists()) {
           throw new Error(`Line with ID ${lineId} not found`);
         }
-
-        const lineData = lineDoc.data() as Line;
 
         const messagesRef = collection(db, 'conversations', this.conversationId, 'messages');
         const newMessageRef = doc(messagesRef);
@@ -361,27 +287,10 @@ export class FirestoreDataSource implements IDataSource {
 
         transaction.set(newMessageRef, newMessageData);
 
-        if (prevMessageId && prevMessageDoc && prevMessageDoc.exists()) {
-          const prevMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, prevMessageId);
-          transaction.update(prevMessageRef, {
-            nextInLine: newMessageRef.id,
-            updatedAt: serverTimestamp()
-          });
-        }
-
-        const updatedMessageIds = [...lineData.messageIds, newMessageRef.id];
-        const isFirstMessage = lineData.messageIds.length === 0;
-
         const lineUpdateData: Record<string, unknown> = {
-          messageIds: updatedMessageIds,
-          endMessageId: newMessageRef.id,
           updated_at: new Date().toISOString(),
           updatedAt: serverTimestamp()
         };
-
-        if (isFirstMessage) {
-          lineUpdateData.startMessageId = newMessageRef.id;
-        }
 
         transaction.update(lineRef, lineUpdateData);
 

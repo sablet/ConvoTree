@@ -15,7 +15,7 @@ interface MessageDragDropProps {
 }
 
 interface UndoState {
-  messageIds: Set<string>
+  messages: Set<string>
   originalLineId: string
   targetLineId: string
   timeoutId: ReturnType<typeof setTimeout>
@@ -46,8 +46,8 @@ export function useMessageDragDrop({
 
     // If in selection mode and message is selected, drag all selected messages
     if (isSelectionMode && selectedMessages.has(messageId)) {
-      const messageIds = Array.from(selectedMessages)
-      e.dataTransfer.setData('text/plain', JSON.stringify(messageIds))
+      const draggedMessages = Array.from(selectedMessages)
+      e.dataTransfer.setData('text/plain', JSON.stringify(draggedMessages))
       e.dataTransfer.setData('drag-type', 'multiple')
     } else {
       e.dataTransfer.setData('text/plain', messageId)
@@ -82,26 +82,26 @@ export function useMessageDragDrop({
       }
 
       // Parse drag data - could be single messageId or JSON array
-      let messageIds: string[]
+      let draggedMessages: string[]
       try {
-        messageIds = JSON.parse(dragData)
-        if (!Array.isArray(messageIds)) {
-          messageIds = [dragData]
+        draggedMessages = JSON.parse(dragData)
+        if (!Array.isArray(draggedMessages)) {
+          draggedMessages = [dragData]
         }
       } catch {
         // Single message ID (not JSON)
-        messageIds = [dragData]
+        draggedMessages = [dragData]
       }
 
       // Validate all messages exist
-      const validMessageIds = messageIds.filter(id => messages[id])
-      if (validMessageIds.length === 0) {
+      const validMessages = draggedMessages.filter(id => messages[id])
+      if (validMessages.length === 0) {
         console.error('No valid messages found')
         return
       }
 
       // Get original line ID from first message
-      const firstMessage = messages[validMessageIds[0]]
+      const firstMessage = messages[validMessages[0]]
       const originalLineId = firstMessage.lineId
 
       // Don't move if already in target line
@@ -117,7 +117,7 @@ export function useMessageDragDrop({
 
       // Perform the move
       try {
-        const messageSet = new Set(validMessageIds)
+        const messageSet = new Set(validMessages)
 
         // Move messages in backend
         await moveMessagesToLine(messageSet, targetLineId, messages, lines)
@@ -135,7 +135,7 @@ export function useMessageDragDrop({
 
         // Show success toast with undo
         const undoState: UndoState = {
-          messageIds: messageSet,
+          messages: messageSet,
           originalLineId,
           targetLineId,
           timeoutId: setTimeout(() => {
@@ -145,7 +145,7 @@ export function useMessageDragDrop({
         // eslint-disable-next-line require-atomic-updates
         undoStateRef.current = undoState
 
-        const messageCount = validMessageIds.length
+        const messageCount = validMessages.length
         const messageText = messageCount === 1 ? 'message' : `${messageCount} messages`
         toast.success(`Moved ${messageText} to "${targetLine.name}"`, {
           duration: 5000,
@@ -161,10 +161,10 @@ export function useMessageDragDrop({
               // Move back to original line
               void (async () => {
                 try {
-                  await moveMessagesToLine(currentUndoState.messageIds, originalLineId, messages, lines)
+                  await moveMessagesToLine(currentUndoState.messages, originalLineId, messages, lines)
 
                   updateLocalStateAfterMove({
-                    selectedMessages: currentUndoState.messageIds,
+                    selectedMessages: currentUndoState.messages,
                     targetLineId: originalLineId,
                     messages,
                     setMessages,

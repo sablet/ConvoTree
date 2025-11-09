@@ -18,8 +18,8 @@ import {
 import { formatRelativeTime } from "@/lib/utils/date"
 import { BranchNode as BranchNodeType } from "@/lib/branch-tree-builder"
 import { BranchNodeHandlers, BranchDisplayData } from "./types"
-import { Tag, Message } from "@/lib/types"
-import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
+import type { Tag, Message } from "@/lib/types"
+import { getLineCharCount } from "@/lib/data-helpers"
 
 interface BranchNodeProps extends BranchNodeHandlers, BranchDisplayData {
   node: BranchNodeType
@@ -61,7 +61,7 @@ function ViewModeContent({
   relativeTime: string | null
   tags: Record<string, Tag>
 }) {
-  const charCount = calculateLineCharCount(line.messageIds, messages)
+  const charCount = getLineCharCount(messages, line.id)
   
   return (
     <div className="flex items-center gap-3">

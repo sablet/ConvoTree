@@ -103,15 +103,13 @@ interface MessageOperations {
     inputValue: string,
     pendingImages: string[],
     selectedBaseMessage: string | null,
-    targetLineId: string,
-    completeTimeline: { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }
+    targetLineId: string
   ) => Promise<void>
   
   // 挿入用メッセージ作成（タイムスタンプ調整可能）
   handleCreateMessageWithTimestamp: (
     content: string,
     images: string[],
-    baseMessageId: string | undefined,
     targetLineId: string,
     timestamp: Date
   ) => Promise<{ messageId: string; message: Message }>
@@ -169,7 +167,7 @@ export function useMessageOperations({
   onCacheInvalidate,
   onScrollToBottom
 }: MessageOperationsProps): MessageOperations {
-  const { messages, setMessages, lines, setLines, branchPoints } = chatState
+  const { messages, setMessages, lines, setLines } = chatState
 
   // 編集状態
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null)
@@ -328,8 +326,7 @@ export function useMessageOperations({
     inputValue: string,
     pendingImages: string[],
     selectedBaseMessage: string | null,
-    targetLineId: string,
-    completeTimeline: { messages: Message[], transitions: Array<{ index: number, lineId: string, lineName: string }> }
+    targetLineId: string
   ) => {
     if (!inputValue.trim() && pendingImages.length === 0) return
 
@@ -346,27 +343,28 @@ export function useMessageOperations({
     const currentLine = lines[actualTargetLineId]
     if (!currentLine) return
 
-    const lastMessage = completeTimeline.messages[completeTimeline.messages.length - 1]
-    const baseMessageId = selectedBaseMessage || lastMessage?.id
     const shouldCreateNewLine = selectedBaseMessage !== null
 
     setIsUpdating(true)
     try {
       if (shouldCreateNewLine) {
         const newLineName = inputValue.trim() || 'New Branch'
+
+        // In new structure, branch is created by parent_line_id, not branchFromMessageId
+        const parentLineId = selectedBaseMessage ? chatState.lines[Object.keys(chatState.lines).find(lid => {
+          const lineMessages = Object.values(chatState.messages).filter(m => m.lineId === lid)
+          return lineMessages.some(m => m.id === selectedBaseMessage)
+        }) || '']?.id || null : null
+
         const newLineId = await createNewBranch(
-          { name: newLineName, branchFromMessageId: selectedBaseMessage },
-          chatState.setBranchPoints
+          { name: newLineName, parent_line_id: parentLineId }
         )
 
         const currentTimestamp = new Date()
         const newLine = {
           id: newLineId,
           name: newLineName,
-          messageIds: [],
-          startMessageId: "",
-          endMessageId: undefined,
-          branchFromMessageId: selectedBaseMessage,
+          parent_line_id: parentLineId,
           tagIds: [],
           created_at: currentTimestamp.toISOString(),
           updated_at: currentTimestamp.toISOString()
@@ -382,11 +380,10 @@ export function useMessageOperations({
         const { messageId: newMessageId, message: newMessage } = await createNewMessage({
           content: inputValue,
           images: pendingImages,
-          targetLineId: actualTargetLineId,
-          baseMessageId: baseMessageId || undefined
+          targetLineId: actualTargetLineId
         })
 
-        updateLocalStateAfterMessage(newMessageId, newMessage, baseMessageId || undefined, setMessages, setLines)
+        updateLocalStateAfterMessage(newMessageId, newMessage, setMessages, setLines)
       }
 
       // キャッシュをクリア（構造が変わった可能性があるため）
@@ -491,7 +488,7 @@ export function useMessageOperations({
       await deleteMessageFromFirestore({
         messageId,
         message,
-        branchPoints,
+        lines,
         deleteImageFromStorage,
         isValidImageUrl
       })
@@ -510,7 +507,7 @@ export function useMessageOperations({
     } finally {
       setIsUpdating(false)
     }
-  }, [deleteConfirmation, setMessages, setLines, branchPoints, deleteImageFromStorage, onCacheInvalidate])
+  }, [deleteConfirmation, setMessages, setLines, lines, deleteImageFromStorage, onCacheInvalidate])
 
   /**
    * Copy message to clipboard
@@ -532,7 +529,7 @@ export function useMessageOperations({
     }
   }, [messages])
 
-  const handleCreateMessageWithTimestamp = useCallback(createMessageWithTimestamp as (content: string, images: string[], baseMessageId: string | undefined, targetLineId: string, timestamp: Date) => Promise<{ messageId: string; message: Message }>, []);
+  const handleCreateMessageWithTimestamp = useCallback(createMessageWithTimestamp, []);
 
   return {
     handleSendMessage,

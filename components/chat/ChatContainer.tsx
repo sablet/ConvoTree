@@ -21,7 +21,7 @@ import { useInputOperations } from "@/hooks/use-input-operations"
 import { useMessageDragDrop } from "@/hooks/use-message-drag-drop"
 import { useWindowWidth } from "@/hooks/use-window-width"
 import { useDeviceType } from "@/hooks/use-device-type"
-import type { Message, Line, BranchPoint, Tag } from "@/lib/types"
+import type { Message, Line, Tag } from "@/lib/types"
 import type { ChatRepository } from "@/lib/repositories/chat-repository"
 import { getRelativeTime, formatDateForSeparator, isSameDay } from "@/lib/utils"
 import { useLineConnection } from "./use-line-connection"
@@ -30,7 +30,6 @@ import { useMessageInsert } from "./use-message-insert"
 interface ChatContainerProps {
   initialMessages?: Record<string, Message>
   initialLines?: Record<string, Line>
-  initialBranchPoints?: Record<string, BranchPoint>
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
   onLineChange?: (lineId: string) => void
@@ -42,7 +41,6 @@ interface ChatContainerProps {
 export function ChatContainer({
   initialMessages = {},
   initialLines = {},
-  initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = '',
   onLineChange,
@@ -58,7 +56,6 @@ export function ChatContainer({
   const chatState = useChatState({
     initialMessages,
     initialLines,
-    initialBranchPoints,
     initialTags,
     initialCurrentLineId
   })
@@ -89,6 +86,7 @@ export function ChatContainer({
   })
   const { handleLineConnect, isConnectingLine } = useLineConnection({
     lines: chatState.lines,
+    messages: chatState.messages,
     currentLineId: chatState.currentLineId,
     setLines: chatState.setLines,
     clearAllCaches: chatState.clearAllCaches,
@@ -169,7 +167,6 @@ export function ChatContainer({
           currentLine={currentLineInfo}
           editingBranchData={branchOps.editingBranchData}
           tags={chatState.tags}
-          messages={chatState.messages}
           onSave={branchOps.handleSaveLineEdit}
           onCancel={() => branchOps.setIsEditingBranch(false)}
           onAddTag={branchOps.handleAddTag}
@@ -197,7 +194,6 @@ export function ChatContainer({
         messages={chatState.messages}
         lines={chatState.lines}
         tags={chatState.tags}
-        branchPoints={chatState.branchPoints}
         currentLineId={chatState.currentLineId}
         selectedBaseMessage={selectedBaseMessage}
         editingMessageId={messageOps.editingMessageId}
@@ -286,7 +282,6 @@ export function ChatContainer({
           lines={chatState.lines}
           messages={chatState.messages}
           currentLineId={chatState.currentLineId}
-          branchPoints={chatState.branchPoints}
           onLineSelect={branchOps.switchToLine}
         />
       </div>
@@ -298,6 +293,7 @@ export function ChatContainer({
         selectedMessagesCount={branchOps.selectedMessages.size}
         currentLineId={chatState.currentLineId}
         lines={chatState.lines}
+        messages={chatState.messages}
         tags={chatState.tags}
         isUpdating={branchOps.isUpdating}
         getLineAncestry={branchOps.getLineAncestry}
@@ -311,6 +307,7 @@ export function ChatContainer({
         mode="line-connection"
         currentLineId={chatState.currentLineId}
         lines={chatState.lines}
+        messages={chatState.messages}
         tags={chatState.tags}
         isUpdating={isConnectingLine}
         getLineAncestry={branchOps.getLineAncestry}
@@ -323,7 +320,6 @@ export function ChatContainer({
         isOpen={Boolean(messageOps.deleteConfirmation)}
         message={messageOps.deleteConfirmation?.message || null}
         messageId={messageOps.deleteConfirmation?.messageId || null}
-        branchPoints={chatState.branchPoints}
         isUpdating={messageOps.isUpdating}
         onConfirm={messageOps.handleConfirmDelete}
         onCancel={() => messageOps.setDeleteConfirmation(null)}

@@ -78,8 +78,7 @@ export function useInputOperations({
       inputValue,
       pendingImages,
       selectedBaseMessage,
-      actualTargetLineId,
-      branchOps.completeTimeline
+      actualTargetLineId
     )
 
     // Clear input state

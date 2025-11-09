@@ -3,7 +3,7 @@ import { Copy, CheckCircle, Edit3, Trash2 } from "lucide-react"
 import Image from "next/image"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
 import type { Message } from "@/lib/types"
-import { calculateMessageCharCount } from "@/lib/utils/line-char-counter"
+import { countTextLengthWithoutUrls as calculateMessageCharCount } from "@/lib/utils/linkify"
 
 interface MessageSelectionCheckboxProps {
   messageId: string

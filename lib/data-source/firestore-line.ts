@@ -2,16 +2,9 @@
 
 import { collection, getDocs, doc, serverTimestamp, query, where, runTransaction, type Transaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { CONVERSATIONS_COLLECTION, MESSAGES_SUBCOLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
+import { CONVERSATIONS_COLLECTION, LINES_SUBCOLLECTION } from '@/lib/firestore-constants';
 import type { Line } from '@/lib/types';
 import type * as FirebaseFirestore from 'firebase/firestore';
-
-interface BranchPointWithTimestamp {
-  messageId: string;
-  lines: string[];
-  createdAt?: unknown;
-  updatedAt?: unknown;
-}
 
 export class FirestoreLineOperations {
   private conversationId: string;
@@ -28,22 +21,6 @@ export class FirestoreLineOperations {
         const linesRef = collection(db, 'conversations', this.conversationId, 'lines');
 
         await this.checkLineNameDuplicate(line.name);
-
-        if (line.startMessageId) {
-          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.startMessageId);
-          const startMessageDoc = await transaction.get(startMessageRef);
-          if (!startMessageDoc.exists()) {
-            throw new Error(`Start message with ID ${line.startMessageId} not found`);
-          }
-        }
-
-        if (line.branchFromMessageId) {
-          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, line.branchFromMessageId);
-          const branchMessageDoc = await transaction.get(branchMessageRef);
-          if (!branchMessageDoc.exists()) {
-            throw new Error(`Branch from message with ID ${line.branchFromMessageId} not found`);
-          }
-        }
 
         const lineData = {
           ...line,
@@ -76,22 +53,6 @@ export class FirestoreLineOperations {
           await this.checkLineNameDuplicate(updates.name, id);
         }
 
-        if (updates.startMessageId) {
-          const startMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.startMessageId);
-          const startMessageDoc = await transaction.get(startMessageRef);
-          if (!startMessageDoc.exists()) {
-            throw new Error(`Start message with ID ${updates.startMessageId} not found`);
-          }
-        }
-
-        if (updates.branchFromMessageId) {
-          const branchMessageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, updates.branchFromMessageId);
-          const branchMessageDoc = await transaction.get(branchMessageRef);
-          if (!branchMessageDoc.exists()) {
-            throw new Error(`Branch from message with ID ${updates.branchFromMessageId} not found`);
-          }
-        }
-
         const updateData = {
           ...updates,
           updated_at: new Date().toISOString(),
@@ -113,38 +74,11 @@ export class FirestoreLineOperations {
 
       await runTransaction(db, async (transaction) => {
         const lineRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, LINES_SUBCOLLECTION, id);
-        const lineDoc = await this.getAndValidateLineDoc(transaction, id);
-        const lineData = lineDoc.data() as Line;
+        await this.getAndValidateLineDoc(transaction, id);
 
-        if (lineData.messageIds && lineData.messageIds.length > 0) {
-          for (const messageId of lineData.messageIds) {
-            const messageRef = doc(db, CONVERSATIONS_COLLECTION, this.conversationId, MESSAGES_SUBCOLLECTION, messageId);
-            const messageDoc = await transaction.get(messageRef);
-            if (messageDoc.exists()) {
-              transaction.update(messageRef, {
-                lineId: null,
-                updatedAt: serverTimestamp()
-              });
-            }
-          }
-        }
-
-        const branchPointsRef = collection(db, 'conversations', this.conversationId, 'branchPoints');
-        const branchPointsSnapshot = await getDocs(query(branchPointsRef, where('lines', 'array-contains', id)));
-
-        branchPointsSnapshot.forEach((branchPointDoc) => {
-          const branchPointData = branchPointDoc.data() as BranchPointWithTimestamp;
-          const updatedLines = branchPointData.lines.filter(lineId => lineId !== id);
-
-          if (updatedLines.length === 0) {
-            transaction.delete(branchPointDoc.ref);
-          } else {
-            transaction.update(branchPointDoc.ref, {
-              lines: updatedLines,
-              updatedAt: serverTimestamp()
-            });
-          }
-        });
+        // Note: In new data structure, messages reference lines via lineId field
+        // Messages will become orphaned when line is deleted
+        // This is acceptable as orphan messages can be cleaned up separately if needed
 
         transaction.delete(lineRef);
       });
@@ -164,10 +98,6 @@ export class FirestoreLineOperations {
   private validateLine(line: Omit<Line, 'id'>): void {
     if (!line.name || line.name.trim() === '') {
       throw new Error('Line name is required');
-    }
-
-    if (!line.messageIds || !Array.isArray(line.messageIds)) {
-      throw new Error('Message IDs array is required');
     }
 
     if (!line.created_at) {
@@ -198,10 +128,6 @@ export class FirestoreLineOperations {
 
     if (updates.name !== undefined && updates.name.trim() === '') {
       throw new Error('Line name cannot be empty');
-    }
-
-    if (updates.messageIds !== undefined && (!Array.isArray(updates.messageIds))) {
-      throw new Error('Message IDs must be an array');
     }
   }
 

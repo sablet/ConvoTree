@@ -1,16 +1,17 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import { Line } from "@/lib/types"
+import type { Line, Message } from "@/lib/types"
 import { LineList } from "@/components/ui/line-list"
 
 interface LineHistoryMenuProps {
   lines: Line[]
+  messages: Record<string, Message>
   currentLineId?: string
   onLineSelect?: (lineId: string) => void
 }
 
-export function LineHistoryMenu({ lines, currentLineId, onLineSelect }: LineHistoryMenuProps) {
+export function LineHistoryMenu({ lines, messages, currentLineId, onLineSelect }: LineHistoryMenuProps) {
   const router = useRouter()
 
   const handleLineClick = (lineId: string) => {
@@ -37,6 +38,7 @@ export function LineHistoryMenu({ lines, currentLineId, onLineSelect }: LineHist
   return (
     <LineList
       lines={sortedLines}
+      messages={messages}
       currentLineId={currentLineId}
       onLineClick={handleLineClick}
     />

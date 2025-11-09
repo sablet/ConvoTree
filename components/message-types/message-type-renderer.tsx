@@ -13,9 +13,6 @@ interface Message {
   content: string
   timestamp: Date
   lineId: string
-  prevInLine?: string
-  nextInLine?: string
-  branchFromMessageId?: string
   tags?: string[]
   hasBookmark?: boolean
   author?: string

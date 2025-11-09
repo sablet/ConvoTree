@@ -106,8 +106,6 @@ export function useBranchOperations({
     setMessages,
     lines,
     setLines,
-    branchPoints,
-    setBranchPoints,
     setTags,
     currentLineId,
     setCurrentLineId,
@@ -174,7 +172,6 @@ export function useBranchOperations({
   } = useTimelineOperations({
     messages,
     lines,
-    branchPoints,
     currentLineId,
     pathCache,
     setPathCache,
@@ -190,16 +187,10 @@ export function useBranchOperations({
 
   const getCurrentLine = useCallback((): Line | null => {
     if (currentLineId === TIMELINE_BRANCH_ID) {
-      const allMessages = Object.values(messages)
       return {
         id: TIMELINE_BRANCH_ID,
         name: '全メッセージ (時系列)',
-        messageIds: allMessages.map(m => m.id).sort((a, b) => {
-          const msgA = messages[a]
-          const msgB = messages[b]
-          return new Date(msgA.timestamp).getTime() - new Date(msgB.timestamp).getTime()
-        }),
-        startMessageId: '',
+        parent_line_id: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
@@ -231,8 +222,8 @@ export function useBranchOperations({
     isUpdating: crudIsUpdating
   } = useLineCrud({
     lines,
+    messages,
     currentLineId,
-    setBranchPoints,
     setLines,
     setMessages,
     setSelectedBaseMessage,

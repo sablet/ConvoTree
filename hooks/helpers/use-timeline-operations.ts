@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import type { Line, Message, BranchPoint } from '@/lib/types'
+import type { Line, Message } from '@/lib/types'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import { calculateLineAncestry, calculateOptimizedPath, type LineAncestryResult } from './branch-ancestry'
 import { filterTimeline } from './timeline-filter'
@@ -8,7 +8,6 @@ import type { ChatState } from '../use-chat-state'
 interface TimelineOperationsProps {
   messages: Record<string, Message>
   lines: Record<string, Line>
-  branchPoints: Record<string, BranchPoint>
   currentLineId: string
   pathCache: Map<string, LineAncestryResult>
   setPathCache: React.Dispatch<React.SetStateAction<Map<string, LineAncestryResult>>>
@@ -25,7 +24,6 @@ interface TimelineOperationsProps {
 export function useTimelineOperations({
   messages,
   lines,
-  branchPoints,
   currentLineId,
   pathCache,
   setPathCache,
@@ -39,10 +37,13 @@ export function useTimelineOperations({
   searchKeyword
 }: TimelineOperationsProps) {
   const getBranchingLines = useCallback((messageId: string): Line[] => {
-    const branchPoint = branchPoints[messageId]
-    if (!branchPoint || !branchPoint.lines.length) return []
-    return branchPoint.lines.map(lineId => lines[lineId]).filter(Boolean)
-  }, [branchPoints, lines])
+    // Find the line that contains this message
+    const message = messages[messageId]
+    if (!message) return []
+
+    // Find all lines that have this message's line as parent
+    return Object.values(lines).filter(line => line.parent_line_id === message.lineId)
+  }, [messages, lines])
 
   const getLineAncestry = useCallback((lineId: string): string[] => {
     if (lineAncestryCache.has(lineId)) {

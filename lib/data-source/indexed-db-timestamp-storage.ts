@@ -5,7 +5,6 @@ import { getDB, TIMESTAMP_STORE } from './indexed-db-common';
 interface LastFetchTimestamps {
   messages: Date | null;
   lines: Date | null;
-  branchPoints: Date | null;
   tags: Date | null;
   tagGroups: Date | null;
 }
@@ -70,7 +69,6 @@ export async function getAllLastFetchTimestamps(conversationId: string): Promise
   return {
     messages: await getLastFetchTimestamp(conversationId, 'messages'),
     lines: await getLastFetchTimestamp(conversationId, 'lines'),
-    branchPoints: await getLastFetchTimestamp(conversationId, 'branchPoints'),
     tags: await getLastFetchTimestamp(conversationId, 'tags'),
     tagGroups: await getLastFetchTimestamp(conversationId, 'tagGroups'),
   };
@@ -87,7 +85,6 @@ export async function clearAllLastFetchTimestamps(conversationId: string): Promi
     const collections: Array<keyof LastFetchTimestamps> = [
       'messages',
       'lines',
-      'branchPoints',
       'tags',
       'tagGroups',
     ];

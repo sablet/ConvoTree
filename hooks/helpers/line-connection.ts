@@ -7,7 +7,7 @@ import type { Line } from '@/lib/types'
  *
  * @param sourceLineId - Line to be moved
  * @param targetLineId - New parent line
- * @param lines - Current lines state (to find target's last message)
+ * @param lines - Current lines state
  *
  * Example:
  *   Before: A → B → C → D
@@ -36,23 +36,15 @@ export async function connectLineToLine(
     throw new Error(`ソースライン ${sourceLineId} が見つかりません`)
   }
 
-  // Get target line's last message
-  const targetLastMessageId = targetLine.endMessageId ||
-    (targetLine.messageIds.length > 0 ? targetLine.messageIds[targetLine.messageIds.length - 1] : null)
-
-  if (!targetLastMessageId) {
-    throw new Error(`ターゲットライン ${targetLineId} にメッセージがありません`)
-  }
-
   // Check if this would create a circular reference
   // (e.g., trying to connect A to D when D is a descendant of A)
   if (isDescendant(targetLineId, sourceLineId, lines)) {
     throw new Error('循環参照が発生するため、この接続はできません')
   }
 
-  // Update source line's branchFromMessageId
+  // Update source line's parent_line_id
   await dataSourceManager.updateLine(sourceLineId, {
-    branchFromMessageId: targetLastMessageId
+    parent_line_id: targetLineId
   })
 
   console.log(`✅ ライン "${sourceLine.name}" をライン "${targetLine.name}" の下に接続しました`)
@@ -64,25 +56,17 @@ export async function connectLineToLine(
  */
 function isDescendant(targetLineId: string, sourceLineId: string, lines: Line[]): boolean {
   const targetLine = lines.find(line => line.id === targetLineId)
-  if (!targetLine || !targetLine.branchFromMessageId) {
+  if (!targetLine || !targetLine.parent_line_id) {
     return false
   }
 
-  // Find parent line of target
-  const parentLine = lines.find(line =>
-    line.messageIds.includes(targetLine.branchFromMessageId || '')
-  )
-
-  if (!parentLine) {
-    return false
-  }
-
-  if (parentLine.id === sourceLineId) {
+  // Check if parent is the source line
+  if (targetLine.parent_line_id === sourceLineId) {
     return true
   }
 
   // Recursively check ancestors
-  return isDescendant(parentLine.id, sourceLineId, lines)
+  return isDescendant(targetLine.parent_line_id, sourceLineId, lines)
 }
 
 /**
@@ -102,10 +86,8 @@ export function getLineConnectionInfo(
   const targetLine = lines.find(line => line.id === targetLineId) || null
 
   let currentParentLine: Line | null = null
-  if (sourceLine?.branchFromMessageId) {
-    currentParentLine = lines.find(line =>
-      line.messageIds.includes(sourceLine.branchFromMessageId || '')
-    ) || null
+  if (sourceLine?.parent_line_id) {
+    currentParentLine = lines.find(line => line.id === sourceLine.parent_line_id) || null
   }
 
   const willCreateCircular = isDescendant(targetLineId, sourceLineId, lines)

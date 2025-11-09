@@ -41,7 +41,7 @@ export function HamburgerMenu({
   onDataReload,
   currentDataSource
 }: HamburgerMenuProps) {
-  const { lines: linesRecord, loadChatData } = useChatData()
+  const { lines: linesRecord, messages, loadChatData } = useChatData()
   const lines = Object.values(linesRecord)
   const [isOpen, setIsOpen] = useState(false)
   const router = useRouter()
@@ -209,7 +209,7 @@ export function HamburgerMenu({
           </div>
 
           {/* Line History */}
-          <LineHistoryMenu lines={lines} />
+          <LineHistoryMenu lines={lines} messages={messages} />
         </div>
       </div>
     </>

@@ -1,5 +1,6 @@
 import { GitBranch } from "lucide-react"
 import type { Line, Message, Tag } from "@/lib/types"
+import { getLineLastMessage } from "@/lib/data-helpers"
 
 interface BranchingLinesPanelProps {
   branchingLines: Line[]
@@ -36,8 +37,7 @@ export function BranchingLinesPanel({
       <div className="space-y-1">
         {branchingLines.map((line) => {
           const isCurrentLine = line.id === currentLineId
-          const lastMessageId = line.endMessageId || line.messageIds[line.messageIds.length - 1]
-          const lastMessage = lastMessageId ? messages[lastMessageId] : null
+          const lastMessage = getLineLastMessage(messages, line.id)
           const lastMessagePreview = lastMessage?.content ? lastMessage.content.slice(0, 18) + (lastMessage.content.length > 18 ? "..." : "") : ""
           const firstTagId = line.tagIds?.[0]
           const firstTag = firstTagId ? tags[firstTagId] : null

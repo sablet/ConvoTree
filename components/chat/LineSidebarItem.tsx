@@ -2,7 +2,7 @@ import { ChevronDown, ChevronRight, Folder, FolderOpen } from "lucide-react"
 import type { Message, Tag } from "@/lib/types"
 import type { LineTreeNode } from "@/lib/line-tree-builder"
 import { getTreePrefix } from "@/lib/line-tree-builder"
-import { calculateLineCharCount } from "@/lib/utils/line-char-counter"
+import { getLineCharCount, getLineMessageCount } from "@/lib/data-helpers"
 
 interface LineSidebarItemProps {
   node: LineTreeNode
@@ -45,7 +45,8 @@ export function LineSidebarItem({
   const treePrefix = getTreePrefix(node)
   const hasChildren = Boolean(children?.length)
   const isExpanded = expandedLines.has(line.id)
-  const charCount = calculateLineCharCount(line.messageIds, messages)
+  const charCount = getLineCharCount(messages, line.id)
+  const messageCount = getLineMessageCount(messages, line.id)
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault()
@@ -155,7 +156,7 @@ export function LineSidebarItem({
               {line.name}
             </div>
             <div className="flex items-center gap-2 text-[10px] text-gray-500 mt-0.5">
-              <span>{line.messageIds.length} msgs</span>
+              <span>{messageCount} msgs</span>
               <span>·</span>
               <span>{charCount} chars</span>
               {line.tagIds && line.tagIds.length > 0 && (

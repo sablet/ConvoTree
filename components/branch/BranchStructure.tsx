@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { BarChart3 } from "lucide-react"
-import { Message, Line, Tag, BranchPoint, TagGroup } from "@/lib/types"
+import type { Message, Line, Tag, TagGroup } from "@/lib/types"
 import { MAIN_LINE_ID } from "@/lib/constants"
 import { BranchTreeBuilder } from "@/lib/branch-tree-builder"
 import { BranchTree } from "./BranchTree"
@@ -13,7 +13,6 @@ import { DeleteConfirmDialog } from "./DeleteConfirmDialog"
 interface BranchStructureProps {
   messages: Record<string, Message>
   lines: Line[]
-  branchPoints: Record<string, BranchPoint>
   tags: Record<string, Tag>
   tagGroups: Record<string, TagGroup>
   currentLineId: string
@@ -26,7 +25,6 @@ interface BranchStructureProps {
 export function BranchStructure({
   messages,
   lines,
-  branchPoints,
   tags,
   tagGroups,
   currentLineId,
@@ -89,7 +87,7 @@ export function BranchStructure({
   const statistics = useMemo(() => {
     const totalLines = lines.length
     const totalMessages = Object.keys(messages).length
-    const totalBranches = Object.keys(branchPoints).length
+    const totalBranches = lines.filter(l => l.parent_line_id !== null && l.parent_line_id !== "").length
 
     const linesByDepth: Record<number, number> = {}
     const messagesByLine: Record<string, number> = {}
@@ -111,7 +109,7 @@ export function BranchStructure({
       linesByDepth,
       messagesByLine
     }
-  }, [allBranches, lines, messages, branchPoints])
+  }, [allBranches, lines, messages])
 
   const handleEditStart = (line: Line) => {
     const currentTagIds = line.tagIds || []

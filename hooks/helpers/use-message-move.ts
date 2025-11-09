@@ -86,6 +86,7 @@ export function useMessageMove({
     try {
       await executeBulkDelete({
         selectedMessages,
+        messages,
         setMessages,
         setLines,
         clearAllCaches,

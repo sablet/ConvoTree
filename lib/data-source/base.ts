@@ -1,9 +1,8 @@
-import type { Message, Line, Tag, TagGroup, BranchPoint } from '@/lib/types';
+import type { Message, Line, Tag, TagGroup } from '@/lib/types';
 
 export interface ChatData {
   messages: Record<string, Message>;
   lines: Line[];
-  branchPoints: Record<string, BranchPoint>;
   tags: Record<string, Tag>;
   tagGroups: Record<string, TagGroup>;
 }
@@ -36,17 +35,6 @@ export interface IDataSource {
   updateTagGroup(id: string, updates: Partial<TagGroup>): Promise<void>;
   deleteTagGroup(id: string, tagHandlingOption?: 'delete' | 'unlink'): Promise<void>;
   reorderTagGroups(orderedIds: string[]): Promise<void>;
-
-  // BranchPoint operations
-  createBranchPoint(messageId: string): Promise<void>;
-  addLineToBranchPoint(messageId: string, lineId: string): Promise<void>;
-  removeLineFromBranchPoint(messageId: string, lineId: string): Promise<void>;
-  deleteBranchPoint(messageId: string): Promise<void>;
-
-  // Message linking operations
-  linkMessages(prevMessageId: string, nextMessageId: string): Promise<void>;
-  unlinkMessages(messageId: string): Promise<void>;
-  moveMessageToLine(messageId: string, targetLineId: string, position?: number): Promise<void>;
 
   // Atomic operations
   createMessageWithLineUpdate(

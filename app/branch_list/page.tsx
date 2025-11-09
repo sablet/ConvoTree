@@ -6,13 +6,12 @@ import { HamburgerMenu } from "@/components/hamburger-menu"
 import { dataSourceManager } from "@/lib/data-source"
 import { useChatRepository } from "@/lib/chat-repository-context"
 import { PageLayout } from "@/components/layouts/PageLayout"
-import { Message, Line, Tag, TagGroup, BranchPoint } from "@/lib/types"
+import { Message, Line, Tag, TagGroup } from "@/lib/types"
 
 export default function BranchListPage() {
   const chatRepository = useChatRepository();
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Line[]>([])
-  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
   const [tagGroups, setTagGroups] = useState<Record<string, TagGroup>>({})
   const [currentLineId, setCurrentLineId] = useState<string>('')
@@ -36,7 +35,6 @@ export default function BranchListPage() {
 
       setMessages(newMessages)
       setLines(data.lines)
-      setBranchPoints(data.branchPoints)
       setTags(data.tags)
       setTagGroups(data.tagGroups)
 
@@ -88,53 +86,17 @@ export default function BranchListPage() {
     }
   }
 
-  // メッセージ削除ヘルパー
-  const deleteLineMessages = async (lineToDelete: Line) => {
-    if (!lineToDelete.messageIds.length) return
-
-    for (const messageId of lineToDelete.messageIds) {
-      if (!messages[messageId] || dataSourceManager.getCurrentSource() !== 'firestore') continue
-
-      try {
-        await dataSourceManager.deleteMessage(messageId)
-      } catch (error) {
-        console.warn(`Failed to delete message ${messageId}:`, error)
-      }
-    }
-  }
-
-  // 分岐点更新ヘルパー
-  const updateBranchPointsForLineDelete = (lineId: string) => {
-    setBranchPoints(prev => {
-      const updated = { ...prev }
-      Object.keys(updated).forEach(branchPointId => {
-        const branchPoint = updated[branchPointId]
-        if (!branchPoint.lines.includes(lineId)) return
-
-        updated[branchPointId] = {
-          ...branchPoint,
-          lines: branchPoint.lines.filter(id => id !== lineId)
-        }
-
-        if (updated[branchPointId].lines.length === 0) {
-          delete updated[branchPointId]
-        }
-      })
-      return updated
-    })
+  // メッセージ削除ヘルパー（新構造では不要だが、Phase 4 までは残す）
+  const deleteLineMessages = async (_lineToDelete: Line) => {
+    // 新構造では Line は messageIds を持たないため、この処理は不要
+    // Phase 4 で適切に実装する
   }
 
   // ローカル状態更新ヘルパー
-  const updateLocalStateForLineDelete = (lineId: string, lineToDelete: Line | undefined) => {
+  const updateLocalStateForLineDelete = (lineId: string, _lineToDelete: Line | undefined) => {
     setLines(prev => prev.filter(line => line.id !== lineId))
-    setMessages(prev => {
-      if (!lineToDelete) return prev
-      const updated = { ...prev }
-      lineToDelete.messageIds.forEach(messageId => {
-        delete updated[messageId]
-      })
-      return updated
-    })
+    // 新構造では messages は lineId で紐付いているため、個別の削除は不要
+    // Phase 4 で適切に実装する
 
     if (currentLineId === lineId) {
       setCurrentLineId('main')
@@ -159,7 +121,6 @@ export default function BranchListPage() {
         await dataSourceManager.deleteLine(lineId)
       }
 
-      updateBranchPointsForLineDelete(lineId)
       updateLocalStateForLineDelete(lineId, lineToDelete)
 
     } catch (error) {
@@ -185,7 +146,6 @@ export default function BranchListPage() {
       <BranchStructure
         messages={messages}
         lines={lines}
-        branchPoints={branchPoints}
         tags={tags}
         tagGroups={tagGroups}
         currentLineId={currentLineId}

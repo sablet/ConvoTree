@@ -1,10 +1,11 @@
 "use client"
 
-import { Line } from "@/lib/types"
+import type { Line, Message } from "@/lib/types"
 import { LineButton } from "./line-button"
 
 interface LineListProps {
   lines: Line[]
+  messages: Record<string, Message>
   currentLineId?: string
   onLineClick: (lineId: string) => void
   title?: string
@@ -13,6 +14,7 @@ interface LineListProps {
 
 export function LineList({
   lines,
+  messages,
   currentLineId,
   onLineClick,
   title = "ライン管理",
@@ -29,6 +31,7 @@ export function LineList({
             <LineButton
               key={line.id}
               line={line}
+              messages={messages}
               isActive={line.id === currentLineId}
               onClick={onLineClick}
             />

@@ -12,7 +12,6 @@ export class SampleDataSource implements IDataSource {
       return {
         messages: data.messages || {},
         lines: data.lines || [],
-        branchPoints: data.branchPoints || {},
         tags: data.tags || {},
         tagGroups: data.tagGroups || {},
       };
@@ -71,30 +70,6 @@ export class SampleDataSource implements IDataSource {
   }
 
   async reorderTagGroups(_orderedIds: string[]): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async createBranchPoint(_messageId: string): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async addLineToBranchPoint(_messageId: string, _lineId: string): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async removeLineFromBranchPoint(_messageId: string, _lineId: string): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async deleteBranchPoint(_messageId: string): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async linkMessages(_prevMessageId: string, _nextMessageId: string): Promise<void> {
-    throw new Error('Sample data source is read-only');
-  }
-
-  async unlinkMessages(_messageId: string): Promise<void> {
     throw new Error('Sample data source is read-only');
   }
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Message, Line, BranchPoint, Tag } from '@/lib/types'
+import type { Message, Line, Tag } from '@/lib/types'
 import type { MessageType } from '@/lib/constants'
 
 /**
@@ -8,7 +8,6 @@ import type { MessageType } from '@/lib/constants'
 interface ChatStateProps {
   initialMessages?: Record<string, Message>
   initialLines?: Record<string, Line>
-  initialBranchPoints?: Record<string, BranchPoint>
   initialTags?: Record<string, Tag>
   initialCurrentLineId?: string
 }
@@ -30,8 +29,6 @@ export interface ChatState {
   setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
   lines: Record<string, Line>
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
-  branchPoints: Record<string, BranchPoint>
-  setBranchPoints: React.Dispatch<React.SetStateAction<Record<string, BranchPoint>>>
   tags: Record<string, Tag>
   setTags: React.Dispatch<React.SetStateAction<Record<string, Tag>>>
   currentLineId: string
@@ -75,14 +72,12 @@ export interface ChatState {
 export function useChatState({
   initialMessages = {},
   initialLines = {},
-  initialBranchPoints = {},
   initialTags = {},
   initialCurrentLineId = ''
 }: ChatStateProps = {}): ChatState {
   // データ状態
   const [messages, setMessages] = useState<Record<string, Message>>(initialMessages)
   const [lines, setLines] = useState<Record<string, Line>>(initialLines)
-  const [branchPoints, setBranchPoints] = useState<Record<string, BranchPoint>>(initialBranchPoints)
   const [tags, setTags] = useState<Record<string, Tag>>(initialTags)
   const [currentLineId, setCurrentLineId] = useState<string>(initialCurrentLineId)
 
@@ -108,10 +103,6 @@ export function useChatState({
   }, [initialLines])
 
   useEffect(() => {
-    setBranchPoints(initialBranchPoints)
-  }, [initialBranchPoints])
-
-  useEffect(() => {
     setTags(initialTags)
   }, [initialTags])
 
@@ -135,8 +126,6 @@ export function useChatState({
     setMessages,
     lines,
     setLines,
-    branchPoints,
-    setBranchPoints,
     tags,
     setTags,
     currentLineId,

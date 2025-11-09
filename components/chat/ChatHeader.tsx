@@ -4,6 +4,7 @@ import { Edit3, CheckSquare, CalendarPlus, Link2, Copy, Menu } from "lucide-reac
 import type { Line, Message, Tag } from "@/lib/types"
 import { useState } from "react"
 import { toast } from "sonner"
+import { getLineMessages } from "@/lib/data-helpers"
 
 interface ChatHeaderProps {
   currentLine: Line | null
@@ -44,7 +45,10 @@ export function ChatHeader({
   if (!currentLine) return null
 
   const handleCopyLineMessages = async () => {
-    if (!currentLine.messageIds || currentLine.messageIds.length === 0) {
+    // Get messages for this line using helper function
+    const lineMessages = getLineMessages(messages, currentLine.id)
+
+    if (lineMessages.length === 0) {
       return
     }
 
@@ -56,12 +60,10 @@ export function ChatHeader({
       .filter(Boolean)
       .join(' > ')
 
-    // Get messages for this line and format them like the export script
-    const lineMessages = currentLine.messageIds
-      .map(msgId => messages[msgId])
-      .filter(msg => msg && msg.content)
+    // Format messages like the export script
+    const filteredMessages = lineMessages.filter(msg => msg && msg.content)
 
-    const formattedMessages = lineMessages.map(msg => {
+    const formattedMessages = filteredMessages.map(msg => {
       // Format timestamp (YYYY-MM-DD HH:MM:SS)
       const date = new Date(msg.timestamp)
       const timestamp = date.toISOString().replace('T', ' ').substring(0, 19)
@@ -133,11 +135,6 @@ export function ChatHeader({
           )}
           <div>
             <h2 className="font-medium text-gray-800">{currentLine.name}</h2>
-            {currentLine.branchFromMessageId && (
-              <p className="text-xs text-blue-500">
-                分岐元: {messages[currentLine.branchFromMessageId]?.content.slice(0, 20)}...
-              </p>
-            )}
           </div>
         </div>
         <div className="flex gap-2">

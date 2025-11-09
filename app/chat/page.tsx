@@ -23,7 +23,7 @@ function ChatPageContent() {
   const [isLoading, setIsLoading] = useState(true)
   const [lineNotFound, setLineNotFound] = useState(false)
 
-  const { messages, lines, branchPoints, tags, loadChatData, chatRepository } = useChatData({
+  const { messages, lines, tags, loadChatData, chatRepository } = useChatData({
     setIsLoading,
     onDataLoaded: (data) => {
       // 指定されたライン名でラインを検索
@@ -115,7 +115,6 @@ function ChatPageContent() {
         <ChatContainer
           initialMessages={messages}
           initialLines={lines}
-          initialBranchPoints={branchPoints}
           initialTags={tags}
           initialCurrentLineId={currentLineId}
           onLineChange={handleLineChange}

@@ -20,34 +20,36 @@ export class BranchTreeBuilder {
     const roots: BranchNode[] = []
 
     // 1. すべてのラインをノードとして初期化
+    // メッセージ数を計算（新構造では lineId で絞り込む必要がある）
+    const messageCountByLine: Record<string, number> = {}
+    Object.values(messages).forEach(msg => {
+      messageCountByLine[msg.lineId] = (messageCountByLine[msg.lineId] || 0) + 1
+    })
+
     lines.forEach(line => {
       nodes[line.id] = {
         line,
         children: [],
         depth: 0, // 走査中に深度を計算
-        messageCount: line.messageIds.length,
+        messageCount: messageCountByLine[line.id] || 0,
       }
     })
 
     // 2. 親子関係を構築してツリーを形成
     lines.forEach(line => {
       const node = nodes[line.id]
-      // 分岐元のメッセージIDがない場合はルートノードとする
-      if (!line.branchFromMessageId) {
+      // parent_line_id がない場合はルートノードとする
+      if (!line.parent_line_id) {
         roots.push(node)
         return
       }
 
-      const branchFromMessage = messages[line.branchFromMessageId]
-      if (branchFromMessage) {
-        const parentLineId = branchFromMessage.lineId
-        const parentNode = nodes[parentLineId]
-        if (parentNode) {
-          // 親ノードの子として追加
-          parentNode.children.push(node)
-        }
+      const parentNode = nodes[line.parent_line_id]
+      if (parentNode) {
+        // 親ノードの子として追加
+        parentNode.children.push(node)
       } else {
-        // 親メッセージが見つからない場合もルートとして扱う
+        // 親ラインが見つからない場合もルートとして扱う
         roots.push(node)
       }
     })

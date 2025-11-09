@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { X, Plus } from "lucide-react"
-import type { Line, Message, Tag } from "@/lib/types"
+import type { Line, Tag } from "@/lib/types"
 
 interface LineEditDialogProps {
   isOpen: boolean
@@ -13,7 +13,6 @@ interface LineEditDialogProps {
     newTag: string
   }
   tags: Record<string, Tag>
-  messages: Record<string, Message>
   onSave: () => void
   onCancel: () => void
   onAddTag: () => void
@@ -31,7 +30,6 @@ export function LineEditDialog({
   currentLine,
   editingBranchData,
   tags,
-  messages,
   onSave,
   onCancel,
   onAddTag,
@@ -44,11 +42,6 @@ export function LineEditDialog({
         {currentLine && (
           <div>
             <h2 className="font-medium text-gray-800">{currentLine.name}</h2>
-            {currentLine.branchFromMessageId && (
-              <p className="text-xs text-blue-500">
-                分岐元: {messages[currentLine.branchFromMessageId]?.content.slice(0, 20)}...
-              </p>
-            )}
             {currentLine.tagIds && currentLine.tagIds.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {currentLine.tagIds.map((tagId, tagIndex) => {

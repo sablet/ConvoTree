@@ -1,38 +1,12 @@
 import { useState, useCallback } from 'react'
-import type { Line, Message, BranchPoint } from '@/lib/types'
+import type { Line, Message } from '@/lib/types'
 import { MAIN_LINE_ID } from '@/lib/constants'
 import { dataSourceManager } from '@/lib/data-source'
 import { createNewBranch } from './message-send'
+import { getChildLines, getLineMessages } from '@/lib/data-helpers'
 
-function hasChildLines(lineId: string, targetLine: Line, lines: Record<string, Line>): boolean {
-  return Object.values(lines).some(line => {
-    if (!line.branchFromMessageId) {
-      return false
-    }
-    return line.id !== lineId && targetLine.messageIds.includes(line.branchFromMessageId)
-  })
-}
-
-function updateBranchPointsAfterDeletion(
-  lineId: string,
-  branchPoints: Record<string, BranchPoint>
-): Record<string, BranchPoint> {
-  const updated = { ...branchPoints }
-  Object.entries(updated).forEach(([messageId, branchPoint]) => {
-    if (!branchPoint.lines.includes(lineId)) {
-      return
-    }
-    const filtered = branchPoint.lines.filter(id => id !== lineId)
-    if (filtered.length === 0) {
-      delete updated[messageId]
-    } else {
-      updated[messageId] = {
-        ...branchPoint,
-        lines: filtered
-      }
-    }
-  })
-  return updated
+function hasChildLines(lineId: string, lines: Record<string, Line>): boolean {
+  return getChildLines(lines, lineId).length > 0
 }
 
 function determineFallbackLineId(
@@ -50,13 +24,12 @@ function determineFallbackLineId(
   return fallbackLineId
 }
 
-interface PerformLineDeletionArgs {
-  lineId: string
+interface BaseLineCrudState {
   lines: Record<string, Line>
+  messages: Record<string, Message>
   currentLineId: string
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
-  setBranchPoints: React.Dispatch<React.SetStateAction<Record<string, BranchPoint>>>
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
   setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
   setIsSelectionMode: React.Dispatch<React.SetStateAction<boolean>>
@@ -71,13 +44,17 @@ interface PerformLineDeletionArgs {
   setFooterKey: React.Dispatch<React.SetStateAction<number>>
 }
 
+interface PerformLineDeletionArgs extends BaseLineCrudState {
+  lineId: string
+}
+
 async function performLineDeletion({
   lineId,
   lines,
+  messages,
   currentLineId,
   setLines,
   setMessages,
-  setBranchPoints,
   setSelectedBaseMessage,
   setSelectedMessages,
   setIsSelectionMode,
@@ -100,7 +77,7 @@ async function performLineDeletion({
     throw new Error('LINE_NOT_FOUND')
   }
 
-  if (hasChildLines(lineId, targetLine, lines)) {
+  if (hasChildLines(lineId, lines)) {
     throw new Error('LINE_HAS_CHILDREN')
   }
 
@@ -117,18 +94,16 @@ async function performLineDeletion({
     return updated
   })
 
-  setMessages(prev => {
-    if (targetLine.messageIds.length === 0) {
-      return prev
-    }
-    const updated = { ...prev }
-    for (const messageId of targetLine.messageIds) {
-      delete updated[messageId]
-    }
-    return updated
-  })
-
-  setBranchPoints(prev => updateBranchPointsAfterDeletion(lineId, prev))
+  const lineMessages = getLineMessages(messages, lineId)
+  if (lineMessages.length > 0) {
+    setMessages(prev => {
+      const updated = { ...prev }
+      for (const msg of lineMessages) {
+        delete updated[msg.id]
+      }
+      return updated
+    })
+  }
 
   setSelectedBaseMessage(null)
   setSelectedMessages(new Set())
@@ -159,34 +134,10 @@ async function performLineDeletion({
   setFooterKey(prev => prev + 1)
 }
 
-function resolveParentBranchMessageId(
-  parentLineId: string | undefined,
-  lines: Record<string, Line>
-): string | undefined {
-  if (!parentLineId) {
-    return undefined
-  }
-
-  const parentLine = lines[parentLineId]
-  if (!parentLine) {
-    alert('指定された親ラインが見つかりません')
-    throw new Error('PARENT_LINE_NOT_FOUND')
-  }
-
-  const candidate = parentLine.endMessageId || parentLine.messageIds[parentLine.messageIds.length - 1]
-  if (!candidate) {
-    alert('選択したラインにはメッセージがないため、子ラインを作成できません')
-    throw new Error('PARENT_LINE_HAS_NO_MESSAGES')
-  }
-
-  return candidate
-}
-
 interface PerformLineCreationArgs {
   lineName: string
-  parentLineId?: string
+  parentLineId: string | null
   lines: Record<string, Line>
-  setBranchPoints: React.Dispatch<React.SetStateAction<Record<string, BranchPoint>>>
   setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
   setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
   setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
@@ -205,7 +156,6 @@ async function performLineCreation({
   lineName,
   parentLineId,
   lines,
-  setBranchPoints,
   setLines,
   setSelectedBaseMessage,
   setSelectedMessages,
@@ -219,29 +169,21 @@ async function performLineCreation({
   setFooterKey,
   messagesContainerRef
 }: PerformLineCreationArgs): Promise<string> {
-  const branchFromMessageId = resolveParentBranchMessageId(parentLineId, lines)
+  if (parentLineId && !lines[parentLineId]) {
+    alert('指定された親ラインが見つかりません')
+    throw new Error('PARENT_LINE_NOT_FOUND')
+  }
+
+  const newLineId = await createNewBranch({ name: lineName, parent_line_id: parentLineId })
 
   const timestamp = new Date().toISOString()
-  const newLineId = branchFromMessageId
-    ? await createNewBranch({ name: lineName, branchFromMessageId }, setBranchPoints)
-    : await dataSourceManager.createLine({
-        name: lineName,
-        messageIds: [],
-        startMessageId: '',
-        tagIds: [],
-        created_at: timestamp,
-        updated_at: timestamp
-      })
-
   const newLine: Line = {
     id: newLineId,
     name: lineName,
-    messageIds: [],
-    startMessageId: '',
+    parent_line_id: parentLineId,
     tagIds: [],
     created_at: timestamp,
     updated_at: timestamp,
-    ...(branchFromMessageId ? { branchFromMessageId } : {})
   }
 
   setLines(prev => ({
@@ -273,31 +215,14 @@ async function performLineCreation({
   return newLineId
 }
 
-interface UseLineCrudProps {
-  lines: Record<string, Line>
-  currentLineId: string
-  setBranchPoints: React.Dispatch<React.SetStateAction<Record<string, BranchPoint>>>
-  setLines: React.Dispatch<React.SetStateAction<Record<string, Line>>>
-  setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
-  setSelectedBaseMessage: React.Dispatch<React.SetStateAction<string | null>>
-  setSelectedMessages: React.Dispatch<React.SetStateAction<Set<string>>>
-  setIsSelectionMode: React.Dispatch<React.SetStateAction<boolean>>
-  setShowMoveDialog: React.Dispatch<React.SetStateAction<boolean>>
-  setShowBulkDeleteDialog: React.Dispatch<React.SetStateAction<boolean>>
-  setScrollPositions: React.Dispatch<React.SetStateAction<Map<string, number>>>
-  setCurrentLineId: React.Dispatch<React.SetStateAction<string>>
-  onLineChange?: (lineId: string) => void
+interface UseLineCrudProps extends BaseLineCrudState {
   saveScrollPosition: (lineId: string) => void
-  clearTimelineCaches: () => void
-  clearAllCaches: () => void
-  setFooterKey: React.Dispatch<React.SetStateAction<number>>
-  messagesContainerRef: React.RefObject<HTMLDivElement>
 }
 
 export function useLineCrud({
   lines,
+  messages,
   currentLineId,
-  setBranchPoints,
   setLines,
   setMessages,
   setSelectedBaseMessage,
@@ -316,7 +241,7 @@ export function useLineCrud({
 }: UseLineCrudProps) {
   const [isUpdating, setIsUpdating] = useState(false)
 
-  const handleCreateLine = useCallback(async (lineName: string, parentLineId?: string) => {
+  const handleCreateLine = useCallback(async (lineName: string, parentLineId: string | null = null) => {
     const trimmedName = lineName.trim()
     if (!trimmedName) {
       alert('ライン名を入力してください')
@@ -329,7 +254,6 @@ export function useLineCrud({
         lineName: trimmedName,
         parentLineId,
         lines,
-        setBranchPoints,
         setLines,
         setSelectedBaseMessage,
         setSelectedMessages,
@@ -348,8 +272,7 @@ export function useLineCrud({
     } catch (error) {
       console.error('Failed to create line:', error)
       if (!(error instanceof Error && (
-        error.message === 'PARENT_LINE_HAS_NO_MESSAGES' || 
-        error.message === 'PARENT_LINE_NOT_FOUND' || 
+        error.message === 'PARENT_LINE_NOT_FOUND' ||
         error.message === 'LINE_NAME_REQUIRED'
       ))) {
         alert('ラインの作成に失敗しました')
@@ -358,7 +281,7 @@ export function useLineCrud({
     } finally {
       setIsUpdating(false)
     }
-  }, [lines, setBranchPoints, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, clearTimelineCaches, clearAllCaches, setFooterKey, messagesContainerRef])
+  }, [lines, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, clearTimelineCaches, clearAllCaches, setFooterKey, messagesContainerRef])
 
   const handleDeleteLine = useCallback(async (lineId: string) => {
     if (!lineId) {
@@ -370,10 +293,10 @@ export function useLineCrud({
       await performLineDeletion({
         lineId,
         lines,
+        messages,
         currentLineId,
         setLines,
         setMessages,
-        setBranchPoints,
         setSelectedBaseMessage,
         setSelectedMessages,
         setIsSelectionMode,
@@ -402,7 +325,7 @@ export function useLineCrud({
     } finally {
       setIsUpdating(false)
     }
-  }, [lines, currentLineId, setLines, setMessages, setBranchPoints, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, setShowMoveDialog, setShowBulkDeleteDialog, setScrollPositions, setCurrentLineId, onLineChange, messagesContainerRef, clearTimelineCaches, clearAllCaches, setFooterKey])
+  }, [lines, messages, currentLineId, setLines, setMessages, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, setShowMoveDialog, setShowBulkDeleteDialog, setScrollPositions, setCurrentLineId, onLineChange, messagesContainerRef, clearTimelineCaches, clearAllCaches, setFooterKey])
 
   return {
     handleCreateLine,
