@@ -9,6 +9,7 @@ dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
 import { db } from '../lib/db/client-node';
 import { messages, lines, tags, tagGroups } from '../lib/db/schema';
+import { sql } from 'drizzle-orm';
 
 const OUTPUT_DIR = path.join(__dirname, '../output/db-exports');
 
@@ -110,6 +111,22 @@ async function exportData() {
   fs.writeFileSync(path.join(exportDir, 'messages.csv'), messagesCSV, 'utf8');
   console.log(`  ✅ ${messagesData.length} 件エクスポート完了（画像データは除外）\n`);
 
+  // 5. 階層構造付きメッセージのエクスポート
+  console.log('📤 messages_with_hierarchy をエクスポート中...');
+  const hierarchicalQuery = fs.readFileSync(
+    path.join(__dirname, 'sql/messages-with-hierarchy.sql'),
+    'utf8'
+  );
+
+  const hierarchicalData = await db.execute(sql.raw(hierarchicalQuery));
+  const hierarchicalCSV = convertToCSV(
+    hierarchicalData as unknown as Record<string, unknown>[],
+    ['full_path', 'start_time', 'end_time', 'combined_content']
+  );
+  fs.writeFileSync(path.join(exportDir, 'messages_with_hierarchy.csv'), hierarchicalCSV, 'utf8');
+  const hierarchicalCount = Array.isArray(hierarchicalData) ? hierarchicalData.length : 0;
+  console.log(`  ✅ ${hierarchicalCount} 件エクスポート完了\n`);
+
   // サマリーファイルの作成
   const summary = {
     export_timestamp: new Date().toISOString(),
@@ -118,8 +135,9 @@ async function exportData() {
       tags: tagsData.length,
       lines: linesData.length,
       messages: messagesData.length,
+      messages_with_hierarchy: hierarchicalCount,
     },
-    total_records: tagGroupsData.length + tagsData.length + linesData.length + messagesData.length,
+    total_records: tagGroupsData.length + tagsData.length + linesData.length + messagesData.length + hierarchicalCount,
   };
   fs.writeFileSync(
     path.join(exportDir, 'export-summary.json'),
@@ -133,6 +151,7 @@ async function exportData() {
   console.log(`  - tags: ${summary.tables.tags} 件`);
   console.log(`  - lines: ${summary.tables.lines} 件`);
   console.log(`  - messages: ${summary.tables.messages} 件`);
+  console.log(`  - messages_with_hierarchy: ${summary.tables.messages_with_hierarchy} 件`);
   console.log(`  - 合計: ${summary.total_records} 件`);
   console.log(`\n📁 エクスポート先: ${exportDir}`);
 }
