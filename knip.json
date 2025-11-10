@@ -30,6 +30,7 @@
   ],
   "ignoreBinaries": [
     "firebase",
-    "tsx"
+    "tsx",
+    "vercel"
   ]
 }

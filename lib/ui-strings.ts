@@ -58,10 +58,7 @@ export const LOADING_GENERIC = "読み込み中...";
 export const ERROR_PREFIX = "エラー: ";
 
 // Auth
-export const AUTH_PROMPT_TITLE = "アクセスにはログインが必要です";
-export const AUTH_PROMPT_DESCRIPTION = "Googleアカウントでサインインしてください";
 export const AUTH_LOGOUT = "ログアウト";
-export const AUTH_ERROR_PREFIX = "ログインエラー: ";
 export const AUTH_UNAUTHORIZED_TITLE = "アクセスが許可されていません";
 export const AUTH_UNAUTHORIZED_DESCRIPTION = "このアカウントはアクセス許可リストに登録されていません。管理者にお問い合わせください。";
 export const AUTH_UNAUTHORIZED_LOGOUT = "別のアカウントでログイン";

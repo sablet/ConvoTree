@@ -1,6 +1,5 @@
 'use client';
 
-import { config } from '@/lib/config';
 import type { ChatData, DataSource } from '@/lib/data-source/base';
 import { DataSourceFactory, dataSourceManager } from '@/lib/data-source/factory';
 import type { IDataSource } from '@/lib/data-source/base';
@@ -28,12 +27,11 @@ const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['sample'];
  * タイムスタンプベースの差分取得を使用するChatRepository
  */
 export class ChatRepository {
-  private readonly conversationId: string;
+  private static readonly CACHE_KEY = 'default';
   private currentData: ChatData | null = null;
   private initPromise: Promise<void> | null = null;
 
-  constructor(conversationId?: string) {
-    this.conversationId = conversationId ?? config.conversationId;
+  constructor() {
     // 即座にIndexedDBからのキャッシュ復元を開始（バックグラウンド）
     this.ensureInitialized().catch((error) => {
       console.warn('[ChatRepository] Background initialization failed:', error);
@@ -50,7 +48,7 @@ export class ChatRepository {
 
     this.initPromise = (async () => {
       try {
-        this.currentData = await loadChatDataCache(this.conversationId);
+        this.currentData = await loadChatDataCache(ChatRepository.CACHE_KEY);
         if (this.currentData) {
           console.log('[ChatRepository] Restored cached data from IndexedDB');
         }
@@ -176,7 +174,7 @@ export class ChatRepository {
       return dataSourceManager.getDataSource();
     }
 
-    return DataSourceFactory.create(source, this.conversationId);
+    return DataSourceFactory.create(source);
   }
 
   private async loadFromSource(source: DataSource): Promise<LoadChatDataResult> {
@@ -224,7 +222,7 @@ export class ChatRepository {
 
     // マージしたデータをメモリとIndexedDBにキャッシュ
     this.currentData = mergedData;
-    await saveChatDataCache(this.conversationId, mergedData);
+    await saveChatDataCache(ChatRepository.CACHE_KEY, mergedData);
 
     return {
       data: mergedData,
@@ -249,7 +247,7 @@ export class ChatRepository {
         ...this.currentData,
         messages: remainingMessages
       };
-      await saveChatDataCache(this.conversationId, this.currentData);
+      await saveChatDataCache(ChatRepository.CACHE_KEY, this.currentData);
       console.log(`[ChatRepository] Message ${id} deleted and removed from cache`);
     }
   }
@@ -290,8 +288,8 @@ export class ChatRepository {
     this.currentData = null;
     this.initPromise = null; // 初期化フラグをリセット
     await Promise.all([
-      clearChatDataCache(this.conversationId),
-      clearAllLastFetchTimestamps(this.conversationId)
+      clearChatDataCache(ChatRepository.CACHE_KEY),
+      clearAllLastFetchTimestamps(ChatRepository.CACHE_KEY)
     ]);
     console.log('[ChatRepository] Cleared all caches (data + timestamps)');
   }

@@ -2,7 +2,6 @@
 
 import { createContext, useContext, ReactNode, useRef } from 'react';
 import { ChatRepository } from '@/lib/repositories/chat-repository';
-import { config } from '@/lib/config';
 
 interface ChatRepositoryContextType {
   repository: ChatRepository;
@@ -20,19 +19,18 @@ export function useChatRepository() {
 
 interface ChatRepositoryProviderProps {
   children: ReactNode;
-  conversationId?: string;
 }
 
 /**
  * ChatRepositoryをReact Contextで管理し、
  * アプリケーション全体で単一のインスタンスを保証する
  */
-export function ChatRepositoryProvider({ children, conversationId }: ChatRepositoryProviderProps) {
+export function ChatRepositoryProvider({ children }: ChatRepositoryProviderProps) {
   const repositoryRef = useRef<ChatRepository | null>(null);
 
   // 初回レンダリング時にRepositoryインスタンスを作成
   if (!repositoryRef.current) {
-    repositoryRef.current = new ChatRepository(conversationId ?? config.conversationId);
+    repositoryRef.current = new ChatRepository();
   }
 
   const repository = repositoryRef.current;

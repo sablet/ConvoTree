@@ -74,26 +74,31 @@ export function useInputOperations({
       actualTargetLineId = mainLine.id
     }
 
-    await messageOps.handleSendMessage(
-      inputValue,
-      pendingImages,
-      selectedBaseMessage,
-      actualTargetLineId
-    )
+    try {
+      await messageOps.handleSendMessage(
+        inputValue,
+        pendingImages,
+        selectedBaseMessage,
+        actualTargetLineId
+      )
 
-    // Clear input state
-    setInputValue("")
-    setPendingImages([])
-    setSelectedBaseMessage(null)
+      // Clear input state only on success
+      setInputValue("")
+      setPendingImages([])
+      setSelectedBaseMessage(null)
 
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '80px'
-    }
+      // Reset textarea height
+      if (textareaRef.current) {
+        textareaRef.current.style.height = '80px'
+      }
 
-    // Update footer on new line creation
-    if (selectedBaseMessage) {
-      branchOps.setFooterKey(prev => prev + 1)
+      // Update footer on new line creation
+      if (selectedBaseMessage) {
+        branchOps.setFooterKey(prev => prev + 1)
+      }
+    } catch (error) {
+      // Keep input state on error so user doesn't lose their message
+      console.error('Failed to send message:', error)
     }
   }, [inputValue, pendingImages, selectedBaseMessage, currentLineId, lines, messageOps, branchOps])
 

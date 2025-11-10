@@ -4,7 +4,7 @@ import { SampleDataSource } from './sample';
 import { ApiDataSource } from './api';
 
 export class DataSourceFactory {
-  static create(type: DataSource, _conversationId: string): IDataSource {
+  static create(type: DataSource): IDataSource {
     switch (type) {
       case 'sample':
         return new SampleDataSource();
@@ -21,12 +21,10 @@ export class DataSourceManager {
   // eslint-disable-next-line no-use-before-define
   private static instance: DataSourceManager | undefined;
   private currentSource: DataSource = config.defaultDataSource;
-  private conversationId = config.conversationId;
   private dataSource: IDataSource;
 
   private constructor() {
-    console.log(`🚀 DataSource initialized: ${this.currentSource}, Conversation: ${this.conversationId}`);
-    this.dataSource = DataSourceFactory.create(this.currentSource, this.conversationId);
+    this.dataSource = DataSourceFactory.create(this.currentSource);
   }
 
   static getInstance(): DataSourceManager {
@@ -38,7 +36,7 @@ export class DataSourceManager {
 
   setDataSource(source: DataSource): void {
     this.currentSource = source;
-    this.dataSource = DataSourceFactory.create(source, this.conversationId);
+    this.dataSource = DataSourceFactory.create(source);
   }
 
   getCurrentSource(): DataSource {
