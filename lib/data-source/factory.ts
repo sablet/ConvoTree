@@ -1,5 +1,3 @@
-'use client';
-
 import { config } from '@/lib/config';
 import type { DataSource, IDataSource } from './base';
 import { FirestoreDataSource } from './firestore';
