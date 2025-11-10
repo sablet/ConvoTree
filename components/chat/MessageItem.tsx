@@ -196,11 +196,6 @@ export function MessageItem({
           onMessageTap(message.id)
         }
       }}
-      onDoubleClick={() => {
-        if (!isSelectionMode) {
-          onMessageTap(message.id)
-        }
-      }}
     >
       <div className="flex gap-3">
         {/* 選択チェックボックス（選択モード時のみ表示） */}
