@@ -1,4 +1,4 @@
-import type { Message, Line, Tag, MessageType } from "@/lib/types"
+import type { Message, Tag, MessageType } from "@/lib/types"
 
 /**
  * メッセージ操作用の共通Props型
@@ -31,7 +31,6 @@ interface MessageOperationProps {
   setEditingMetadata: (metadata: Record<string, unknown>) => void
   setHasSetCursorToEnd: (value: string | null) => void
   isValidImageUrl: (url: string) => boolean
-  getRelativeTime: (dateString: string) => string
   onUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
 }
 
@@ -44,7 +43,6 @@ export interface MessageItemProps extends MessageOperationProps {
   isSelected: boolean
   isSelectionMode: boolean
   isSelectedInBulk: boolean
-  branchingLines: Line[]
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
   onDragEnd?: (e: React.DragEvent) => void

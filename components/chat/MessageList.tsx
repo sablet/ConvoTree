@@ -54,13 +54,11 @@ interface MessageRowProps {
   copySuccessMessageId: string | null
   hasSetCursorToEnd: string | null
   registerMessageRef: (messageId: string, element: HTMLDivElement | null) => void
-  getBranchingLines: (messageId: string) => Line[]
   messages: Record<string, Message>
   tags: Record<string, Tag>
   isUpdating: boolean
   formatDateForSeparator: (date: Date) => string
   isSameDay: (date1: Date, date2: Date) => boolean
-  getRelativeTime: (dateString: string) => string
   actions: MessageRowActions
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
@@ -85,19 +83,16 @@ function MessageRow({
   copySuccessMessageId,
   hasSetCursorToEnd,
   registerMessageRef,
-  getBranchingLines,
   messages,
   tags,
   isUpdating,
   formatDateForSeparator,
   isSameDay,
-  getRelativeTime,
   actions,
   isDraggable,
   onDragStart,
   onDragEnd
 }: MessageRowProps) {
-  const branchingLines = getBranchingLines(message.id)
   const isSelected = selectedBaseMessage === message.id
   const messageLineInfo = getMessageLineInfo(index, filteredTimeline, lines, currentLineId)
   const isLineTransition = messageLineInfo.isLineStart && index > 0
@@ -118,12 +113,10 @@ function MessageRow({
     hoveredImageId,
     copySuccessMessageId,
     hasSetCursorToEnd,
-    branchingLines,
     currentLineId,
     messages,
     tags,
     isUpdating,
-    getRelativeTime,
     ...actions
   }
 
@@ -197,10 +190,8 @@ interface MessageListProps extends MessageRowActions {
   hasSetCursorToEnd: string | null
   messagesContainerRef: React.RefObject<HTMLDivElement>
   messagesEndRef: React.RefObject<HTMLDivElement>
-  getRelativeTime: (dateString: string) => string
   formatDateForSeparator: (date: Date) => string
   isSameDay: (date1: Date, date2: Date) => boolean
-  getBranchingLines: (messageId: string) => Line[]
   isUpdating: boolean
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
@@ -247,10 +238,8 @@ export function MessageList({
   setEditingMetadata,
   setHasSetCursorToEnd,
   isValidImageUrl,
-  getRelativeTime,
   formatDateForSeparator,
   isSameDay,
-  getBranchingLines,
   isUpdating,
   onUpdateMessage,
   isDraggable,
@@ -548,7 +537,6 @@ export function MessageList({
             copySuccessMessageId={copySuccessMessageId}
             hasSetCursorToEnd={hasSetCursorToEnd}
             registerMessageRef={registerMessageRef}
-            getBranchingLines={getBranchingLines}
             messages={messages}
             tags={tags}
             isUpdating={isUpdating}
@@ -557,7 +545,6 @@ export function MessageList({
             isDraggable={isDraggable && (message.lineId === currentLineId || selectedMessages.has(message.id))}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
-            getRelativeTime={getRelativeTime}
             actions={messageRowActions}
           />
         ))}

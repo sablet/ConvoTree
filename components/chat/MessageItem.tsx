@@ -1,6 +1,5 @@
 import { ListTodo, MessageSquareText } from "lucide-react"
 import { EditingMessageForm } from "./EditingMessageForm"
-import { BranchingLinesPanel } from "./BranchingLinesPanel"
 import { MessageTimeColumn, type MessageConvertButtonConfig } from "./MessageTimeColumn"
 import { createTaskTimeTrackingButton } from "./task-time-actions"
 import { DefaultMessageContent, MessageSelectionCheckbox } from "./message-item-internals"
@@ -51,10 +50,6 @@ export function MessageItem({
   hoveredImageId,
   copySuccessMessageId,
   hasSetCursorToEnd,
-  branchingLines,
-  currentLineId,
-  messages,
-  tags,
   isUpdating,
   onStartEdit,
   onSaveEdit,
@@ -63,7 +58,6 @@ export function MessageItem({
   onCopy,
   onImageDelete,
   onMessageTap,
-  onSwitchLine,
   onHoverMessage,
   onHoverImage,
   setEditingContent,
@@ -71,7 +65,6 @@ export function MessageItem({
   setEditingMetadata,
   setHasSetCursorToEnd,
   isValidImageUrl,
-  getRelativeTime,
   onUpdateMessage,
   isDraggable = false,
   onDragStart,
@@ -229,17 +222,6 @@ export function MessageItem({
 
             {messageContent}
           </div>
-
-          {/* 分岐情報表示 */}
-          <BranchingLinesPanel
-            branchingLines={branchingLines}
-            currentLineId={currentLineId}
-            messages={messages}
-            tags={tags}
-            messageId={message.id}
-            onSwitchLine={onSwitchLine}
-            getRelativeTime={getRelativeTime}
-          />
         </div>
       </div>
     </div>

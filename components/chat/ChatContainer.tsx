@@ -223,10 +223,8 @@ export function ChatContainer({
         setEditingMetadata={messageOps.setEditingMetadata}
         setHasSetCursorToEnd={messageOps.setHasSetCursorToEnd}
         isValidImageUrl={messageOps.isValidImageUrl}
-        getRelativeTime={getRelativeTime}
         formatDateForSeparator={formatDateForSeparator}
         isSameDay={isSameDay}
-        getBranchingLines={branchOps.getBranchingLines}
         isUpdating={branchOps.isUpdating || messageOps.isUpdating}
         onUpdateMessage={messageOps.handleUpdateMessage}
         isDraggable={isDesktop}
