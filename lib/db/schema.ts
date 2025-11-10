@@ -34,7 +34,7 @@ export const messages = pgTable('messages', {
   timestamp: timestamp('timestamp', { withTimezone: true }).notNull(),
   // アプリケーション側で明示的に値を設定（デフォルト値なし）
   updated_at: timestamp('updated_at', { withTimezone: true }),
-  line_id: text('line_id').notNull().references(() => lines.id),
+  line_id: text('line_id').notNull().references(() => lines.id, { onDelete: 'cascade' }),
   tags: jsonb('tags').$type<string[]>(),
   has_bookmark: boolean('has_bookmark').default(false),
   author: text('author'),
