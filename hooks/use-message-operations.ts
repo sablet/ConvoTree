@@ -4,6 +4,7 @@ import type { Message } from '@/lib/types'
 import type { MessageType } from '@/lib/constants'
 import { TIMELINE_BRANCH_ID } from '@/lib/constants'
 import type { ChatState } from './use-chat-state'
+import type { ChatRepository } from '@/lib/repositories/chat-repository'
 import { isValidImageUrl } from './helpers/message-validation'
 import { getDefaultMetadataForType } from './helpers/message-metadata'
 import { createNewBranch, createNewMessage, updateLocalStateAfterMessage } from './helpers/message-send'
@@ -15,6 +16,7 @@ interface MessageOperationsProps {
   chatState: ChatState
   onCacheInvalidate: () => void
   onScrollToBottom?: () => void
+  chatRepository: ChatRepository
 }
 
 interface UpdateMessageParams {
@@ -22,13 +24,15 @@ interface UpdateMessageParams {
   setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
   setIsUpdating: React.Dispatch<React.SetStateAction<boolean>>
   onCacheInvalidate: () => void
+  chatRepository: ChatRepository
 }
 
 function useHandleUpdateMessage({
   messages,
   setMessages,
   setIsUpdating,
-  onCacheInvalidate
+  onCacheInvalidate,
+  chatRepository
 }: UpdateMessageParams): (messageId: string, updates: Partial<Message>) => Promise<void> {
   return useCallback(async (messageId: string, updates: Partial<Message>) => {
     const targetMessage = messages[messageId]
@@ -81,6 +85,7 @@ function useHandleUpdateMessage({
       })
 
       onCacheInvalidate()
+      chatRepository.clearAllCache()
 
     } catch (error) {
       console.error('Failed to update message:', error)
@@ -88,6 +93,7 @@ function useHandleUpdateMessage({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, setMessages, onCacheInvalidate, setIsUpdating])
 }
 
@@ -165,7 +171,8 @@ interface MessageOperations {
 export function useMessageOperations({
   chatState,
   onCacheInvalidate,
-  onScrollToBottom
+  onScrollToBottom,
+  chatRepository
 }: MessageOperationsProps): MessageOperations {
   const { messages, setMessages, lines, setLines } = chatState
 
@@ -304,19 +311,22 @@ export function useMessageOperations({
 
       // キャッシュをクリア
       onCacheInvalidate()
+      chatRepository.clearAllCache()
 
     } catch {
       alert('画像の削除に失敗しました')
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, setMessages, deleteImageFromStorage, onCacheInvalidate])
 
   const handleUpdateMessage = useHandleUpdateMessage({
     messages,
     setMessages,
     setIsUpdating,
-    onCacheInvalidate
+    onCacheInvalidate,
+    chatRepository
   })
 
   /**
@@ -388,6 +398,7 @@ export function useMessageOperations({
 
       // キャッシュをクリア（構造が変わった可能性があるため）
       onCacheInvalidate()
+      chatRepository.clearAllCache()
 
       // メッセージ投稿後に最下部にスクロール
       if (onScrollToBottom) {
@@ -401,6 +412,7 @@ export function useMessageOperations({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, setMessages, setLines, chatState, onCacheInvalidate, onScrollToBottom])
 
   /**
@@ -435,6 +447,7 @@ export function useMessageOperations({
 
       updateLocalMessageState(editingMessageId, updateData, editingContent, setMessages)
       onCacheInvalidate()
+      chatRepository.clearAllCache()
 
       setEditingMessageId(null)
       setEditingContent("")
@@ -495,6 +508,7 @@ export function useMessageOperations({
 
       updateLocalStateAfterDelete(messageId, message, setMessages, setLines)
       onCacheInvalidate()
+      chatRepository.clearAllCache()
       setDeleteConfirmation(null)
 
     } catch (error) {
@@ -507,6 +521,7 @@ export function useMessageOperations({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deleteConfirmation, setMessages, setLines, lines, deleteImageFromStorage, onCacheInvalidate])
 
   /**

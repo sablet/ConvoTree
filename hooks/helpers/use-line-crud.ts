@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { Line, Message } from '@/lib/types'
+import type { ChatRepository } from '@/lib/repositories/chat-repository'
 import { MAIN_LINE_ID } from '@/lib/constants'
 import { dataSourceManager } from '@/lib/data-source'
 import { createNewBranch } from './message-send'
@@ -42,6 +43,7 @@ interface BaseLineCrudState {
   clearTimelineCaches: () => void
   clearAllCaches: () => void
   setFooterKey: React.Dispatch<React.SetStateAction<number>>
+  chatRepository: ChatRepository
 }
 
 interface PerformLineDeletionArgs extends BaseLineCrudState {
@@ -66,7 +68,8 @@ async function performLineDeletion({
   messagesContainerRef,
   clearTimelineCaches,
   clearAllCaches,
-  setFooterKey
+  setFooterKey,
+  chatRepository
 }: PerformLineDeletionArgs) {
   if (lineId === MAIN_LINE_ID) {
     throw new Error('LINE_MAIN_PROTECTED')
@@ -131,6 +134,7 @@ async function performLineDeletion({
 
   clearTimelineCaches()
   clearAllCaches()
+  chatRepository.clearAllCache()
   setFooterKey(prev => prev + 1)
 }
 
@@ -150,6 +154,7 @@ interface PerformLineCreationArgs {
   clearAllCaches: () => void
   setFooterKey: React.Dispatch<React.SetStateAction<number>>
   messagesContainerRef: React.RefObject<HTMLDivElement>
+  chatRepository: ChatRepository
 }
 
 async function performLineCreation({
@@ -167,7 +172,8 @@ async function performLineCreation({
   clearTimelineCaches,
   clearAllCaches,
   setFooterKey,
-  messagesContainerRef
+  messagesContainerRef,
+  chatRepository
 }: PerformLineCreationArgs): Promise<string> {
   if (parentLineId && !lines[parentLineId]) {
     alert('指定された親ラインが見つかりません')
@@ -206,6 +212,7 @@ async function performLineCreation({
 
   clearTimelineCaches()
   clearAllCaches()
+  chatRepository.clearAllCache()
   setFooterKey(prev => prev + 1)
 
   if (messagesContainerRef.current) {
@@ -237,7 +244,8 @@ export function useLineCrud({
   clearTimelineCaches,
   clearAllCaches,
   setFooterKey,
-  messagesContainerRef
+  messagesContainerRef,
+  chatRepository
 }: UseLineCrudProps) {
   const [isUpdating, setIsUpdating] = useState(false)
 
@@ -265,7 +273,8 @@ export function useLineCrud({
         clearTimelineCaches,
         clearAllCaches,
         setFooterKey,
-        messagesContainerRef
+        messagesContainerRef,
+        chatRepository
       })
 
       return newLineId
@@ -281,6 +290,7 @@ export function useLineCrud({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, setLines, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, currentLineId, saveScrollPosition, setCurrentLineId, onLineChange, clearTimelineCaches, clearAllCaches, setFooterKey, messagesContainerRef])
 
   const handleDeleteLine = useCallback(async (lineId: string) => {
@@ -308,7 +318,8 @@ export function useLineCrud({
         messagesContainerRef,
         clearTimelineCaches,
         clearAllCaches,
-        setFooterKey
+        setFooterKey,
+        chatRepository
       })
     } catch (error) {
       console.error('Failed to delete line:', error)
@@ -325,6 +336,7 @@ export function useLineCrud({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, messages, currentLineId, setLines, setMessages, setSelectedBaseMessage, setSelectedMessages, setIsSelectionMode, setShowMoveDialog, setShowBulkDeleteDialog, setScrollPositions, setCurrentLineId, onLineChange, messagesContainerRef, clearTimelineCaches, clearAllCaches, setFooterKey])
 
   return {

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "(npm run cpd-check || echo '⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.') && (npm run knip || echo '⚠️  WARNING: Unused exports detected. Review and clean up if needed.') && next build",
-    "build:production": "NEXT_PUBLIC_CONVERSATION_ID=chat-minimal-conversation-1 npm run cpd-check && next build",
+    "build:production": "npm run cpd-check && next build",
     "start": "next start",
     "lint": "next lint && eslint . --ext .ts,.tsx,.js,.jsx",
     "knip": "knip  --no-config-hints",
@@ -13,8 +13,8 @@
     "cpd-check": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "cpd-report": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "migrate:neon": "tsx scripts/migrate-to-neon.ts",
-    "serve": "firebase serve --only hosting",
-    "build:serve": "rm -rf out && npm run build && npm run serve"
+    "deploy": "vercel",
+    "deploy:production": "vercel --prod"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.0.2",

@@ -67,7 +67,8 @@ export function ChatContainer({
   const messageOps = useMessageOperations({
     chatState,
     onCacheInvalidate: chatState.clearAllCaches,
-    onScrollToBottom: scrollToBottom
+    onScrollToBottom: scrollToBottom,
+    chatRepository
   })
   const [selectedBaseMessage, setSelectedBaseMessage] = useState<string | null>(null)
   const branchOps = useBranchOperations({

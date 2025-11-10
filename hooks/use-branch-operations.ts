@@ -238,7 +238,8 @@ export function useBranchOperations({
     clearTimelineCaches,
     clearAllCaches,
     setFooterKey,
-    messagesContainerRef
+    messagesContainerRef,
+    chatRepository
   })
 
   const applyRangeSelection = useCallback((

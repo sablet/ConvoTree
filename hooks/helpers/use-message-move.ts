@@ -117,6 +117,7 @@ export function useMessageMove({
         setLines
       })
       clearAllCaches()
+      chatRepository.clearAllCache()
 
       const movedCount = selectedMessages.size
       setSelectedMessages(new Set())
@@ -129,6 +130,7 @@ export function useMessageMove({
     } finally {
       setIsUpdating(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedMessages, messages, lines, setMessages, setLines, clearAllCaches])
 
   return {
