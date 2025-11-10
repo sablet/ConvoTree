@@ -82,7 +82,7 @@ async function performLineDeletion({
   }
 
   const currentSource = dataSourceManager.getCurrentSource()
-  if (currentSource !== 'firestore') {
+  if (currentSource === 'sample') {
     throw new Error('LINE_DELETE_UNSUPPORTED')
   }
 

@@ -1,68 +1,43 @@
 "use client"
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
-import { onAuthStateChanged, signOut as firebaseSignOut, type User } from "firebase/auth"
+import { createContext, useContext, useEffect, useState } from "react"
 import type { ReactNode } from "react"
+import type { User } from "firebase/auth"
 import { auth } from "@/lib/firebase"
+import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth"
 
-interface AuthContextValue {
+type AuthContextType = {
   user: User | null
-  isLoading: boolean
-  error: string | null
+  loading: boolean
   signOut: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextValue | undefined>(undefined)
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-type AuthProviderProps = {
-  children: ReactNode
-}
-
-export function AuthProvider({ children }: AuthProviderProps) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Firebase Authが自動的に永続化を処理
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser)
-      setIsLoading(false)
-      setError(null)
-    }, (authError) => {
-      setError(authError.message)
-      setIsLoading(false)
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user)
+      setLoading(false)
     })
 
-    return unsubscribe
+    return () => unsubscribe()
   }, [])
 
-  const signOut = useCallback(async () => {
-    setIsLoading(true)
-    setError(null)
+  const signOut = async () => {
     try {
       await firebaseSignOut(auth)
-      setError(null)
-    } catch (signOutError) {
-      if (signOutError instanceof Error) {
-        setError(signOutError.message)
-      } else {
-        setError("サインアウトに失敗しました")
-      }
-    } finally {
-      setIsLoading(false)
+    } catch (error) {
+      console.error("Failed to sign out:", error)
+      throw error
     }
-  }, [])
-
-  const value = useMemo<AuthContextValue>(() => ({
-    user,
-    isLoading,
-    error,
-    signOut,
-  }), [user, isLoading, error, signOut])
+  }
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={{ user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   )
@@ -70,7 +45,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (!context) {
+  if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context

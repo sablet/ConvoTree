@@ -1,14 +1,11 @@
 import { config } from '@/lib/config';
 import type { DataSource, IDataSource } from './base';
-import { FirestoreDataSource } from './firestore';
 import { SampleDataSource } from './sample';
 import { ApiDataSource } from './api';
 
 export class DataSourceFactory {
-  static create(type: DataSource, conversationId: string): IDataSource {
+  static create(type: DataSource, _conversationId: string): IDataSource {
     switch (type) {
-      case 'firestore':
-        return new FirestoreDataSource(conversationId);
       case 'sample':
         return new SampleDataSource();
       case 'postgres':

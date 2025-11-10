@@ -2,7 +2,6 @@
 
 import { useCallback, useState } from "react"
 import { DataSourceToggle } from "@/components/data-source-toggle"
-import { FirestoreDebug } from "@/components/firestore-debug"
 import TagCrudTest from "@/components/tag-crud-test"
 import { MessageCrudTest } from "@/components/message-crud-test"
 import { HamburgerMenu } from "@/components/hamburger-menu"
@@ -84,11 +83,6 @@ export default function DebugPage() {
           {/* Tag CRUD Test */}
           <div className="bg-gray-50 p-4 rounded-lg">
             <TagCrudTest />
-          </div>
-
-          {/* デバッグツール */}
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <FirestoreDebug />
           </div>
 
           {/* Message CRUD テスト */}

@@ -64,9 +64,7 @@ export default function BranchListPage() {
   const handleLineEdit = async (lineId: string, updates: Partial<Line>) => {
     try {
       // DataSourceManagerを使用してライン更新
-      if (dataSourceManager.getCurrentSource() === 'firestore') {
-        await dataSourceManager.updateLine(lineId, updates)
-      }
+      await dataSourceManager.updateLine(lineId, updates)
 
       // ローカル状態も更新
       setLines(prev => {
@@ -117,9 +115,7 @@ export default function BranchListPage() {
         await deleteLineMessages(lineToDelete)
       }
 
-      if (dataSourceManager.getCurrentSource() === 'firestore') {
-        await dataSourceManager.deleteLine(lineId)
-      }
+      await dataSourceManager.deleteLine(lineId)
 
       updateLocalStateForLineDelete(lineId, lineToDelete)
 

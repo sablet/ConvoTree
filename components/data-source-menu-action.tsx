@@ -8,9 +8,7 @@ import { useChatRepository } from "@/lib/chat-repository-context"
 import {
   DATA_SOURCE_SECTION_TITLE,
   DATA_SOURCE_RELOAD_LABEL,
-  DATA_SOURCE_LABEL_FIRESTORE,
   DATA_SOURCE_LABEL_SAMPLE,
-  DATA_SOURCE_STATUS_FIRESTORE,
   DATA_SOURCE_STATUS_SAMPLE
 } from "@/lib/ui-strings"
 
@@ -54,11 +52,11 @@ export function DataSourceMenuAction({ onReload, currentSource }: DataSourceMenu
       <div className="flex items-center justify-between">
         <div className="text-sm font-medium text-gray-700">{DATA_SOURCE_SECTION_TITLE}</div>
         <span className="text-xs font-semibold text-gray-600">
-          {source === "firestore" ? DATA_SOURCE_LABEL_FIRESTORE : DATA_SOURCE_LABEL_SAMPLE}
+          {source === "postgres" ? "PostgreSQL" : DATA_SOURCE_LABEL_SAMPLE}
         </span>
       </div>
       <div className="text-xs text-gray-500">
-        {source === "firestore" ? DATA_SOURCE_STATUS_FIRESTORE : DATA_SOURCE_STATUS_SAMPLE}
+        {source === "postgres" ? "データベースから読み込み" : DATA_SOURCE_STATUS_SAMPLE}
       </div>
       <Button
         onClick={handleReload}

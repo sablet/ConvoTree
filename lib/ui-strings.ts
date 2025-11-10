@@ -88,22 +88,14 @@ export const ACTION_TASK_CHECK_OUT = "チェックアウト";
 export const LABEL_TASK_LAST_CHECKOUT = "最終チェックアウト";
 
 // Emojis
-const EMOJI_FIRESTORE = "🔥";
 const EMOJI_SAMPLE = "📄";
-const EMOJI_CACHE = "💾";
 
 // Data Source Controls
 export const DATA_SOURCE_SECTION_TITLE = "データソース";
 export const DATA_SOURCE_RELOAD_LABEL = "データソースを更新";
-export const DATA_SOURCE_LABEL_FIRESTORE = "Firestore";
 export const DATA_SOURCE_LABEL_SAMPLE = "サンプル";
-export const DATA_SOURCE_LABEL_CACHE = "キャッシュ";
-export const DATA_SOURCE_BUTTON_FIRESTORE = "Firestore";
 export const DATA_SOURCE_BUTTON_SAMPLE = "サンプルデータ";
-export const DATA_SOURCE_BUTTON_CACHE = "キャッシュ";
-export const DATA_SOURCE_STATUS_FIRESTORE = `${EMOJI_FIRESTORE} リアルタイムデータベースから読み込み中`;
 export const DATA_SOURCE_STATUS_SAMPLE = `${EMOJI_SAMPLE} デバッグ用サンプルデータを使用中`;
-export const DATA_SOURCE_STATUS_CACHE = `${EMOJI_CACHE} ローカルキャッシュから読み込み（オフライン対応）`;
 
 // Page Actions
 export const PAGE_RELOAD_LABEL = "ページをリロード";
