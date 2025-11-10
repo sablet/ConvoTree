@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
 import { PostgresDataSource } from '@/lib/data-source/postgres';
 
+// データサイズが大きい（7MB超）ため、Next.jsのキャッシュを無効化
+export const dynamic = 'force-dynamic';
+export const fetchCache = 'force-no-store';
+
 export async function GET() {
   try {
     const dataSource = new PostgresDataSource();

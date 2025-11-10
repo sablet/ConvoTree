@@ -18,6 +18,7 @@ const nextConfig = {
         // warningとして表示するだけで、ビルドは継続
       }
     }
+
     return config;
   }
 };

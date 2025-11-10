@@ -12,7 +12,12 @@
     "knip:strict": "knip  --no-config-hints --strict --max-issues 0",
     "cpd-check": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "cpd-report": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
-    "migrate:neon": "tsx scripts/migrate-to-neon.ts",
+    "migrate:neon": "npx tsx scripts/migrate-to-neon.ts",
+    "export:neon": "npx tsx scripts/export-neon-to-csv.ts",
+    "export:firestore:diff": "npx tsx scripts/export-firestore-diff-to-csv.ts",
+    "import:neon": "npx tsx scripts/import-csv-to-neon.ts",
+    "test:db": "npx tsx scripts/test-db-connection.ts",
+    "check:env": "npx tsx scripts/check-env.ts",
     "deploy": "vercel",
     "deploy:production": "vercel --prod"
   },
@@ -25,14 +30,17 @@
     "clsx": "^2.1.0",
     "drizzle-orm": "^0.44.7",
     "firebase": "^12.5.0",
+    "firebase-admin": "^13.6.0",
     "firebaseui": "^6.1.0",
     "idb": "^8.0.3",
     "lucide-react": "^0.454.0",
     "next": "^14.2.33",
+    "postgres": "^3.4.7",
     "react": "^19",
     "react-dom": "^19",
     "sonner": "^1.5.1",
-    "tailwind-merge": "^2.2.2"
+    "tailwind-merge": "^2.2.2",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",

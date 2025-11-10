@@ -112,7 +112,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
 
       // キャッシュクリアが要求された場合
       if (clearCache) {
-        chatRepository.clearAllCache()
+        await chatRepository.clearAllCache()
       }
 
       const result = await chatRepository.loadChatData({
