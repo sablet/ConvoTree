@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "rm -rf .next",
     "build": "(npm run cpd-check || echo '⚠️  WARNING: Code duplication detected. Check output/reports/jscpd/ for details.') && (npm run knip || echo '⚠️  WARNING: Unused exports detected. Review and clean up if needed.') && next build",
     "build:production": "npm run cpd-check && next build",
     "start": "next start",
