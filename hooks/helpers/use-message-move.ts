@@ -101,7 +101,7 @@ export function useMessageMove({
     } finally {
       setIsUpdating(false)
     }
-  }, [selectedMessages, setMessages, setLines, clearAllCaches, chatRepository])
+  }, [selectedMessages, messages, setMessages, setLines, clearAllCaches, setSelectedMessages, setShowBulkDeleteDialog, setIsSelectionMode, chatRepository])
 
   const handleConfirmMove = useCallback(async (targetLineId: string) => {
     if (selectedMessages.size === 0) return

@@ -213,7 +213,7 @@ export function LineSidebar({
         duration: 3000
       })
     }
-  }, [lines, messages, setLines, clearAllCaches])
+  }, [lines, setLines, clearAllCaches])
 
   return (
     <>

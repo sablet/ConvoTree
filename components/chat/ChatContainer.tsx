@@ -94,7 +94,6 @@ export function ChatContainer({
   })
   const { handleInsertMessage } = useMessageInsert({
     currentLineId: chatState.currentLineId,
-    timelineMessages: branchOps.completeTimeline.messages,
     handleCreateMessageWithTimestamp: messageOps.handleCreateMessageWithTimestamp,
     setMessages: chatState.setMessages,
     clearTimelineCaches: branchOps.clearTimelineCaches

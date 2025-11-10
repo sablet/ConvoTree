@@ -196,7 +196,7 @@ export function useBranchOperations({
       }
     }
     return lines[currentLineId] || null
-  }, [currentLineId, messages, lines])
+  }, [currentLineId, lines])
 
   const {
     isEditingBranch,
@@ -241,50 +241,72 @@ export function useBranchOperations({
     messagesContainerRef
   })
 
-  const handleMessageTap = useCallback((messageId: string, shiftKey?: boolean) => {
-    if (isSelectionMode) {
-      setSelectedMessages(prev => {
-        const newSet = new Set(prev)
+  const applyRangeSelection = useCallback((
+    selectedSet: Set<string>,
+    messageId: string
+  ) => {
+    if (!lastSelectedMessageId) return
 
-        // Shift+クリック または 範囲選択モード: 範囲選択
-        const shouldRangeSelect = (shiftKey || isRangeSelectionMode) && lastSelectedMessageId !== null
-        if (shouldRangeSelect && lastSelectedMessageId !== null) {
-          const messageIds = completeTimeline.messages.map(m => m.id)
-          const startIndex = messageIds.indexOf(lastSelectedMessageId)
-          const endIndex = messageIds.indexOf(messageId)
+    const messageIds = completeTimeline.messages.map(m => m.id)
+    const startIndex = messageIds.indexOf(lastSelectedMessageId)
+    const endIndex = messageIds.indexOf(messageId)
 
-          if (startIndex !== -1 && endIndex !== -1) {
-            const [min, max] = [Math.min(startIndex, endIndex), Math.max(startIndex, endIndex)]
-            const isDeselecting = newSet.has(messageId)
+    if (startIndex === -1 || endIndex === -1) return
 
-            for (let i = min; i <= max; i++) {
-              if (isDeselecting) {
-                newSet.delete(messageIds[i])
-              } else {
-                newSet.add(messageIds[i])
-              }
-            }
-          }
-        } else {
-          // 通常クリック: 個別トグル
-          if (newSet.has(messageId)) {
-            newSet.delete(messageId)
-          } else {
-            newSet.add(messageId)
-          }
-        }
+    const [min, max] = [Math.min(startIndex, endIndex), Math.max(startIndex, endIndex)]
+    const isDeselecting = selectedSet.has(messageId)
 
-        return newSet
-      })
-      setLastSelectedMessageId(messageId)
-    } else {
-      if (selectedBaseMessage === messageId) {
-        setSelectedBaseMessage(null)
+    for (let i = min; i <= max; i++) {
+      if (isDeselecting) {
+        selectedSet.delete(messageIds[i])
       } else {
-        setSelectedBaseMessage(messageId)
+        selectedSet.add(messageIds[i])
       }
     }
-  }, [isSelectionMode, isRangeSelectionMode, lastSelectedMessageId, completeTimeline, setSelectedMessages, selectedBaseMessage, setSelectedBaseMessage])
+  }, [lastSelectedMessageId, completeTimeline])
+
+  const toggleSingleMessage = useCallback((
+    selectedSet: Set<string>,
+    messageId: string
+  ) => {
+    if (selectedSet.has(messageId)) {
+      selectedSet.delete(messageId)
+    } else {
+      selectedSet.add(messageId)
+    }
+  }, [])
+
+  const handleSelectionModeClick = useCallback((messageId: string, shiftKey?: boolean) => {
+    setSelectedMessages(prev => {
+      const newSet = new Set(prev)
+      const shouldRangeSelect = (shiftKey || isRangeSelectionMode) && lastSelectedMessageId !== null
+
+      if (shouldRangeSelect) {
+        applyRangeSelection(newSet, messageId)
+      } else {
+        toggleSingleMessage(newSet, messageId)
+      }
+
+      return newSet
+    })
+    setLastSelectedMessageId(messageId)
+  }, [isRangeSelectionMode, lastSelectedMessageId, setSelectedMessages, applyRangeSelection, toggleSingleMessage])
+
+  const handleNonSelectionModeClick = useCallback((messageId: string) => {
+    if (selectedBaseMessage === messageId) {
+      setSelectedBaseMessage(null)
+    } else {
+      setSelectedBaseMessage(messageId)
+    }
+  }, [selectedBaseMessage, setSelectedBaseMessage])
+
+  const handleMessageTap = useCallback((messageId: string, shiftKey?: boolean) => {
+    if (isSelectionMode) {
+      handleSelectionModeClick(messageId, shiftKey)
+    } else {
+      handleNonSelectionModeClick(messageId)
+    }
+  }, [isSelectionMode, handleSelectionModeClick, handleNonSelectionModeClick])
 
   const switchToLine = useCallback((lineId: string) => {
     if (lineId === TIMELINE_BRANCH_ID || lines[lineId]) {

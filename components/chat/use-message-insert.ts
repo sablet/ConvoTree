@@ -1,14 +1,8 @@
 import { useCallback } from "react"
 import type { Message } from "@/lib/types"
 
-interface TimelineMessage {
-  id: string
-  timestamp: Date | string
-}
-
 interface UseMessageInsertProps {
   currentLineId: string
-  timelineMessages: TimelineMessage[]
   handleCreateMessageWithTimestamp: (
     content: string,
     images: string[],
@@ -21,7 +15,6 @@ interface UseMessageInsertProps {
 
 export function useMessageInsert({
   currentLineId,
-  timelineMessages,
   handleCreateMessageWithTimestamp,
   setMessages,
   clearTimelineCaches
@@ -52,7 +45,7 @@ export function useMessageInsert({
     })
 
     clearTimelineCaches()
-  }, [currentLineId, timelineMessages, handleCreateMessageWithTimestamp, setMessages, clearTimelineCaches])
+  }, [currentLineId, handleCreateMessageWithTimestamp, setMessages, clearTimelineCaches])
 
   return { handleInsertMessage }
 }
