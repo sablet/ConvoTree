@@ -4,7 +4,6 @@ import type { Message, Line } from '@/lib/types'
 interface MessageDeleteParams {
   messageId: string
   message: Message
-  lines: Record<string, Line>
   deleteImageFromStorage: (url: string) => Promise<void>
   isValidImageUrl: (url: string) => boolean
 }
@@ -13,19 +12,7 @@ interface MessageDeleteParams {
  * Delete message from Firestore
  */
 export async function deleteMessageFromFirestore(params: MessageDeleteParams): Promise<void> {
-  const { messageId, message, lines, deleteImageFromStorage, isValidImageUrl } = params
-
-  // Check if any lines have this message's line as parent (branch from this message's line)
-  const hasBranchingLines = Object.values(lines).some(line => line.parent_line_id === message.lineId)
-
-  if (hasBranchingLines) {
-    const confirmBranchDelete = window.confirm(
-      'このメッセージのラインには分岐があります。削除すると関連する分岐も影響を受けます。本当に削除しますか？'
-    )
-    if (!confirmBranchDelete) {
-      throw new Error('Delete cancelled')
-    }
-  }
+  const { messageId, message, deleteImageFromStorage, isValidImageUrl } = params
 
   if (message.images && message.images.length > 0) {
     const deletePromises = message.images

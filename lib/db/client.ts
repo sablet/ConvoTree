@@ -6,6 +6,11 @@ import * as schema from './schema';
 const connectionString = process.env.DATABASE_URL ?? 'postgresql://dummy:dummy@localhost:5432/dummy';
 
 // HTTPベースの接続を使用（WebSocketを使わないため、wsパッケージのバンドリング問題を回避）
-const sql = neon(connectionString);
+// fetchOptions で cache: 'no-store' を指定してNext.jsのキャッシュを無効化
+const sql = neon(connectionString, {
+  fetchOptions: {
+    cache: 'no-store',
+  },
+});
 
 export const db = drizzle(sql, { schema });

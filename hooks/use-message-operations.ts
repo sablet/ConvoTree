@@ -382,7 +382,6 @@ export function useMessageOperations({
       await deleteMessageFromFirestore({
         messageId,
         message,
-        lines,
         deleteImageFromStorage: imageOps.deleteImageFromStorage,
         isValidImageUrl
       })
@@ -393,17 +392,13 @@ export function useMessageOperations({
       setDeleteConfirmation(null)
 
     } catch (error) {
-      if (error instanceof Error && error.message !== 'Delete cancelled') {
-        alert('メッセージの削除に失敗しました')
-      }
-      if (error instanceof Error && error.message === 'Delete cancelled') {
-        setDeleteConfirmation(null)
-      }
+      console.error('Failed to delete message:', error)
+      alert('メッセージの削除に失敗しました')
     } finally {
       setIsUpdating(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deleteConfirmation, setMessages, setLines, lines, imageOps.deleteImageFromStorage, onCacheInvalidate])
+  }, [deleteConfirmation, setMessages, setLines, imageOps.deleteImageFromStorage, onCacheInvalidate])
 
   /**
    * Copy message to clipboard
