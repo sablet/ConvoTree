@@ -37,33 +37,32 @@ export function useLineSidebarExpansion({
   currentLineId,
   getLineAncestry
 }: UseLineSidebarExpansionArgs) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
-  const [expandedLines, setExpandedLines] = useState<Set<string>>(() =>
-    getDefaultExpandedLines(lines, currentLineId, getLineAncestry)
-  )
+  // サーバーサイドレンダリング時は常に同じ初期値を使用（Hydration errorを防ぐ）
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const saved = window.localStorage.getItem(COLLAPSED_KEY)
+    return saved !== null ? saved === 'true' : currentLineId === MAIN_LINE_ID
+  })
 
-  useEffect(() => {
-    const savedCollapsed = window.localStorage.getItem(COLLAPSED_KEY)
-    const savedExpanded = window.localStorage.getItem(EXPANDED_LINES_KEY)
-
-    if (savedCollapsed !== null) {
-      setIsCollapsed(savedCollapsed === 'true')
-    } else {
-      setIsCollapsed(currentLineId === MAIN_LINE_ID)
+  const [expandedLines, setExpandedLines] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') {
+      // サーバーサイド: デフォルト値を返す
+      return getDefaultExpandedLines(lines, currentLineId, getLineAncestry)
     }
 
+    // クライアントサイド: localStorageから読み取る
+    const savedExpanded = window.localStorage.getItem(EXPANDED_LINES_KEY)
     if (savedExpanded) {
       try {
-        const expanded = JSON.parse(savedExpanded)
-        setExpandedLines(new Set(expanded))
+        return new Set(JSON.parse(savedExpanded))
       } catch (error) {
         console.error('Failed to parse expanded lines:', error)
       }
-    } else {
-      setExpandedLines(getDefaultExpandedLines(lines, currentLineId, getLineAncestry))
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    return getDefaultExpandedLines(lines, currentLineId, getLineAncestry)
+  })
+
+  // 初回マウント後の同期は不要なのでこのuseEffectを削除
 
   useEffect(() => {
     setExpandedLines(prev => {
@@ -86,8 +85,10 @@ export function useLineSidebarExpansion({
   }, [lines])
 
   useEffect(() => {
+    // getLineAncestryをupdater関数の外で呼び出す（render phase updateを回避）
+    const ancestry = getLineAncestry(currentLineId)
+
     setExpandedLines(prev => {
-      const ancestry = getLineAncestry(currentLineId)
       const newSet = new Set(prev)
       let hasChanges = false
 

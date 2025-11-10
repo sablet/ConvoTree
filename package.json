@@ -12,15 +12,18 @@
     "knip:strict": "knip  --no-config-hints --strict --max-issues 0",
     "cpd-check": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
     "cpd-report": "node --input-type=module -e \"import {PROJECT_PATHS} from './project.config.mjs'; import {execSync} from 'child_process'; execSync('jscpd --config .jscpd.json ' + PROJECT_PATHS.sourceString, {stdio: 'inherit'})\"",
+    "migrate:neon": "tsx scripts/migrate-to-neon.ts",
     "serve": "firebase serve --only hosting",
     "build:serve": "rm -rf out && npm run build && npm run serve"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.2",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-slot": "^1.0.2",
     "@vercel/blob": "^2.0.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "drizzle-orm": "^0.44.7",
     "firebase": "^12.3.0",
     "firebaseui": "^6.1.0",
     "idb": "^8.0.3",
@@ -36,6 +39,8 @@
     "@types/node": "^22",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "dotenv": "^17.2.3",
+    "drizzle-kit": "^0.31.6",
     "eslint": "^8.57.1",
     "eslint-config-next": "^15.5.3",
     "eslint-plugin-local-rules": "^3.0.2",
@@ -47,6 +52,7 @@
     "postcss-load-config": "^4.0.1",
     "tailwindcss": "^4.1.9",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.20.6",
     "typescript": "^5"
   }
 }

@@ -29,6 +29,7 @@
     "tailwind-merge"
   ],
   "ignoreBinaries": [
-    "firebase"
+    "firebase",
+    "tsx"
   ]
 }

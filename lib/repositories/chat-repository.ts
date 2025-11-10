@@ -10,6 +10,7 @@ import { clearAllLastFetchTimestamps } from '@/lib/data-source/indexed-db-timest
 interface LoadChatDataOptions {
   source?: DataSource;
   fallbackSources?: DataSource[];
+  onRevalidate?: (data: ChatData) => void; // バックグラウンド更新時のコールバック
 }
 
 interface LoadChatDataResult {
@@ -18,6 +19,7 @@ interface LoadChatDataResult {
   fromCache: boolean;
   error?: string;
   fallbackUsed?: boolean;
+  revalidating?: boolean; // バックグラウンド更新中かどうか
 }
 
 const DEFAULT_FALLBACK_SOURCES: DataSource[] = ['sample'];
@@ -32,7 +34,10 @@ export class ChatRepository {
 
   constructor(conversationId?: string) {
     this.conversationId = conversationId ?? config.conversationId;
-    // 初期化を非同期で開始（loadChatDataで自動的に呼ばれる）
+    // 即座にIndexedDBからのキャッシュ復元を開始（バックグラウンド）
+    this.ensureInitialized().catch((error) => {
+      console.warn('[ChatRepository] Background initialization failed:', error);
+    });
   }
 
   /**
@@ -59,7 +64,9 @@ export class ChatRepository {
   }
 
   /**
-   * 初回ロード用（フォールバック対応）
+   * 初回ロード用（Stale-While-Revalidate対応）
+   *
+   * キャッシュがあれば即座に返し、バックグラウンドで最新データを取得
    */
   async loadChatData(options: LoadChatDataOptions = {}): Promise<LoadChatDataResult> {
     // 初回はIndexedDBからキャッシュを復元
@@ -68,11 +75,68 @@ export class ChatRepository {
     const source = options.source ?? dataSourceManager.getCurrentSource();
     const fallbackSources = this.buildFallbackSources(source, options.fallbackSources);
 
+    // キャッシュがある場合は即座に返す（Stale-While-Revalidate）
+    if (this.currentData) {
+      console.log('[ChatRepository] Returning cached data immediately');
+
+      // バックグラウンドで最新データを取得（awaitしない）
+      this.revalidateInBackground(source, fallbackSources, options.onRevalidate).catch((error) => {
+        console.warn('[ChatRepository] Background revalidation failed:', error);
+      });
+
+      return {
+        data: this.currentData,
+        source,
+        fromCache: true,
+        revalidating: true
+      };
+    }
+
+    // キャッシュがない場合は通常通りサーバーから取得
     try {
       return await this.loadFromSource(source);
     } catch (primaryError) {
       console.error(`[ChatRepository] Primary source '${source}' failed:`, primaryError);
       return await this.handleLoadError(primaryError, fallbackSources, source);
+    }
+  }
+
+  /**
+   * バックグラウンドで最新データを取得して更新
+   */
+  private async revalidateInBackground(
+    source: DataSource,
+    fallbackSources: DataSource[],
+    onRevalidate?: (data: ChatData) => void
+  ): Promise<void> {
+    try {
+      console.log('[ChatRepository] Starting background revalidation');
+      const result = await this.loadFromSource(source);
+
+      // 更新があればコールバックを呼ぶ
+      if (onRevalidate) {
+        onRevalidate(result.data);
+      }
+
+      console.log('[ChatRepository] Background revalidation completed');
+    } catch (primaryError) {
+      console.error(`[ChatRepository] Background revalidation failed for '${source}':`, primaryError);
+
+      // フォールバックを試す
+      for (const fallbackSource of fallbackSources) {
+        try {
+          console.warn(`[ChatRepository] Trying fallback source '${fallbackSource}' in background`);
+          const result = await this.loadFromSource(fallbackSource);
+
+          if (onRevalidate) {
+            onRevalidate(result.data);
+          }
+
+          return;
+        } catch (error) {
+          console.warn(`[ChatRepository] Background fallback '${fallbackSource}' failed:`, error);
+        }
+      }
     }
   }
 

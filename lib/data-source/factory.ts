@@ -4,6 +4,7 @@ import { config } from '@/lib/config';
 import type { DataSource, IDataSource } from './base';
 import { FirestoreDataSource } from './firestore';
 import { SampleDataSource } from './sample';
+import { ApiDataSource } from './api';
 
 export class DataSourceFactory {
   static create(type: DataSource, conversationId: string): IDataSource {
@@ -12,6 +13,8 @@ export class DataSourceFactory {
         return new FirestoreDataSource(conversationId);
       case 'sample':
         return new SampleDataSource();
+      case 'postgres':
+        return new ApiDataSource();
       default:
         throw new Error(`Unknown data source type: ${type}`);
     }

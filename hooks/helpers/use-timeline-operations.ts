@@ -53,11 +53,14 @@ export function useTimelineOperations({
 
     const ancestry = calculateLineAncestry(lineId, lines, messages, lineAncestryCache)
 
-    setLineAncestryCache(prev => {
-      const newCache = new Map(prev)
-      newCache.set(lineId, ancestry)
-      return newCache
-    })
+    // レンダリングフェーズ中の状態更新を回避するため、次のイベントループで実行
+    setTimeout(() => {
+      setLineAncestryCache(prev => {
+        const newCache = new Map(prev)
+        newCache.set(lineId, ancestry)
+        return newCache
+      })
+    }, 0)
 
     return ancestry
   }, [lines, messages, lineAncestryCache, setLineAncestryCache])
@@ -70,11 +73,14 @@ export function useTimelineOperations({
 
     const result = calculateOptimizedPath(lineId, lines, messages, lineAncestryCache)
 
-    setPathCache(prev => {
-      const newCache = new Map(prev)
-      newCache.set(lineId, result)
-      return newCache
-    })
+    // レンダリングフェーズ中の状態更新を回避するため、次のイベントループで実行
+    setTimeout(() => {
+      setPathCache(prev => {
+        const newCache = new Map(prev)
+        newCache.set(lineId, result)
+        return newCache
+      })
+    }, 0)
 
     return result
   }, [lines, messages, lineAncestryCache, pathCache, setPathCache])

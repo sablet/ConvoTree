@@ -3,15 +3,11 @@ import { PROJECT_PATHS } from './project.config.mjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true
-  },
-  distDir: 'out',
   eslint: {
     dirs: PROJECT_PATHS.sourceArray,
   },
+  trailingSlash: false,
+  skipTrailingSlashRedirect: true,
   webpack: (config, { dev, isServer }) => {
     if (!dev && isServer) {
       // ビルド時にコード重複チェックを実行

@@ -44,16 +44,24 @@ export function RecentLinesFooter({
 
 
   // ラインの祖先チェーンを取得して階層表示を生成
-  const getLineAncestry = (lineId: string): string[] => {
+  const getLineAncestry = (lineId: string, visited: Set<string> = new Set()): string[] => {
     const line = lines[lineId]
     if (!line) return []
+
+    // 循環参照検出
+    if (visited.has(lineId)) {
+      console.error(`Circular reference detected in line ancestry: ${lineId}`)
+      return []
+    }
+
+    visited.add(lineId)
 
     let ancestry: string[] = []
 
     // 親ラインがある場合は親ラインの祖先を取得
     const parentLine = getParentLine(lines, lineId)
     if (parentLine) {
-      const parentAncestry = getLineAncestry(parentLine.id)
+      const parentAncestry = getLineAncestry(parentLine.id, visited)
       if (parentLine.id !== MAIN_LINE_ID) { // メインライン（メインの流れ）は除外
         ancestry = [...parentAncestry, parentLine.name]
       } else {

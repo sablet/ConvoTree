@@ -1,3 +1,4 @@
+import { useMemo } from "react"
 import { Input } from "@/components/ui/input"
 import { Search, Filter } from "lucide-react"
 import type { Line, Tag } from "@/lib/types"
@@ -58,13 +59,15 @@ export function BranchSelector({
   onFilterTagChange,
   onSearchChange
 }: BranchSelectorProps) {
-  if (!completeTimeline.messages.length) return null
-
   const currentLineId = currentLine?.id || ''
 
-  // 現在のラインの祖先チェーンを取得
-  const ancestry = getLineAncestry(currentLineId)
-  const breadcrumbPath = [...ancestry, currentLineId]
+  // 現在のラインの祖先チェーンを取得（useMemoでメモ化してレンダリング最適化）
+  const breadcrumbPath = useMemo(() => {
+    const ancestry = getLineAncestry(currentLineId)
+    return [...ancestry, currentLineId]
+  }, [currentLineId, getLineAncestry])
+
+  if (!completeTimeline.messages.length) return null
 
   return (
     <div className="px-2 sm:px-4 py-2 border-b border-gray-200 bg-white">

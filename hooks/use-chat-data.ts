@@ -116,11 +116,21 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
 
       const result = await chatRepository.loadChatData({
-        source: dataSourceManager.getCurrentSource()
+        source: dataSourceManager.getCurrentSource(),
+        // バックグラウンド更新時のコールバック
+        onRevalidate: (data) => {
+          console.log('[useChatData] Background revalidation completed, updating UI');
+          const chatData = transformChatData(data);
+          applyLoadedData(chatData, setters, options.onDataLoaded);
+        }
       })
 
       if (result.fallbackUsed) {
         console.warn(`[useChatData] データ読み込みでフォールバックが使用されました: ${result.source}`, result.error);
+      }
+
+      if (result.fromCache && result.revalidating) {
+        console.log('[useChatData] Loaded from cache, revalidating in background');
       }
 
       const chatData = transformChatData(result.data)
