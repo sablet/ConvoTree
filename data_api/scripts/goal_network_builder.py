@@ -75,6 +75,87 @@ class UltraIntentGoalNetworkBuilder:
             self.ultra_prompt_dir = OUTPUT_DIR / "ultra_prompts_responses"
             self.ultra_prompt_dir.mkdir(parents=True, exist_ok=True)
 
+    def _process_single_ultra_intent(self, list_idx: int) -> Dict:
+        """
+        1つの Ultra Intent を処理する関数（並列実行用）
+
+        Args:
+            list_idx: ultra_intents リスト内のインデックス
+
+        Returns:
+            処理結果の辞書
+        """
+        ultra_intent = self.ultra_intents[list_idx]
+        ultra_idx = self.target_ultra_id if self.target_ultra_id is not None else list_idx
+        ultra_id = f"ultra_{ultra_idx}"
+
+        # Ultra Intentノード情報
+        ultra_node = {
+            "id": ultra_id,
+            "type": "ultra_intent",
+            "intent": ultra_intent.get("ultra_intent", ""),
+            "objective_facts": ultra_intent.get("objective_facts", ""),
+            "context": ultra_intent.get("context", ""),
+            "status": ultra_intent.get("aggregate_status", "idea"),
+            "covered_intent_count": len(
+                ultra_intent.get("covered_intents_details", [])
+            ),
+        }
+
+        # 配下の個別intentを処理
+        covered_intents = ultra_intent.get("covered_intents_details", [])
+
+        # 個別intentノードを収集
+        intent_nodes = {}
+        for intent in covered_intents:
+            intent_id = intent.get("intent_id")
+            if not intent_id:
+                intent_id = f"intent_{intent.get('cluster_id')}_unknown"
+
+            intent_nodes[intent_id] = {
+                "id": intent_id,
+                "type": "intent",
+                "intent": intent.get("intent", ""),
+                "objective_facts": intent.get("objective_facts", ""),
+                "context": intent.get("context", ""),
+                "status": intent.get("status", "idea"),
+                "cluster_id": intent.get("cluster_id"),
+                "source_full_paths": intent.get("source_full_paths", []),
+            }
+
+        if len(covered_intents) < 2:
+            # スキップ: 親子リレーションのみ
+            relations = [
+                {"from": intent_id, "to": ultra_id, "type": "goal-means"}
+                for intent_id in intent_nodes.keys()
+            ]
+            return {
+                "ultra_idx": ultra_idx,
+                "ultra_id": ultra_id,
+                "ultra_node": ultra_node,
+                "intent_nodes": intent_nodes,
+                "relations": relations,
+                "generated_nodes": [],
+                "raw_response": None,
+                "skipped": True,
+            }
+
+        # LLMでリレーション抽出
+        intent_relations_result = self._extract_intent_relations_under_ultra(
+            ultra_idx, ultra_id, covered_intents, ultra_intent
+        )
+
+        return {
+            "ultra_idx": ultra_idx,
+            "ultra_id": ultra_id,
+            "ultra_node": ultra_node,
+            "intent_nodes": intent_nodes,
+            "relations": intent_relations_result["relations"],
+            "generated_nodes": intent_relations_result["generated_nodes"],
+            "raw_response": intent_relations_result.get("raw_response"),
+            "skipped": False,
+        }
+
     def build_goal_network(self) -> Dict:
         """
         Ultra Intentsをルートとしたゴールネットワークを構築
@@ -89,111 +170,62 @@ class UltraIntentGoalNetworkBuilder:
             }
         """
         print("\n" + "=" * 60)
-        print("Ultra Intentsベースのゴールネットワーク構築（LLM使用）")
+        print("Ultra Intentsベースのゴールネットワーク構築（LLM使用・並列実行）")
         print("=" * 60)
 
         all_nodes = {}
         all_relations = []
         all_generated_nodes = []
-        raw_responses = {}  # Ultra IDごとのraw_responseを保存
+        raw_responses = {}
 
-        # 各 Ultra Intent 配下の個別 intent 間のリレーション抽出
+        # 各 Ultra Intent 配下の個別 intent 間のリレーション抽出（並列実行）
         print("\n各 Ultra Intent 配下の個別 intent 間のゴール-手段リレーション抽出中...")
-        for list_idx, ultra_intent in enumerate(self.ultra_intents):
-            # target_ultra_id が指定されている場合はそれを使用
-            ultra_idx = self.target_ultra_id if self.target_ultra_id is not None else list_idx
-            ultra_id = f"ultra_{ultra_idx}"
+
+        # 並列実行用のインデックスリスト
+        ultra_indices = list(range(len(self.ultra_intents)))
+
+        # 並列実行
+        results = gemini_client.parallel_execute(
+            ultra_indices,
+            self._process_single_ultra_intent,
+            max_workers=5,
+            desc="Ultra Intent処理中",
+            unit="ultra",
+        )
+
+        # 結果を統合
+        for result in results:
+            ultra_idx = result["ultra_idx"]
+            ultra_id = result["ultra_id"]
 
             # Ultra Intentノードを登録
-            all_nodes[ultra_id] = {
-                "id": ultra_id,
-                "type": "ultra_intent",
-                "intent": ultra_intent.get("ultra_intent", ""),
-                "objective_facts": ultra_intent.get("objective_facts", ""),
-                "context": ultra_intent.get("context", ""),
-                "status": ultra_intent.get("aggregate_status", "idea"),
-                "covered_intent_count": len(
-                    ultra_intent.get("covered_intents_details", [])
-                ),
-            }
+            all_nodes[ultra_id] = result["ultra_node"]
 
-            # 配下の個別intentを処理
-            covered_intents = ultra_intent.get("covered_intents_details", [])
-
-            if len(covered_intents) < 2:
-                print(
-                    f"  Ultra {ultra_idx}: "
-                    f"スキップ（個別intent数: {len(covered_intents)}）"
-                )
-
-                # 個別intentノードは登録するが、リレーションは親子のみ
-                for intent in covered_intents:
-                    # global intent_id を使用（enriched.json に含まれている）
-                    intent_id = intent.get("intent_id")
-                    if not intent_id:
-                        # fallback（念のため）
-                        intent_id = f"intent_{intent.get('cluster_id')}_unknown"
-
-                    all_nodes[intent_id] = {
-                        "id": intent_id,
-                        "type": "intent",
-                        "intent": intent.get("intent", ""),
-                        "objective_facts": intent.get("objective_facts", ""),
-                        "context": intent.get("context", ""),
-                        "status": intent.get("status", "idea"),
-                        "cluster_id": intent.get("cluster_id"),
-                        "source_full_paths": intent.get("source_full_paths", []),
-                    }
-
-                    # Ultra Intent -> Intent の親子リレーション
-                    all_relations.append(
-                        {"from": intent_id, "to": ultra_id, "type": "goal-means"}
-                    )
-                continue
-
-            # LLMでリレーション抽出
-            print(
-                f"  Ultra {ultra_idx}: {len(covered_intents)}件の個別intentを処理中..."
-            )
-            intent_relations_result = self._extract_intent_relations_under_ultra(
-                ultra_idx, ultra_id, covered_intents
-            )
-
-            # ノードを登録（global intent_id を使用）
-            for intent in covered_intents:
-                # global intent_id を使用（enriched.json に含まれている）
-                intent_id = intent.get("intent_id")
-                if not intent_id:
-                    # fallback（念のため）
-                    intent_id = f"intent_{intent.get('cluster_id')}_unknown"
-
-                all_nodes[intent_id] = {
-                    "id": intent_id,
-                    "type": "intent",
-                    "intent": intent.get("intent", ""),
-                    "objective_facts": intent.get("objective_facts", ""),
-                    "context": intent.get("context", ""),
-                    "status": intent.get("status", "idea"),
-                    "cluster_id": intent.get("cluster_id"),
-                    "source_full_paths": intent.get("source_full_paths", []),
-                }
+            # 個別intentノードを登録
+            all_nodes.update(result["intent_nodes"])
 
             # リレーションを追加
-            all_relations.extend(intent_relations_result["relations"])
-            all_generated_nodes.extend(intent_relations_result["generated_nodes"])
+            all_relations.extend(result["relations"])
 
-            # raw_responseを保存（検証用）
-            if "raw_response" in intent_relations_result:
+            # 生成ノードを追加
+            all_generated_nodes.extend(result["generated_nodes"])
+
+            # raw_responseを保存
+            if result["raw_response"]:
                 raw_responses[ultra_id] = {
-                    "raw_response": intent_relations_result["raw_response"],
-                    "ultra_intent": ultra_intent.get("ultra_intent", "")
+                    "raw_response": result["raw_response"],
+                    "ultra_intent": result["ultra_node"]["intent"]
                 }
 
-            print(
-                f"    ✓ {len(intent_relations_result['relations'])}件の"
-                f"リレーション、{len(intent_relations_result['generated_nodes'])}"
-                "件の生成ノード"
-            )
+            # ログ出力
+            if result["skipped"]:
+                intent_count = result["ultra_node"]["covered_intent_count"]
+                print(f"  Ultra {ultra_idx}: スキップ（個別intent数: {intent_count}）")
+            else:
+                print(
+                    f"  Ultra {ultra_idx}: ✓ {len(result['relations'])}件の"
+                    f"リレーション、{len(result['generated_nodes'])}件の生成ノード"
+                )
 
         # 生成ノードを all_nodes に登録
         for gen_node in all_generated_nodes:
@@ -276,7 +308,7 @@ class UltraIntentGoalNetworkBuilder:
                 missing_root_ultras.append(ultra_id)
 
         if missing_root_ultras:
-            print(f"  ⚠️  警告: 以下のUltra IntentがLLMレスポンスに含まれていません:")
+            print("  ⚠️  警告: 以下のUltra IntentがLLMレスポンスに含まれていません:")
             for ultra_id in missing_root_ultras:
                 print(f"    - {ultra_id}")
         else:
@@ -327,7 +359,7 @@ class UltraIntentGoalNetworkBuilder:
         print("\n" + "=" * 60)
 
     def _extract_intent_relations_under_ultra(
-        self, ultra_idx: int, ultra_id: str, covered_intents: List[Dict]
+        self, ultra_idx: int, ultra_id: str, covered_intents: List[Dict], ultra_intent: Dict
     ) -> Dict:
         """
         1つの Ultra Intent 配下の個別 intent 間のゴール-手段リレーションをLLMで抽出
@@ -336,29 +368,12 @@ class UltraIntentGoalNetworkBuilder:
             ultra_idx: Ultra Intent のインデックス
             ultra_id: Ultra Intent のID
             covered_intents: 配下の個別 intent のリスト
+            ultra_intent: Ultra Intent の詳細情報
 
         Returns:
             {"relations": [...], "generated_nodes": [...]}
         """
-        # 個別 intent を DataFrame 形式に変換（global intent_id を使用）
-        intent_data = []
-        for intent in covered_intents:
-            # global intent_id を使用（enriched.json に含まれている）
-            intent_id = intent.get("intent_id")
-            if not intent_id:
-                # fallback（念のため）
-                intent_id = f"intent_{intent.get('cluster_id')}_unknown"
-
-            intent_data.append(
-                {
-                    "intent_id": intent_id,
-                    "intent": intent.get("intent", ""),
-                }
-            )
-
         # Ultra専用プロンプトを使用してリレーション抽出
-        # self.ultra_intents はフィルタ済みリストなので、インデックスは常に0
-        ultra_intent = self.ultra_intents[0]
         result = self._extract_ultra_sub_intent_relations(
             ultra_intent, ultra_idx, covered_intents
         )
@@ -405,10 +420,10 @@ class UltraIntentGoalNetworkBuilder:
                 ultra_props.append(f"id={ultra_id}")
                 root_info = f"{ultra_text} {{{' '.join(ultra_props)}}}"
 
-                f.write(f"# Ultra Intent 配下の個別 Intent 階層構造\n\n")
-                f.write(f"## ルート: Ultra Intent\n")
+                f.write("# Ultra Intent 配下の個別 Intent 階層構造\n\n")
+                f.write("## ルート: Ultra Intent\n")
                 f.write(f"{root_info}\n\n")
-                f.write(f"## 階層構造（LLMレスポンス）\n")
+                f.write("## 階層構造（LLMレスポンス）\n")
                 f.write(result.get("raw_response", ""))
             print(f"    💾 生レスポンスを保存: {raw_response_file}")
 
@@ -605,11 +620,11 @@ class UltraIntentGoalNetworkBuilder:
                         }
                     )
 
-            # 結果を返す
+            # 結果を返す（クリーンアップ済みのresponse_textを使用）
             return {
                 "relations": relations,
                 "generated_nodes": generated_nodes,
-                "raw_response": response.text.strip(),
+                "raw_response": response_text,
                 "prompt": prompt,
             }
 
@@ -1027,11 +1042,11 @@ class GoalNetworkBuilder:
                         }
                     )
 
-            # 結果を返す（生のレスポンスとプロンプトも含める）
+            # 結果を返す（クリーンアップ済みのresponse_textとプロンプトも含める）
             return {
                 "relations": relations,
                 "generated_nodes": generated_nodes,
-                "raw_response": response.text.strip(),
+                "raw_response": response_text,
                 "prompt": prompt,
             }
 

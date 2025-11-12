@@ -46,7 +46,7 @@ def main():
     print("=" * 60)
     print("インテントネットワーク構築 + HTML自動表示")
     print("=" * 60)
-    print(f"\n設定:")
+    print("\n設定:")
     print(f"  入力ディレクトリ: {args.input_dir}")
     print(f"  類似度閾値: {args.similarity_threshold}")
     print(f"  最大エッジ数/ノード: {args.max_edges_per_node}")

@@ -17,7 +17,6 @@ import hashlib
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
 import warnings
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -209,7 +208,7 @@ class IntentNetworkBuilder:
                         G.add_edge(node_i, node_j, weight=float(similarity))
                         edge_count += 1
 
-        print(f"✓ ネットワーク構築完了")
+        print("✓ ネットワーク構築完了")
         print(f"  - ノード数: {G.number_of_nodes()}")
         print(f"  - エッジ数: {G.number_of_edges()}")
         print(f"  - 平均次数: {2 * G.number_of_edges() / G.number_of_nodes():.2f}")
@@ -218,7 +217,7 @@ class IntentNetworkBuilder:
 
     def create_interactive_html(self, G: nx.Graph, output_path: Path):
         """インタラクティブなHTMLネットワークを生成"""
-        print(f"📊 インタラクティブHTML生成中...")
+        print("📊 インタラクティブHTML生成中...")
 
         # Pyvisネットワークを作成
         net = Network(
@@ -367,7 +366,7 @@ def main():
     print("=" * 60)
     print("インテントネットワーク構築")
     print("=" * 60)
-    print(f"\n設定:")
+    print("\n設定:")
     print(f"  入力ディレクトリ: {args.input_dir}")
     print(f"  類似度閾値: {args.similarity_threshold}")
     print(f"  最大エッジ数/ノード: {args.max_edges_per_node}")
@@ -392,7 +391,7 @@ def main():
     html_path = OUTPUT_DIR / "network.html"
     builder.create_interactive_html(G, html_path)
 
-    print(f"\n✅ 完了！")
+    print("\n✅ 完了！")
     print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
     print(f"📄 ネットワークHTML: {html_path}")
 

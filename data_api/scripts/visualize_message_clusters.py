@@ -9,13 +9,11 @@ import json
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from datetime import datetime
-from collections import Counter
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-import networkx as nx
 
 # 日本語フォント設定
 plt.rcParams['font.family'] = 'Hiragino Sans'

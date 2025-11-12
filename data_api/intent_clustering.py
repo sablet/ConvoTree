@@ -14,22 +14,19 @@
 """
 
 import json
-import os
 import hashlib
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime
 import warnings
 from dotenv import load_dotenv
 from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 
 # クラスタリング関連
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import AgglomerativeClustering
 import hdbscan
 from k_means_constrained import KMeansConstrained
@@ -39,9 +36,6 @@ from app.cache import get_cache
 
 # 可視化
 import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
 
 # 日本語フォント設定
 plt.rcParams['font.family'] = 'Hiragino Sans'
@@ -340,7 +334,7 @@ class IntentData:
             print(f"  ⚠️ ノイズ {(labels == max_label + 1).sum()}件を「その他」クラスタ（{max_label + 1}）に変換しました")
 
         unique_labels = np.unique(labels)
-        print(f"✓ クラスタリング完了")
+        print("✓ クラスタリング完了")
         print(f"  - クラスタ数: {len(unique_labels)}")
         print(f"  - ノイズ: {(labels == -1).sum()}件")
 
@@ -357,7 +351,7 @@ class IntentData:
 
         # クラスタ統計
         cluster_stats = self.df['cluster'].value_counts().sort_index()
-        print(f"\n📊 クラスタサイズ統計:")
+        print("\n📊 クラスタサイズ統計:")
         for cluster_id, count in cluster_stats.items():
             print(f"  - クラスタ {cluster_id}: {count}件")
 
@@ -462,7 +456,7 @@ def main():
     # 結果保存
     intent_data.save_results(labels)
 
-    print(f"\n✅ 完了！")
+    print("\n✅ 完了！")
     print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
 
 

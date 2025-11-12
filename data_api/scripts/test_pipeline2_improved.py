@@ -75,7 +75,7 @@ print("=" * 80)
 
 # メッセージ2番（長文で複数の提案を含む）を確認
 msg_2 = messages_dict["1"]
-print(f"\n元メッセージ（ID: 1）:")
+print("\n元メッセージ（ID: 1）:")
 print(f"{msg_2.text}")
 
 group_000_intents = [i for i in intents if i.group_id == "group_000"]
@@ -107,4 +107,4 @@ output_data = {
 with open("output/pipeline2_improved_test.json", "w", encoding="utf-8") as f:
     json.dump(output_data, f, ensure_ascii=False, indent=2)
 
-print(f"\n✓ 詳細結果を保存: output/pipeline2_improved_test.json")
+print("\n✓ 詳細結果を保存: output/pipeline2_improved_test.json")

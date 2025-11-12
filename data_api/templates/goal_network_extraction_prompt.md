@@ -76,13 +76,11 @@
 ```
 
 **出力（既存Intentのみで構成、generated不要）**:
-```markdown
 - データ処理システムを改善したい {status=idea id=intent_00001}
   - データの正規化を行いたい {status=todo id=intent_00002}
   - データのバリデーションを強化したい {status=todo id=intent_00003}
   - 処理性能を最適化したい {status=idea id=intent_00005}
     - キャッシュ機構を導入したい {status=doing id=intent_00004}
-```
 → 全て `id=intent_XXXXX` で構成（`generated_XXX` は不要）
 → 既存Intentに上位目的が含まれている場合、必ずそれを使用する
 
@@ -97,7 +95,6 @@
 ```
 
 **出力（上位目的を補完して階層構造を構築）**:
-```markdown
 - データ処理システムを改善したい {status=idea id=generated_001}
   - データ品質を向上させたい {status=idea id=generated_002}
     - データの正規化を行いたい {status=todo id=intent_00001}
@@ -105,13 +102,11 @@
   - 処理性能を最適化したい {status=idea id=generated_003}
     - キャッシュ機構を導入したい {status=doing id=intent_00003}
     - 非同期処理を実装したい {status=todo id=intent_00004}
-```
 → 元のリストに上位目的が無いため、`id=generated_XXX` で補完
 → 「データ品質向上（generated_002）」「処理性能最適化（generated_003）」を中間目的として補完
 → さらに「データ処理システム改善（generated_001）」を最上位目的として補完
 
 ## 例1: 関連性が低い複数のテーマ（複数の木に分割 + 全プロパティ使用例）
-```markdown
 - プロジェクト管理を効率化したい {status=idea id=generated_010 context="チーム拡大"}
   - タスクの優先度付けを自動化したい {status=todo id=intent_00010 objective_facts="backlog分析"}
   - 進捗の可視化を改善したい {status=doing id=intent_00011}
@@ -119,7 +114,6 @@
 - セキュリティを強化したい {status=idea id=generated_020 context="コンプライアンス要件"}
   - 認証機能を追加したい {status=doing id=intent_00020 objective_facts="OWASP guidelines"}
   - アクセスログを記録したい {status=todo id=intent_00021}
-```
 → プロジェクト管理とセキュリティは関連性が低いため、2本の独立した木に分割
 → `id=generated_XXX` で新規作成ノードを明示、`context` は背景情報、`objective_facts` は客観的根拠
 

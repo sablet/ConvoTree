@@ -217,7 +217,7 @@ def create_hub_graph(
 ):
     """ハブIntentのネットワークグラフを生成"""
     if len(hub_relations) == 0:
-        print(f"  ⚠️  ハブネットワーク: リレーションなし、スキップ")
+        print("  ⚠️  ハブネットワーク: リレーションなし、スキップ")
         return
 
     # グラフ作成
@@ -241,7 +241,7 @@ def create_hub_graph(
     G.remove_nodes_from(isolated_nodes)
 
     if G.number_of_nodes() == 0:
-        print(f"  ⚠️  ハブネットワーク: ノードなし、スキップ")
+        print("  ⚠️  ハブネットワーク: ノードなし、スキップ")
         return
 
     # 階層的レイアウト（目的が上、手段が下）
@@ -347,10 +347,10 @@ def generate_html_report(
         relations = cluster_relations[str(cluster_id)]
         if len(relations) > 0:
             html_lines.extend([
-                f"  <div class='graph-container'>",
+                "  <div class='graph-container'>",
                 f"    <h3>クラスタ {cluster_id} ({len(relations)}件のリレーション)</h3>",
                 f"    <img src='cluster_{cluster_id}.png' alt='クラスタ {cluster_id}'>",
-                f"  </div>",
+                "  </div>",
             ])
 
     html_lines.extend([

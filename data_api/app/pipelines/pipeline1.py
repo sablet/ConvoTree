@@ -1,5 +1,4 @@
 """Pipeline 1: 時系列グループ化"""
-from datetime import timedelta
 from app.models import Message, MessageGroup
 
 

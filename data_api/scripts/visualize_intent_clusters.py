@@ -6,12 +6,10 @@
 """
 
 import json
-import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List
 from datetime import datetime
-from collections import Counter
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -463,7 +461,7 @@ def create_html_report(
         for status, count in cluster['status_distribution'].items():
             html_content += f"                <li><span class=\"status-badge status-{status}\">{status}</span>: {count}件</li>\n"
 
-        html_content += f"""
+        html_content += """
             </ul>
 
             <h4>全パス</h4>

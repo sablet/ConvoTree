@@ -15,12 +15,9 @@ import numpy as np
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
-import seaborn as sns
 import networkx as nx
 from networkx.algorithms import community
 from typing import Dict, List, Tuple, Set
-import pandas as pd
-from collections import defaultdict
 
 # 日本語フォント設定
 plt.rcParams['font.family'] = 'Hiragino Sans'
@@ -232,7 +229,7 @@ def extract_cluster_center(G: nx.Graph, cluster: Set) -> str:
     # PageRank計算
     try:
         pagerank = nx.pagerank(subgraph, weight='weight')
-    except:
+    except Exception:
         pagerank = {node: 1.0 for node in subgraph.nodes()}
 
     # 次数
@@ -359,7 +356,7 @@ def visualize_cluster_internal_graph(
     # PageRankを計算
     try:
         pagerank = nx.pagerank(subgraph, weight='weight')
-    except:
+    except Exception:
         pagerank = {node: 1.0 / subgraph.number_of_nodes() for node in subgraph.nodes()}
 
     # ノードの色をPageRankに基づいてグラデーション
@@ -446,7 +443,7 @@ def build_meta_graph(
                 pagerank = nx.pagerank(subgraph, weight='weight')
                 center_node = max(pagerank.keys(), key=lambda x: pagerank[x])
                 center_summary = summaries_dict.get(center_node, '')
-            except:
+            except Exception:
                 center_node = cluster_nodes[0]
                 center_summary = summaries_dict.get(center_node, '')
         else:
@@ -502,7 +499,7 @@ def visualize_meta_graph(
 
     try:
         meta_pagerank = nx.pagerank(meta_G, weight='weight')
-    except:
+    except Exception:
         meta_pagerank = {node: 1.0 / meta_G.number_of_nodes() for node in meta_G.nodes()}
 
     node_sizes = [cluster_info_meta[node]['size'] * 150 for node in meta_G.nodes()]
@@ -893,7 +890,7 @@ def create_cluster_report(
         </div>
 """
 
-    html_content += f"""
+    html_content += """
     </div>
 
     <div class="section">
@@ -1106,7 +1103,7 @@ def main():
     print(f"\n📁 出力ディレクトリ: {OUTPUT_DIR}")
     print(f"📄 統合レポート: {OUTPUT_DIR / 'cluster_report.html'}")
     print(f"📊 メタグラフ: {OUTPUT_DIR / 'meta_graph.png'}")
-    print(f"📊 クラスタ内部グラフ: cluster_X_internal.png (X=1-5)")
+    print("📊 クラスタ内部グラフ: cluster_X_internal.png (X=1-5)")
     print("\nブラウザでレポートを開いて結果を確認してください。")
 
 if __name__ == "__main__":

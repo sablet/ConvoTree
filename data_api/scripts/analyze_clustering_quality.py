@@ -66,7 +66,7 @@ def analyze_embedding_distances(embeddings):
     distances_flat = distance[triu_indices]
 
     # 統計情報
-    print(f"\n埋め込み距離の統計:")
+    print("\n埋め込み距離の統計:")
     print(f"  平均: {distances_flat.mean():.4f}")
     print(f"  中央値: {np.median(distances_flat):.4f}")
     print(f"  最小: {distances_flat.min():.4f}")
@@ -75,7 +75,7 @@ def analyze_embedding_distances(embeddings):
 
     # パーセンタイル
     percentiles = [10, 25, 50, 75, 90, 95, 99]
-    print(f"\nパーセンタイル:")
+    print("\nパーセンタイル:")
     for p in percentiles:
         val = np.percentile(distances_flat, p)
         print(f"  {p}%: {val:.4f}")
@@ -163,14 +163,14 @@ def analyze_hierarchy_cluster_relationship(df):
     # 散らばり度合いのヒストグラム
     n_clusters_list = [v['n_clusters'] for v in hierarchy_cluster_mapping.values()]
 
-    print(f"\n階層ごとのクラスタ数分布:")
+    print("\n階層ごとのクラスタ数分布:")
     for n in range(1, max(n_clusters_list) + 1):
         count = n_clusters_list.count(n)
         print(f"  {n}個のクラスタ: {count}階層")
 
     # 詳細表示（3つ以上に散らばっている場合）
     if scattered_hierarchies:
-        print(f"\n3つ以上のクラスタに散らばっている階層の詳細:")
+        print("\n3つ以上のクラスタに散らばっている階層の詳細:")
         for hierarchy, info in sorted(scattered_hierarchies.items(), key=lambda x: x[1]['n_clusters'], reverse=True):
             print(f"\n  階層: {hierarchy}")
             print(f"    メッセージ数: {info['n_messages']}")
@@ -262,7 +262,7 @@ def analyze_intra_cluster_similarity(df, embeddings):
         }
 
     # 結果表示
-    print(f"\nクラスタ内の平均コサイン類似度:")
+    print("\nクラスタ内の平均コサイン類似度:")
     for cluster_id, stats in sorted(cluster_similarities.items()):
         print(f"  クラスタ {cluster_id}: 平均={stats['mean_similarity']:.4f}, "
               f"標準偏差={stats['std_similarity']:.4f}, "
@@ -322,8 +322,8 @@ def generate_summary_report(distance_stats, hierarchy_mapping, cluster_similarit
 
         # 埋め込み距離
         f.write("【埋め込み距離の統計】\n")
-        f.write(f"  全ペアの距離分布を分析\n")
-        f.write(f"  詳細はグラフを参照: embedding_distance_histogram.png\n\n")
+        f.write("  全ペアの距離分布を分析\n")
+        f.write("  詳細はグラフを参照: embedding_distance_histogram.png\n\n")
 
         # 階層とクラスタの関係
         f.write("【階層とクラスタの関係】\n")
@@ -347,7 +347,7 @@ def generate_summary_report(distance_stats, hierarchy_mapping, cluster_similarit
         low_sim_clusters = [c for c, s in cluster_similarities.items() if s['mean_similarity'] < 0.5]
         if low_sim_clusters:
             f.write(f"  ⚠️ 低い類似度(<0.5)のクラスタ: {low_sim_clusters}\n")
-            f.write(f"  → これらのクラスタは意味的に多様なメッセージを含む\n\n")
+            f.write("  → これらのクラスタは意味的に多様なメッセージを含む\n\n")
 
         f.write("【推奨事項】\n")
         if scattered_count == 0:
@@ -387,11 +387,11 @@ def main():
     print("✅ 分析完了！")
     print("="*60)
     print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
-    print(f"\n生成されたファイル:")
-    print(f"  - embedding_distance_histogram.png (埋め込み距離のヒストグラム)")
-    print(f"  - hierarchy_cluster_relationship.png (階層とクラスタの関係)")
-    print(f"  - intra_cluster_similarity.png (クラスタ内類似度)")
-    print(f"  - clustering_quality_report.txt (サマリーレポート)")
+    print("\n生成されたファイル:")
+    print("  - embedding_distance_histogram.png (埋め込み距離のヒストグラム)")
+    print("  - hierarchy_cluster_relationship.png (階層とクラスタの関係)")
+    print("  - intra_cluster_similarity.png (クラスタ内類似度)")
+    print("  - clustering_quality_report.txt (サマリーレポート)")
 
 
 if __name__ == "__main__":

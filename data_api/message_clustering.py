@@ -13,22 +13,18 @@
 """
 
 import json
-import os
 import hashlib
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, Tuple, Optional
 from dataclasses import dataclass
-from datetime import datetime
 import warnings
 from dotenv import load_dotenv
-from tqdm import tqdm
 from sentence_transformers import SentenceTransformer
 
 # クラスタリング関連
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import AgglomerativeClustering
 import hdbscan
 from k_means_constrained import KMeansConstrained
@@ -38,12 +34,9 @@ from app.cache import get_cache
 
 # 可視化
 import matplotlib.pyplot as plt
-import seaborn as sns
 from sklearn.manifold import TSNE
-from sklearn.decomposition import PCA
 
 # グラフ分析
-import networkx as nx
 
 # 日本語フォント設定
 plt.rcParams['font.family'] = 'Hiragino Sans'
@@ -585,7 +578,7 @@ class ClusterAnalyzer:
             metrics['silhouette_score'] = silhouette_score(
                 filtered_dist, filtered_labels, metric='precomputed'
             )
-        except:
+        except Exception:
             metrics['silhouette_score'] = 0
 
         # Calinski-HarabaszとDavies-Bouldinは特徴ベクトルが必要
@@ -599,7 +592,7 @@ class ClusterAnalyzer:
                 # 距離行列から2次元座標を復元
                 mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
                 feature_matrix = mds.fit_transform(filtered_dist)
-            except Exception as e:
+            except Exception:
                 feature_matrix = None
 
         try:
@@ -610,7 +603,7 @@ class ClusterAnalyzer:
                 )
             else:
                 metrics['calinski_harabasz_score'] = 0
-        except Exception as e:
+        except Exception:
             metrics['calinski_harabasz_score'] = 0
 
         try:
@@ -621,7 +614,7 @@ class ClusterAnalyzer:
                 )
             else:
                 metrics['davies_bouldin_score'] = 0
-        except Exception as e:
+        except Exception:
             metrics['davies_bouldin_score'] = 0
 
         # クラスタ統計

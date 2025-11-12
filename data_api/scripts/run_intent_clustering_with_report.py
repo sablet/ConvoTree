@@ -62,7 +62,7 @@ def main():
     print("=" * 60)
     print("インテントクラスタリング実行 + HTMLレポート自動表示")
     print("=" * 60)
-    print(f"\n設定:")
+    print("\n設定:")
     print(f"  入力ディレクトリ: {args.input_dir}")
     print(f"  重み: embedding={args.embedding_weight}, time={args.time_weight}, hierarchy={args.hierarchy_weight}")
     print(f"  手法: {args.method}")
@@ -71,7 +71,7 @@ def main():
         if args.n_clusters:
             print(f"  クラスタ数: {args.n_clusters}")
         else:
-            print(f"  クラスタ数: 自動計算")
+            print("  クラスタ数: 自動計算")
     elif args.method == 'hierarchical':
         print(f"  結合法: {args.linkage}")
         print(f"  クラスタ数: {args.n_clusters if args.n_clusters else '自動計算'}")

@@ -1,6 +1,5 @@
 """Pipeline 4: 類似Intent検索"""
 import math
-from datetime import datetime
 from app.models import Intent, SimilarIntents
 
 

@@ -182,10 +182,6 @@ def _extract_relations(
         for i, candidate in enumerate(candidates)
     ])
 
-    # ID→インデックスのマッピング
-    target_id_to_index = {intent.id: i + 1 for i, intent in enumerate(target_intents)}
-    candidate_id_to_index = {candidate.id: i + 1 for i, candidate in enumerate(candidates)}
-
     # プロンプト作成
     prompt = f"""# 対象グループのIntents
 {target_intents_text}
