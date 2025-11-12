@@ -8,30 +8,6 @@
 
 ## 処理フロー
 
-### 1. データエクスポート（Firestore → JSON）
-
-**目的**: Firestoreからメッセージデータを取得してローカルJSONに保存
-
-**実行方法**:
-```bash
-# 実装予定
-```
-
-**出力先**:
-- `data/messages_export.json` - エクスポートされたメッセージデータ
-
-**データ構造**:
-```json
-{
-  "message_id": "msg_00123",
-  "full_path": "Inbox -> プロジェクト名",
-  "start_time": "2025-11-10T10:00:00",
-  "content": "メッセージ本文"
-}
-```
-
----
-
 ### 2. メッセージクラスタリング
 
 **目的**: 意味的に類似したメッセージをクラスタにグループ化
@@ -102,9 +78,21 @@ open output/intent_extraction/index.html
 
 ---
 
-### 4. Gemini APIによる意図抽出（+ 後処理）
+### 4. 意図抽出と階層化
 
-**目的**: 生成されたプロンプトをGemini APIに投げて意図オブジェクトを抽出し、メタデータを補完
+意図の抽出は3つのレベルで実行されます：
+
+```
+Level 0: 個別意図 (individual intents)    ← メッセージから抽出
+  ↓ 各クラスタ内でグループ化
+Level 1: クラスタ別上位意図 (meta intents)  ← 個別意図をグループ化
+  ↓ 全クラスタ横断でグループ化
+Level 2: 最上位意図 (super intents)        ← 上位意図をさらにグループ化
+```
+
+#### 4-1. 個別意図の抽出
+
+**目的**: 各クラスタのメッセージから個別の意図を抽出
 
 **実行方法**:
 ```bash
@@ -119,31 +107,11 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
 ```
 
 **出力先**:
-- `output/intent_extraction/processed/cluster_XX_processed.json` - **後処理済みJSON（最終成果物）**
+- `output/intent_extraction/processed/cluster_XX_processed.json` - Level 0: 個別意図
 - `output/intent_extraction/raw_responses/cluster_XX_raw_response.txt` - 生レスポンス（オプション）
 - `output/intent_extraction/intent_review.html` - レビュー用HTML
 
-**処理の流れ**:
-
-#### 4-1. 前処理（preprocess）
-`preprocess_extract_json_from_response()`
-- Gemini APIレスポンスから```json```ブロックを抽出
-- JSONパースして意図オブジェクトのリストに変換
-
-#### 4-2. API呼び出し（call）
-`call_gemini_api_with_postprocess()`
-- Gemini 2.5 Flashに意図抽出プロンプトを送信
-- レスポンスをキャッシュ（`output/.cache/intent_extraction/`）
-
-#### 4-3. 後処理（postprocess）
-`postprocess_enrich_and_save_intents()`
-- `cluster_id`を追加
-- `source_message_ids`から以下を集約:
-  - `source_full_paths`: ユニークなチャネルパスのリスト
-  - `min_start_timestamp`: 全メッセージの最小タイムスタンプ
-- 処理済みJSONとして保存
-
-**最終的な意図オブジェクト構造**:
+**個別意図オブジェクト構造**:
 ```json
 {
   "intent": "スラッシュコマンドの自動補完機能を実現したい",
@@ -164,11 +132,115 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
 
 ---
 
+#### 4-2. クラスタ別上位意図の抽出
+
+**目的**: 各クラスタ内の個別意図をグループ化し、上位の意図を生成
+
+**実行方法**:
+```bash
+# 全クラスタで意図抽出+上位意図抽出
+uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
+
+# 特定クラスタのみ
+uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate --cluster 2
+```
+
+**出力先**:
+- `output/intent_extraction/aggregated/cluster_XX_aggregated.json` - Level 1: 上位意図
+
+**上位意図オブジェクト構造**:
+```json
+{
+  "meta_intent": "LLMコーディングエージェントの選定と費用管理の効率化を実現したい",
+  "description": "...",
+  "covered_intent_indices": [0, 1, 2, 3],  // 含まれる個別意図のインデックス
+  "rationale": "これらの意図は全てLLMエージェントの選定と費用という共通テーマを持つ",
+  "aggregate_status": "todo"  // 含まれる意図の中で最も進んでいないステータス
+}
+```
+
+**処理の流れ**:
+1. Pythonが個別意図のテキストのみを抽出（`intent`フィールド）
+2. LLMが意図の内容を理解し、共通テーマでグループ化
+3. Pythonがグループ情報から上位意図オブジェクトを構築
+   - 網羅性チェック（全ての個別意図がカバーされているか）
+   - 重複チェック（1つの意図が複数のグループに属していないか）
+   - `aggregate_status`の決定（最も進んでいないステータス）
+
+---
+
+#### 4-3. 最上位意図の抽出（クラスタ横断）
+
+**目的**: 全クラスタの上位意図をさらにグループ化し、最上位の意図を生成
+
+**実行方法**:
+```bash
+# 全クラスタで3階層の意図抽出
+uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate --aggregate-all
+```
+
+**出力先**:
+- `output/intent_extraction/cross_cluster/super_intents.json` - Level 2: 最上位意図
+
+**最上位意図オブジェクト構造**:
+```json
+{
+  "super_intent": "個人の生産性と意思決定の質を向上させたい",
+  "description": "...",
+  "covered_meta_intent_indices": [0, 3, 5, 8],  // 含まれる上位意図のインデックス
+  "rationale": "複数クラスタの上位意図（タスク管理、思考整理、時間管理）を包含",
+  "aggregate_status": "idea"
+}
+```
+
+**処理の流れ**:
+1. Pythonが全クラスタの上位意図を収集
+2. Pythonが上位意図のテキストのみを抽出（`meta_intent`フィールド）
+3. LLMが上位意図の内容を理解し、共通テーマでグループ化
+4. Pythonが最上位意図オブジェクトを構築（網羅性・重複チェック、status決定）
+
+**注意**: `--aggregate-all`は全クラスタ処理が必要なため、`--cluster`オプションとは併用できません。
+
+---
+
+#### 4-4. 意図定義の共通化
+
+全てのレベルの意図（individual, meta, super）は同じ定義に従います：
+
+**intent の定義**: 何を目指しているか、目的としているか
+
+以下を両方含むこと:
+- **志向対象（Target / Object）**: 何に向かっているのか（目的・目標・状態・価値など）
+- **志向方向性（Directionality）**: 主体がその対象に対してどうしたいのか
+
+**良い例**:
+- 「作業効率を上げたい」（対象=作業効率、方向性=上げたい）
+- 「ユーザーが迷わず使えるUIを実現したい」（対象=UI、方向性=実現したい）
+
+**悪い例**:
+- 「より良くしたい」（対象が不明）
+- 「デザインが気になる」（方向性が欠けている）
+
+**テンプレート構造**:
+```
+templates/
+├── common/
+│   └── intent_object_common.md           # 共通定義（全レベルで共有）
+├── intent_extraction_prompt.md           # メッセージ → 個別意図
+└── intent_grouping_prompt.md             # 意図のグループ化（統一テンプレート）
+```
+
+`intent_grouping_prompt.md`は以下の両方で使用:
+- 個別意図 → 上位意図
+- 上位意図 → 最上位意図
+
+---
+
 ### 5. 次のステップ（予定）
 
-- [ ] Firestoreへの保存スクリプト作成
 - [ ] 意図間の時系列・意味的関連性分析
 - [ ] 因果関係の推定
+- [ ] 最上位意図の可視化（ネットワークグラフ）
 
 ---
 
@@ -177,26 +249,33 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
 ```
 data_api/
 ├── templates/
-│   └── intent_extraction_prompt.md       # 意図抽出プロンプトテンプレート
+│   ├── common/
+│   │   └── intent_object_common.md           # 意図定義の共通部分
+│   ├── intent_extraction_prompt.md           # メッセージ → 個別意図
+│   └── intent_grouping_prompt.md             # 意図のグループ化（統一）
 ├── scripts/
-│   └── generate_intent_extraction_prompts.py  # 意図抽出メインスクリプト
+│   └── generate_intent_extraction_prompts.py # 意図抽出・階層化メインスクリプト
 ├── output/
 │   ├── .cache/
-│   │   └── intent_extraction/            # Gemini APIレスポンスキャッシュ
+│   │   └── intent_extraction/                # Gemini APIレスポンスキャッシュ
 │   ├── message_clustering/
-│   │   ├── clustered_messages.csv        # クラスタリング結果
-│   │   └── cluster_visualization.html    # クラスタ可視化
+│   │   ├── clustered_messages.csv            # クラスタリング結果
+│   │   └── clustering_report.html            # クラスタレポート
 │   └── intent_extraction/
-│       ├── cluster_XX_prompt.md          # 各クラスタのプロンプト
-│       ├── index.html                    # プロンプト一覧
-│       ├── intent_review.html            # 意図抽出結果レビュー
-│       ├── generation_summary.json       # サマリー情報
-│       ├── processed/
-│       │   └── cluster_XX_processed.json # 【最終成果物】後処理済みJSON
-│       └── raw_responses/                # （オプション）生レスポンス
+│       ├── cluster_XX_prompt.md              # 各クラスタのプロンプト
+│       ├── index.html                        # プロンプト一覧
+│       ├── intent_review.html                # 意図抽出結果レビュー
+│       ├── generation_summary.json           # サマリー情報
+│       ├── processed/                        # Level 0: 個別意図
+│       │   └── cluster_XX_processed.json
+│       ├── aggregated/                       # Level 1: クラスタ別上位意図
+│       │   └── cluster_XX_aggregated.json
+│       ├── cross_cluster/                    # Level 2: 最上位意図
+│       │   └── super_intents.json
+│       └── raw_responses/                    # （オプション）生レスポンス
 │           └── cluster_XX_raw_response.txt
 └── data/
-    └── messages_export.json              # エクスポートされたメッセージ
+    └── messages_export.json                  # エクスポートされたメッセージ
 ```
 
 ---
