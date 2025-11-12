@@ -34,6 +34,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 TEMPLATE_DIR = Path("templates")
 TEMPLATE_FILE = TEMPLATE_DIR / "intent_extraction_prompt.md"
 GROUPING_TEMPLATE_FILE = TEMPLATE_DIR / "intent_grouping_prompt.md"
+REASSIGNMENT_TEMPLATE_FILE = TEMPLATE_DIR / "intent_reassignment_prompt.md"
 COMMON_INTENT_OBJECT_FILE = TEMPLATE_DIR / "common" / "intent_object_common.md"
 
 PROCESSED_DIR = OUTPUT_DIR / "processed"
@@ -87,6 +88,19 @@ def load_grouping_template() -> str:
     # 共通定義を差し込み
     common_definition = load_common_intent_object_definition()
     template = template.replace("{COMMON_INTENT_OBJECT}", common_definition)
+
+    return template
+
+
+def load_reassignment_template() -> str:
+    """意図再割り振りテンプレートを読み込み"""
+    if not REASSIGNMENT_TEMPLATE_FILE.exists():
+        raise FileNotFoundError(
+            f"テンプレートファイルが見つかりません: {REASSIGNMENT_TEMPLATE_FILE}"
+        )
+
+    with open(REASSIGNMENT_TEMPLATE_FILE, "r", encoding="utf-8") as f:
+        template = f.read()
 
     return template
 
@@ -280,6 +294,294 @@ def postprocess_enrich_and_save_intents(
     return intents
 
 
+def reassign_uncovered_items(
+    existing_groups: List[Dict],
+    uncovered_indices: set,
+    original_items: List[Dict],
+    reassignment_template: str,
+    cluster_id: Optional[int] = None,
+    save_raw: bool = False,
+    level_name: str = "intent",
+    max_retries: int = 3,
+) -> List[Dict]:
+    """
+    【再割り振り】未カバーの項目を既存グループに追加または新規グループを作成
+
+    Args:
+        existing_groups: 既存のグループ（meta_intents, super_intents, ultra_intentsなど）
+        uncovered_indices: 未カバーのインデックスのセット
+        original_items: 元の項目リスト（intents, meta_intents, super_intentsなど）
+        reassignment_template: 再割り振り用テンプレート
+        cluster_id: クラスタID（オプション、クラスタ横断の場合はNone）
+        save_raw: 生レスポンス保存フラグ
+        level_name: レベル名（"meta", "super", "ultra"など、デバッグ用）
+        max_retries: 最大試行回数
+
+    Returns:
+        更新されたグループのリスト
+    """
+    if not uncovered_indices:
+        return existing_groups
+
+    retry_count = 0
+    current_uncovered = uncovered_indices.copy()
+
+    while current_uncovered and retry_count < max_retries:
+        retry_count += 1
+        print(
+            f"\n🔄 再割り振り試行 {retry_count}/{max_retries} - {len(current_uncovered)}件の未カバー項目"
+        )
+
+        # 既存グループの要約を作成
+        existing_group_texts = []
+        for i, group in enumerate(existing_groups):
+            group_name_key = (
+                "meta_intent"
+                if "meta_intent" in group
+                else "super_intent"
+                if "super_intent" in group
+                else "ultra_intent"
+            )
+            group_name = group.get(group_name_key, f"グループ {i}")
+
+            # グループの既存メンバー数を表示
+            member_key = (
+                "covered_intent_ids"
+                if "covered_intent_ids" in group
+                else "covered_meta_intent_indices"
+                if "covered_meta_intent_indices" in group
+                else "covered_super_intent_indices"
+                if "covered_super_intent_indices" in group
+                else "member_indices"
+            )
+            existing_members = group.get(member_key, [])
+            existing_group_texts.append(
+                f"{i}. {group_name} (既存メンバー: {len(existing_members)}件)"
+            )
+
+        existing_groups_summary = "\n".join(existing_group_texts)
+
+        # 未カバー項目の詳細を作成
+        uncovered_item_texts = []
+        uncovered_list = sorted(current_uncovered)
+
+        for i, original_idx in enumerate(uncovered_list):
+            if original_idx >= len(original_items):
+                continue
+
+            item = original_items[original_idx]
+            parts = [f"{i}."]
+
+            # 項目の主要情報を構築
+            if "meta_intent" in item:
+                parts.append(f"【意図】{item.get('meta_intent', '（未定義）')}")
+            elif "super_intent" in item:
+                parts.append(f"【意図】{item.get('super_intent', '（未定義）')}")
+            elif "ultra_intent" in item:
+                parts.append(f"【意図】{item.get('ultra_intent', '（未定義）')}")
+            else:
+                intent_text = (
+                    item.get("intent") or item.get("description") or "（未定義）"
+                )
+                parts.append(f"【意図】{intent_text}")
+
+            # objective_facts
+            if item.get("objective_facts"):
+                parts.append(f"【客観的事実】{item['objective_facts']}")
+
+            # context
+            if item.get("context"):
+                parts.append(f"【背景】{item['context']}")
+
+            uncovered_item_texts.append(" ".join(parts))
+
+        uncovered_items_text = "\n\n".join(uncovered_item_texts)
+        max_index = len(uncovered_list) - 1
+
+        # プロンプトを生成
+        prompt_text = reassignment_template.format(
+            existing_groups=existing_groups_summary,
+            uncovered_items=uncovered_items_text,
+            max_index=max_index,
+        )
+
+        # API呼び出し
+        try:
+            model = gemini_client.GenerativeModel()
+            response = model.generate_content(prompt_text)
+            response_text = response.text
+
+        except Exception as e:
+            print(f"\n❌ 再割り振りでエラー発生: {type(e).__name__}: {e}")
+            break
+
+        # 生のレスポンスを保存（オプション）
+        if save_raw:
+            raw_output_dir = OUTPUT_DIR / f"raw_reassignment_{level_name}_responses"
+            raw_output_dir.mkdir(exist_ok=True)
+            cluster_suffix = (
+                f"_cluster_{cluster_id:02d}" if cluster_id is not None else ""
+            )
+            raw_file = (
+                raw_output_dir / f"reassignment{cluster_suffix}_retry{retry_count}.txt"
+            )
+            with open(raw_file, "w", encoding="utf-8") as f:
+                f.write(response_text)
+
+        # JSONをパース
+        reassignments = preprocess_extract_json_from_response(response_text)
+        if reassignments is None:
+            print(f"\n⚠️ 再割り振り {retry_count}回目でJSONパース失敗")
+            break
+
+        # 再割り振り結果を既存グループに統合
+        newly_covered = set()
+
+        for reassignment in reassignments:
+            member_indices = reassignment.get("member_indices", [])
+
+            # 未カバーリスト内のインデックスを元のインデックスに変換
+            original_indices = [
+                uncovered_list[idx]
+                for idx in member_indices
+                if idx < len(uncovered_list)
+            ]
+
+            if not original_indices:
+                continue
+
+            # グループ名が既存グループと一致するか確認
+            group_name = reassignment.get("group_name", "")
+            matched_existing_group = None
+            matched_group_name_key = None
+
+            for existing_group in existing_groups:
+                current_group_name_key = (
+                    "meta_intent"
+                    if "meta_intent" in existing_group
+                    else "super_intent"
+                    if "super_intent" in existing_group
+                    else "ultra_intent"
+                )
+                existing_name = existing_group.get(current_group_name_key, "")
+                if group_name in existing_name or existing_name in group_name:
+                    matched_existing_group = existing_group
+                    matched_group_name_key = current_group_name_key
+                    break
+
+            # グループ名キーの決定（既存グループから推測）
+            if not matched_group_name_key:
+                # 既存グループから推測
+                if existing_groups:
+                    first_group = existing_groups[0]
+                    matched_group_name_key = (
+                        "meta_intent"
+                        if "meta_intent" in first_group
+                        else "super_intent"
+                        if "super_intent" in first_group
+                        else "ultra_intent"
+                    )
+                else:
+                    matched_group_name_key = "meta_intent"  # デフォルト
+
+            if matched_existing_group:
+                # 既存グループに追加
+                member_key = (
+                    "covered_intent_ids"
+                    if "covered_intent_ids" in matched_existing_group
+                    else "covered_meta_intent_indices"
+                    if "covered_meta_intent_indices" in matched_existing_group
+                    else "covered_super_intent_indices"
+                    if "covered_super_intent_indices" in matched_existing_group
+                    else "member_indices"
+                )
+
+                # covered_intent_idsの場合は特殊処理
+                if member_key == "covered_intent_ids":
+                    for idx in original_indices:
+                        if (
+                            idx < len(original_items)
+                            and "cluster_id" in original_items[idx]
+                        ):
+                            matched_existing_group[member_key].append(
+                                {
+                                    "cluster_id": int(
+                                        original_items[idx]["cluster_id"]
+                                    ),
+                                    "intent_index": idx,
+                                }
+                            )
+                else:
+                    matched_existing_group[member_key].extend(original_indices)
+
+                newly_covered.update(original_indices)
+            else:
+                # 新しいグループを作成
+                # 既存グループからmember_keyを推測
+                if existing_groups:
+                    first_group = existing_groups[0]
+                    if "covered_intent_ids" in first_group:
+                        member_key = "covered_intent_ids"
+                    elif "covered_meta_intent_indices" in first_group:
+                        member_key = "covered_meta_intent_indices"
+                    elif "covered_super_intent_indices" in first_group:
+                        member_key = "covered_super_intent_indices"
+                    else:
+                        member_key = "member_indices"
+                else:
+                    # 既存グループがない場合は、group_name_keyから推測
+                    member_key = (
+                        "covered_intent_ids"
+                        if matched_group_name_key == "meta_intent"
+                        else "covered_meta_intent_indices"
+                        if matched_group_name_key == "super_intent"
+                        else "covered_super_intent_indices"
+                        if matched_group_name_key == "ultra_intent"
+                        else "member_indices"
+                    )
+
+                # covered_intent_idsの場合は特殊処理
+                if member_key == "covered_intent_ids":
+                    member_values = [
+                        {
+                            "cluster_id": int(original_items[idx]["cluster_id"]),
+                            "intent_index": idx,
+                        }
+                        for idx in original_indices
+                        if idx < len(original_items)
+                        and "cluster_id" in original_items[idx]
+                    ]
+                else:
+                    member_values = original_indices
+
+                new_group = {
+                    matched_group_name_key: group_name,
+                    "objective_facts": reassignment.get("objective_facts", ""),
+                    "context": reassignment.get("context", ""),
+                    member_key: member_values,
+                }
+                existing_groups.append(new_group)
+                newly_covered.update(original_indices)
+
+        # 次の試行のために未カバーを更新
+        current_uncovered -= newly_covered
+
+        if not newly_covered:
+            print(
+                f"\n⚠️ 再割り振り {retry_count}回目で新たにカバーされた項目がありません"
+            )
+            break
+
+        print(f"✓ {len(newly_covered)}件を再割り振りしました")
+
+    if current_uncovered:
+        print(
+            f"\n⚠️ {len(current_uncovered)}件の項目が最終的にカバーされませんでした: {sorted(current_uncovered)}"
+        )
+
+    return existing_groups
+
+
 def call_gemini_api_with_postprocess(
     prompt_text: str,
     cluster_id: int,
@@ -419,6 +721,37 @@ def aggregate_intents_with_gemini(
             f"   Total: {len(intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
         )
 
+        # 再割り振りテンプレートを読み込み
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 未カバーの意図を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                original_items=intents,
+                reassignment_template=reassignment_template,
+                cluster_id=cluster_id,
+                save_raw=save_raw,
+                level_name="meta",
+                max_retries=3,
+            )
+
+            # 再割り振り後、covered_indicesを再計算
+            covered_indices = set()
+            for group in groups:
+                member_indices = group.get("member_indices", [])
+                covered_indices.update(member_indices)
+
+            uncovered = all_indices - covered_indices
+            if not uncovered:
+                print(
+                    f"✓ クラスタ {cluster_id} の全ての個別意図が再割り振りでカバーされました"
+                )
+
+        except Exception as e:
+            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
     # 重複チェック
     duplicate_check = []
     for group in groups:
@@ -426,9 +759,38 @@ def aggregate_intents_with_gemini(
 
     if len(duplicate_check) != len(set(duplicate_check)):
         duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
+        duplicate_set = set(duplicates)
         print(
-            f"\n⚠️ クラスタ {cluster_id} で重複するインデックスが検出されました: {set(duplicates)}"
+            f"\n⚠️ クラスタ {cluster_id} で重複するインデックスが検出されました: {duplicate_set}"
         )
+
+        # 重複項目をすべてのグループから削除
+        for group in groups:
+            original_indices = group.get("member_indices", [])
+            group["member_indices"] = [
+                idx for idx in original_indices if idx not in duplicate_set
+            ]
+
+        # 再割り振りテンプレートを読み込んで再判定
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                original_items=intents,
+                reassignment_template=reassignment_template,
+                cluster_id=cluster_id,
+                save_raw=save_raw,
+                level_name="meta_duplicate",
+                max_retries=3,
+            )
+
+            print("✓ 重複項目を再割り振りしました")
+
+        except Exception as e:
+            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
 
     # Pythonでmeta_intentオブジェクトを構築
     meta_intents = []
@@ -661,6 +1023,35 @@ def aggregate_cross_cluster_intents(
             f"   Total: {len(meta_intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
         )
 
+        # 再割り振りテンプレートを読み込み
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 未カバーのmeta_intentを再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                original_items=meta_intents,
+                reassignment_template=reassignment_template,
+                cluster_id=None,  # クラスタ横断なのでNone
+                save_raw=save_raw,
+                level_name="super",
+                max_retries=3,
+            )
+
+            # 再割り振り後、covered_indicesを再計算
+            covered_indices = set()
+            for group in groups:
+                member_indices = group.get("member_indices", [])
+                covered_indices.update(member_indices)
+
+            uncovered = all_indices - covered_indices
+            if not uncovered:
+                print("✓ 全てのmeta_intentが再割り振りでカバーされました")
+
+        except Exception as e:
+            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
     # 重複チェック
     duplicate_check = []
     for group in groups:
@@ -668,9 +1059,38 @@ def aggregate_cross_cluster_intents(
 
     if len(duplicate_check) != len(set(duplicate_check)):
         duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
+        duplicate_set = set(duplicates)
         print(
-            f"\n⚠️ クラスタ横断グループ化で重複するインデックスが検出されました: {set(duplicates)}"
+            f"\n⚠️ クラスタ横断グループ化で重複するインデックスが検出されました: {duplicate_set}"
         )
+
+        # 重複項目をすべてのグループから削除
+        for group in groups:
+            original_indices = group.get("member_indices", [])
+            group["member_indices"] = [
+                idx for idx in original_indices if idx not in duplicate_set
+            ]
+
+        # 再割り振りテンプレートを読み込んで再判定
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                original_items=meta_intents,
+                reassignment_template=reassignment_template,
+                cluster_id=None,  # クラスタ横断なのでNone
+                save_raw=save_raw,
+                level_name="super_duplicate",
+                max_retries=3,
+            )
+
+            print("✓ 重複項目を再割り振りしました")
+
+        except Exception as e:
+            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
 
     # Pythonでsuper_intentオブジェクトを構築
     super_intents = []
@@ -925,6 +1345,35 @@ def aggregate_super_intents_recursively(
             f"   Total: {len(super_intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
         )
 
+        # 再割り振りテンプレートを読み込み
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 未カバーのsuper_intentを再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                original_items=super_intents,
+                reassignment_template=reassignment_template,
+                cluster_id=None,  # クラスタ横断なのでNone
+                save_raw=save_raw,
+                level_name="ultra",
+                max_retries=3,
+            )
+
+            # 再割り振り後、covered_indicesを再計算
+            covered_indices = set()
+            for group in groups:
+                member_indices = group.get("member_indices", [])
+                covered_indices.update(member_indices)
+
+            uncovered = all_indices - covered_indices
+            if not uncovered:
+                print("✓ 全てのsuper_intentが再割り振りでカバーされました")
+
+        except Exception as e:
+            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
     # 重複チェック
     duplicate_check = []
     for group in groups:
@@ -932,9 +1381,38 @@ def aggregate_super_intents_recursively(
 
     if len(duplicate_check) != len(set(duplicate_check)):
         duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
+        duplicate_set = set(duplicates)
         print(
-            f"\n⚠️ 2段階目の抽象化で重複するインデックスが検出されました: {set(duplicates)}"
+            f"\n⚠️ 2段階目の抽象化で重複するインデックスが検出されました: {duplicate_set}"
         )
+
+        # 重複項目をすべてのグループから削除
+        for group in groups:
+            original_indices = group.get("member_indices", [])
+            group["member_indices"] = [
+                idx for idx in original_indices if idx not in duplicate_set
+            ]
+
+        # 再割り振りテンプレートを読み込んで再判定
+        try:
+            reassignment_template = load_reassignment_template()
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                original_items=super_intents,
+                reassignment_template=reassignment_template,
+                cluster_id=None,  # クラスタ横断なのでNone
+                save_raw=save_raw,
+                level_name="ultra_duplicate",
+                max_retries=3,
+            )
+
+            print("✓ 重複項目を再割り振りしました")
+
+        except Exception as e:
+            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
 
     # Pythonでultra_intentオブジェクトを構築
     ultra_intents = []
