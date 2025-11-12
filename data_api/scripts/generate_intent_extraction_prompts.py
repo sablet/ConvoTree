@@ -1234,7 +1234,177 @@ def aggregate_cross_cluster_intents(
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(cross_cluster_result, f, ensure_ascii=False, indent=2)
 
+    # 詳細展開版も生成（元データは変更しない）
+    enrich_and_save_super_intents(cross_cluster_result, output_file.parent)
+
     return super_intents, meta_intents, total_individual_intents
+
+
+def load_all_intents_for_enrichment() -> Dict[tuple, Dict]:
+    """
+    全クラスタの個別 intent を読み込み、グローバルIDでインデックス化
+
+    Returns:
+        (cluster_id, intent_index) -> intent詳細 のマッピング
+    """
+    all_intents = {}
+
+    # 全ての processed ファイルを読み込み
+    for processed_file in sorted(PROCESSED_DIR.glob("cluster_*_processed.json")):
+        with open(processed_file, "r", encoding="utf-8") as f:
+            intents = json.load(f)
+
+        for idx, intent in enumerate(intents):
+            cluster_id = intent.get("cluster_id")
+            if cluster_id is not None:
+                key = (cluster_id, idx)
+                all_intents[key] = intent
+
+    return all_intents
+
+
+def enrich_intents_with_details(
+    intents_list: List[Dict],
+    all_intents: Dict[tuple, Dict],
+    intent_id_key: str = "covered_intent_ids_flat",
+) -> List[Dict]:
+    """
+    意図リストに個別 intent の詳細を展開（コピーを作成して変更）
+
+    Args:
+        intents_list: super_intents または ultra_intents のリスト
+        all_intents: (cluster_id, intent_index) -> intent詳細 のマッピング
+        intent_id_key: 個別意図IDのキー名
+
+    Returns:
+        詳細展開された意図リスト（新規コピー）
+    """
+    enriched_list = []
+
+    for intent in intents_list:
+        # コピーを作成（元データを変更しない）
+        enriched_intent = intent.copy()
+        covered_ids = intent.get(intent_id_key, [])
+
+        # 個別 intent の詳細を収集
+        covered_intents_details = []
+        missing_ids = []
+
+        for intent_id in covered_ids:
+            cluster_id = intent_id["cluster_id"]
+            intent_index = intent_id["intent_index"]
+            key = (cluster_id, intent_index)
+
+            intent_detail = all_intents.get(key)
+            if intent_detail:
+                covered_intents_details.append(intent_detail)
+            else:
+                missing_ids.append(intent_id)
+
+        # 詳細情報を追加（コピーに対して）
+        enriched_intent["covered_intents_details"] = covered_intents_details
+
+        # 統計情報を追加
+        enriched_intent["_stats"] = {
+            "total_covered": len(covered_ids),
+            "resolved": len(covered_intents_details),
+            "missing": len(missing_ids),
+        }
+
+        if missing_ids:
+            enriched_intent["_missing_ids"] = missing_ids
+
+        enriched_list.append(enriched_intent)
+
+    return enriched_list
+
+
+def save_enriched_intents(
+    original_result: Dict,
+    enriched_key: str,
+    enriched_intents: List[Dict],
+    output_file: Path,
+    level_name: str = "ultra",
+):
+    """
+    詳細展開版の意図ファイルを保存
+
+    Args:
+        original_result: 元の結果データ
+        enriched_key: 意図リストのキー名（"ultra_intents" or "super_intents"）
+        enriched_intents: 詳細展開された意図リスト
+        output_file: 出力ファイルパス
+        level_name: レベル名（ログ表示用）
+    """
+    # 元データをコピーして詳細展開版を作成
+    enriched_result = original_result.copy()
+    enriched_result[enriched_key] = enriched_intents
+
+    # ファイル保存
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(enriched_result, f, ensure_ascii=False, indent=2)
+
+    print(f"✓ 詳細展開版を保存: {output_file}")
+
+    # 統計表示
+    for i, intent in enumerate(enriched_intents, 1):
+        stats = intent["_stats"]
+        intent_name = intent.get(f"{level_name}_intent", "（未定義）")
+        print(f"  {i}. {intent_name}: {stats['total_covered']}件の個別意図")
+        if stats["missing"] > 0:
+            print(f"     ⚠️ 未解決: {stats['missing']}件")
+
+
+def enrich_and_save_ultra_intents(ultra_result: Dict, output_dir: Path):
+    """
+    ultra_intents に個別 intent の詳細を展開して別ファイルに保存
+
+    Args:
+        ultra_result: ultra_intents.json の内容（変更されない）
+        output_dir: 出力ディレクトリ
+    """
+    # 全個別 intent を読み込み
+    print("\n個別 intent の詳細を展開中...")
+    all_intents = load_all_intents_for_enrichment()
+    print(f"✓ {len(all_intents)}件の個別 intent を読み込みました")
+
+    # ultra_intents を詳細展開（コピーを作成）
+    ultra_intents = ultra_result.get("ultra_intents", [])
+    enriched_ultra_intents = enrich_intents_with_details(
+        ultra_intents, all_intents, "covered_intent_ids_flat"
+    )
+
+    # 詳細展開版を別ファイルに保存
+    enriched_file = output_dir / "ultra_intents_enriched.json"
+    save_enriched_intents(
+        ultra_result, "ultra_intents", enriched_ultra_intents, enriched_file, "ultra"
+    )
+
+
+def enrich_and_save_super_intents(super_result: Dict, output_dir: Path):
+    """
+    super_intents に個別 intent の詳細を展開して別ファイルに保存
+
+    Args:
+        super_result: super_intents.json の内容（変更されない）
+        output_dir: 出力ディレクトリ
+    """
+    # 全個別 intent を読み込み
+    print("\n個別 intent の詳細を展開中...")
+    all_intents = load_all_intents_for_enrichment()
+    print(f"✓ {len(all_intents)}件の個別 intent を読み込みました")
+
+    # super_intents を詳細展開（コピーを作成）
+    super_intents = super_result.get("super_intents", [])
+    enriched_super_intents = enrich_intents_with_details(
+        super_intents, all_intents, "covered_intent_ids_flat"
+    )
+
+    # 詳細展開版を別ファイルに保存
+    enriched_file = output_dir / "super_intents_enriched.json"
+    save_enriched_intents(
+        super_result, "super_intents", enriched_super_intents, enriched_file, "super"
+    )
 
 
 def aggregate_super_intents_recursively(
@@ -1555,6 +1725,9 @@ def aggregate_super_intents_recursively(
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(ultra_result, f, ensure_ascii=False, indent=2)
 
+    # 詳細展開版も生成（元データは変更しない）
+    enrich_and_save_ultra_intents(ultra_result, output_file.parent)
+
     return ultra_intents
 
 
@@ -1850,19 +2023,33 @@ def main():
             print(
                 f"📄 クラスタ横断上位意図JSON: {CROSS_CLUSTER_DIR}/super_intents.json"
             )
+            # super_intents_enriched.json の存在をチェック
+            super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
+            if super_enriched.exists():
+                print(f"📄 クラスタ横断上位意図JSON（詳細展開版）: {super_enriched}")
+
             # ultra_intents.json の存在をチェック
             ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
             if ultra_file.exists():
                 print(f"📄 最終上位意図JSON（2段階抽象化）: {ultra_file}")
+                enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
+                if enriched_file.exists():
+                    print(f"📄 最終上位意図JSON（詳細展開版）: {enriched_file}")
         print("\n次のステップ:")
         print(f"  1. {OUTPUT_DIR}/intent_review.html をブラウザで開く")
         print("  2. 抽出された意図を確認・レビュー")
         if args.aggregate_all:
             print("  3. クラスタ横断上位意図の階層構造を確認")
             print(f"  4. {CROSS_CLUSTER_DIR}/super_intents.json のJSONファイルを確認")
+            super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
+            if super_enriched.exists():
+                print(f"  5. {super_enriched} の詳細展開版（個別意図詳細含む）を確認")
             ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
+            enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
             if ultra_file.exists():
-                print(f"  5. {ultra_file} の最終上位意図（2段階抽象化）を確認")
+                print(f"  6. {ultra_file} の最終上位意図（2段階抽象化）を確認")
+            if enriched_file.exists():
+                print(f"  7. {enriched_file} の詳細展開版（個別意図詳細含む）を確認")
         elif args.aggregate:
             print("  3. 上位意図と個別意図のマッピングを確認")
             print(f"  4. {AGGREGATED_DIR}/ のJSONファイルを確認")
