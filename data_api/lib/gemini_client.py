@@ -10,7 +10,11 @@ import litellm
 from litellm import completion
 from litellm.caching import Cache
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable, TypeVar, List
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
+
+T = TypeVar('T')
 
 
 # デフォルトのキャッシュディレクトリ
@@ -123,3 +127,59 @@ def get_cache_stats() -> dict:
         "cache_dir": cache_dir,
         "cache_size": cache_size,
     }
+
+
+def parallel_execute(
+    items: List,
+    process_func: Callable[[any], T],
+    max_workers: int = 5,
+    desc: str = "Processing",
+    unit: str = "item"
+) -> List[T]:
+    """
+    並列実行ヘルパー関数
+
+    Args:
+        items: 処理対象のアイテムのリスト
+        process_func: 各アイテムを処理する関数 (item) -> result
+        max_workers: 最大並列実行数（デフォルト: 5）
+        desc: tqdmの進捗バーの説明
+        unit: tqdmの単位
+
+    Returns:
+        処理結果のリスト（元の順序を保持）
+
+    Raises:
+        例外が発生した場合、最初の例外をそのまま raise
+
+    使用例:
+        >>> def process(cluster_id):
+        ...     # 重い処理
+        ...     return result
+        >>> results = parallel_execute(cluster_ids, process, max_workers=5)
+    """
+    results = [None] * len(items)  # 順序を保持するための結果配列
+    item_to_index = {id(item): idx for idx, item in enumerate(items)}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Future -> (item, index) のマッピング
+        future_to_item = {
+            executor.submit(process_func, item): (item, item_to_index[id(item)])
+            for item in items
+        }
+
+        # tqdmで進捗表示しながら結果を収集
+        with tqdm(total=len(items), desc=desc, unit=unit) as pbar:
+            for future in as_completed(future_to_item):
+                item, idx = future_to_item[future]
+                try:
+                    result = future.result()
+                    results[idx] = result
+                    pbar.update(1)
+                except Exception as exc:
+                    # 例外発生時は全タスクをキャンセルして例外を再raise
+                    pbar.write(f"\n❌ エラー発生: {type(exc).__name__}: {exc}")
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise
+
+    return results

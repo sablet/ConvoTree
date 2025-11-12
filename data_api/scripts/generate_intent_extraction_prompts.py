@@ -297,6 +297,7 @@ def call_gemini_api_with_postprocess(
         response_text = response.text
 
     except Exception as e:
+        # 並列実行時のログ出力はtqdmのpbar.writeではなく通常のprintを使用
         print(f"\n❌ クラスタ {cluster_id} でエラー発生: {type(e).__name__}: {e}")
         raise
 
@@ -784,12 +785,18 @@ def main():
         action="store_true",
         help="全クラスタの上位意図からさらに上位の意図を生成（--gemini --aggregate と併用、--cluster指定時は無効）"
     )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=5,
+        help="並列実行の最大ワーカー数（デフォルト: 5）"
+    )
     args = parser.parse_args()
 
     print("=" * 60)
     print("意図抽出プロンプト生成")
     if args.gemini:
-        print("+ Gemini API で意図抽出を実行")
+        print(f"+ Gemini API で意図抽出を実行（並列数: {args.max_workers}）")
     if args.aggregate:
         if not args.gemini:
             print("❌ エラー: --aggregate オプションは --gemini オプションと併用してください")
@@ -871,9 +878,9 @@ def main():
         # 既存の抽出結果も読み込み（HTML再生成のため）
         # ここでは簡略化のため、指定クラスタのみ再生成
 
-    # tqdmで進捗表示
-    progress_desc = "Gemini API で意図抽出中" if args.gemini else "プロンプト生成中"
-    for cluster_id in tqdm(cluster_ids, desc=progress_desc, unit="cluster"):
+    # 並列化する場合の処理関数を定義
+    def process_cluster(cluster_id: int) -> Dict:
+        """1つのクラスタを処理する関数（並列実行用）"""
         cluster_df = df[df['cluster'] == cluster_id]
         prompt_info = generate_cluster_prompt(cluster_id, cluster_df, template)
 
@@ -887,10 +894,6 @@ def main():
             )
             prompt_info['extracted_intents'] = intents
 
-            # tqdmの進捗バー外に詳細を表示
-            status = f"✓ {len(intents)}件" if intents else "✗ 失敗"
-            tqdm.write(f"  クラスタ {cluster_id:2d} ({prompt_info['message_count']:3d}件): {status}")
-
             # 上位意図抽出（--aggregate オプション指定時）
             if args.aggregate and intents and grouping_template:
                 meta_intents = aggregate_intents_with_gemini(
@@ -901,15 +904,30 @@ def main():
                 )
                 prompt_info['meta_intents'] = meta_intents
 
-                meta_status = f"✓ {len(meta_intents)}件の上位意図" if meta_intents else "✗ 失敗"
-                tqdm.write(f"    → 上位意図: {meta_status}")
-
-        all_prompts.append(prompt_info)
-
         # 個別ファイルとして保存
         output_file = OUTPUT_DIR / f"cluster_{cluster_id:02d}_prompt.md"
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(prompt_info['prompt'])
+
+        return prompt_info
+
+    # Gemini API使用時は並列実行、それ以外は逐次実行
+    if args.gemini:
+        progress_desc = "Gemini API で意図抽出中"
+        all_prompts = gemini_client.parallel_execute(
+            cluster_ids,
+            process_cluster,
+            max_workers=args.max_workers,
+            desc=progress_desc,
+            unit="cluster"
+        )
+    else:
+        # プロンプト生成のみの場合は逐次実行（高速なので並列化不要）
+        progress_desc = "プロンプト生成中"
+        all_prompts = []
+        for cluster_id in tqdm(cluster_ids, desc=progress_desc, unit="cluster"):
+            prompt_info = process_cluster(cluster_id)
+            all_prompts.append(prompt_info)
             
 
     # サマリー情報を保存
