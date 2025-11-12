@@ -28,7 +28,7 @@
    - 補完する上位Intentも、**必ず志向対象と方向性を含めてください**
    - 単なるカテゴリ名やラベルではなく、意図の形式で記述してください
 
-2. **理想は1本の木**: 可能な限り全体を1本の大きな木構造にまとめてください
+2. **理想は1本の木**: 全体を1本の大きな木構造にまとめてください
 
 3. **複数の木は最小限に**: まったく異なるテーマの場合のみ、複数の木に分けてください（2-3本程度）
 
@@ -39,7 +39,6 @@
 # プロパティ定義
 
 **必須**:
-- `intent="..."` (ダブルクォートで囲む)
 - `id=intent_XXXXX` (元のリストにあるIntent) または `id=generated_XXX` (新規作成ノード)
 
 **任意**:
@@ -47,7 +46,10 @@
 - `context="..."` (背景情報、ダブルクォートで囲む)
 - `objective_facts="..."` (客観的根拠、ダブルクォートで囲む)
 
-**記述ルール**: 文字列はダブルクォート、キーワードはクォート不要、スペース区切り
+**記述ルール**:
+- Intentテキストはラベルとして記述し、プロパティで重複させない
+- 文字列はダブルクォート、キーワードはクォート不要、スペース区切り
+- 形式: `Intent text {property1="value1" property2=keyword id=xxx}`
 
 ## objective_facts（客観的根拠）の判定基準
 
@@ -75,11 +77,11 @@
 
 **出力（既存Intentのみで構成、generated不要）**:
 ```markdown
-- データ処理システムを改善したい {intent="データ処理システムを改善したい" status=idea id=intent_00001}
-  - データの正規化を行いたい {intent="正規化を行いたい" status=todo id=intent_00002}
-  - データのバリデーションを強化したい {intent="バリデーションを強化したい" status=todo id=intent_00003}
-  - 処理性能を最適化したい {intent="処理性能を最適化したい" status=idea id=intent_00005}
-    - キャッシュ機構を導入したい {intent="キャッシュを導入したい" status=doing id=intent_00004}
+- データ処理システムを改善したい {status=idea id=intent_00001}
+  - データの正規化を行いたい {status=todo id=intent_00002}
+  - データのバリデーションを強化したい {status=todo id=intent_00003}
+  - 処理性能を最適化したい {status=idea id=intent_00005}
+    - キャッシュ機構を導入したい {status=doing id=intent_00004}
 ```
 → 全て `id=intent_XXXXX` で構成（`generated_XXX` は不要）
 → 既存Intentに上位目的が含まれている場合、必ずそれを使用する
@@ -96,13 +98,13 @@
 
 **出力（上位目的を補完して階層構造を構築）**:
 ```markdown
-- データ処理システムを改善したい {intent="データ処理システムを改善したい" status=idea id=generated_001}
-  - データ品質を向上させたい {intent="データ品質を向上させたい" status=idea id=generated_002}
-    - データの正規化を行いたい {intent="正規化を行いたい" status=todo id=intent_00001}
-    - データのバリデーションを強化したい {intent="バリデーションを強化したい" status=todo id=intent_00002}
-  - 処理性能を最適化したい {intent="処理性能を最適化したい" status=idea id=generated_003}
-    - キャッシュ機構を導入したい {intent="キャッシュを導入したい" status=doing id=intent_00003}
-    - 非同期処理を実装したい {intent="非同期処理を実装したい" status=todo id=intent_00004}
+- データ処理システムを改善したい {status=idea id=generated_001}
+  - データ品質を向上させたい {status=idea id=generated_002}
+    - データの正規化を行いたい {status=todo id=intent_00001}
+    - データのバリデーションを強化したい {status=todo id=intent_00002}
+  - 処理性能を最適化したい {status=idea id=generated_003}
+    - キャッシュ機構を導入したい {status=doing id=intent_00003}
+    - 非同期処理を実装したい {status=todo id=intent_00004}
 ```
 → 元のリストに上位目的が無いため、`id=generated_XXX` で補完
 → 「データ品質向上（generated_002）」「処理性能最適化（generated_003）」を中間目的として補完
@@ -110,13 +112,13 @@
 
 ## 例1: 関連性が低い複数のテーマ（複数の木に分割 + 全プロパティ使用例）
 ```markdown
-- プロジェクト管理を効率化したい {intent="管理を効率化したい" status=idea id=generated_010 context="チーム拡大"}
-  - タスクの優先度付けを自動化したい {intent="優先度付けを自動化したい" status=todo id=intent_00010 objective_facts="backlog分析"}
-  - 進捗の可視化を改善したい {intent="可視化を改善したい" status=doing id=intent_00011}
+- プロジェクト管理を効率化したい {status=idea id=generated_010 context="チーム拡大"}
+  - タスクの優先度付けを自動化したい {status=todo id=intent_00010 objective_facts="backlog分析"}
+  - 進捗の可視化を改善したい {status=doing id=intent_00011}
 
-- セキュリティを強化したい {intent="セキュリティを強化したい" status=idea id=generated_020 context="コンプライアンス要件"}
-  - 認証機能を追加したい {intent="認証機能を追加したい" status=doing id=intent_00020 objective_facts="OWASP guidelines"}
-  - アクセスログを記録したい {intent="ログを記録したい" status=todo id=intent_00021}
+- セキュリティを強化したい {status=idea id=generated_020 context="コンプライアンス要件"}
+  - 認証機能を追加したい {status=doing id=intent_00020 objective_facts="OWASP guidelines"}
+  - アクセスログを記録したい {status=todo id=intent_00021}
 ```
 → プロジェクト管理とセキュリティは関連性が低いため、2本の独立した木に分割
 → `id=generated_XXX` で新規作成ノードを明示、`context` は背景情報、`objective_facts` は客観的根拠

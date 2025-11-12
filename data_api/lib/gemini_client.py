@@ -14,7 +14,7 @@ from typing import Optional, Callable, TypeVar, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from tqdm import tqdm
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 # デフォルトのキャッシュディレクトリ
@@ -32,9 +32,7 @@ class GenerativeModel:
     """
 
     def __init__(
-        self,
-        model_name: str = "gemini-2.5-flash",
-        cache_dir: Optional[Path] = None
+        self, model_name: str = "gemini-2.5-flash", cache_dir: Optional[Path] = None
     ):
         """
         Args:
@@ -102,6 +100,33 @@ def configure(api_key: Optional[str] = None):
         os.environ["GEMINI_API_KEY"] = api_key
 
 
+def initialize() -> None:
+    """
+    Gemini API を初期化（dotenv 読み込み + API key 設定）
+
+    .env ファイルから GEMINI_API_KEY を読み込んで、環境変数に設定します。
+    scripts から呼び出す際はこの関数を使用してください。
+
+    Raises:
+        SystemExit: GEMINI_API_KEY が設定されていない場合
+
+    使用例:
+        >>> from lib import gemini_client
+        >>> gemini_client.initialize()
+        >>> model = gemini_client.GenerativeModel()
+    """
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("❌ エラー: GEMINI_API_KEY が .env ファイルに設定されていません")
+        raise SystemExit(1)
+
+    configure(api_key=api_key)
+    print("✓ Gemini API を初期化しました（litellm + diskcacheでキャッシュ有効）")
+
+
 def get_cache_stats() -> dict:
     """
     キャッシュの統計情報を取得
@@ -116,9 +141,9 @@ def get_cache_stats() -> dict:
         # diskcacheのCacheオブジェクトからサイズを取得
         try:
             # diskcache.Cache は __len__ を持たないので、volume() を使う
-            if hasattr(litellm.cache, 'volume'):
+            if hasattr(litellm.cache, "volume"):
                 cache_size = litellm.cache.volume()
-            elif hasattr(litellm.cache, '__len__'):
+            elif hasattr(litellm.cache, "__len__"):
                 cache_size = len(litellm.cache)
         except Exception:
             cache_size = -1  # サイズ取得失敗
@@ -134,7 +159,7 @@ def parallel_execute(
     process_func: Callable[[any], T],
     max_workers: int = 5,
     desc: str = "Processing",
-    unit: str = "item"
+    unit: str = "item",
 ) -> List[T]:
     """
     並列実行ヘルパー関数

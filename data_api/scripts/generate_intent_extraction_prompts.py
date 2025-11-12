@@ -18,9 +18,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
 import argparse
-import os
 import sys
-from dotenv import load_dotenv
 from tqdm import tqdm
 
 # プロジェクトルートをパスに追加
@@ -1297,7 +1295,10 @@ def enrich_intents_with_details(
 
             intent_detail = all_intents.get(key)
             if intent_detail:
-                covered_intents_details.append(intent_detail)
+                # コピーを作成して global intent_id を追加
+                detail_with_id = intent_detail.copy()
+                detail_with_id["intent_id"] = f"intent_{cluster_id}_{intent_index}"
+                covered_intents_details.append(detail_with_id)
             else:
                 missing_ids.append(intent_id)
 
@@ -1801,13 +1802,10 @@ def main():
 
     # Gemini API の初期化（--gemini オプション指定時）
     if args.gemini:
-        load_dotenv()
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            print("❌ エラー: GEMINI_API_KEY が .env ファイルに設定されていません")
+        try:
+            gemini_client.initialize()
+        except SystemExit:
             return
-        gemini_client.configure(api_key=api_key)
-        print("✓ Gemini API を初期化しました（litellm + diskcacheでキャッシュ有効）")
 
     # テンプレート読み込み
     print("\nプロンプトテンプレートを読み込み中...")
