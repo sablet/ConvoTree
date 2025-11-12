@@ -8,31 +8,28 @@
 
 import json
 import os
-import hashlib
+import sys
 from pathlib import Path
 from typing import List, Dict, Tuple
 import pandas as pd
 from dotenv import load_dotenv
-import google.generativeai as genai
-from diskcache import Cache
+
+# プロジェクトルートをパスに追加
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from lib import gemini_client
 
 # 環境変数読み込み
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 if api_key:
-    genai.configure(api_key=api_key)
+    gemini_client.configure(api_key=api_key)
 
 # 出力ディレクトリ
 OUTPUT_DIR = Path("output/goal_network")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# キャッシュディレクトリ
-CACHE_DIR = Path("output/cache/goal_network")
-
 # テンプレートディレクトリ
 TEMPLATE_DIR = Path("templates")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-_cache = Cache(str(CACHE_DIR))
 
 
 class GoalNetworkBuilder:
@@ -221,51 +218,6 @@ class GoalNetworkBuilder:
 
         return relations
 
-    def _save_debug_html(self, prompt: str, response: str, cache_key: str):
-        """デバッグ用HTMLを保存"""
-        import html
-
-        debug_dir = OUTPUT_DIR / "debug"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-
-        html_content = f"""<!DOCTYPE html>
-<html lang='ja'>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-    <title>Gemini Input/Output Debug</title>
-    <style>
-        body {{ font-family: 'Hiragino Sans', sans-serif; margin: 20px; background-color: #f5f5f5; }}
-        h1 {{ color: #333; border-bottom: 3px solid #4CAF50; padding-bottom: 10px; }}
-        h2 {{ color: #555; margin-top: 30px; border-bottom: 2px solid #2196F3; padding-bottom: 8px; }}
-        .section {{ background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        pre {{ background: #f4f4f4; padding: 15px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; word-wrap: break-word; }}
-        .meta {{ color: #666; font-size: 0.9em; margin-bottom: 10px; }}
-    </style>
-</head>
-<body>
-    <h1>🔍 Gemini Input/Output Debug</h1>
-
-    <div class='section'>
-        <h2>📝 Input: プロンプト</h2>
-        <div class='meta'>Cache Key: {cache_key[:16]}...</div>
-        <pre>{html.escape(prompt)}</pre>
-    </div>
-
-    <div class='section'>
-        <h2>💬 Output: Geminiレスポンス</h2>
-        <div class='meta'>レスポンス長: {len(response)} 文字</div>
-        <pre>{html.escape(response)}</pre>
-    </div>
-</body>
-</html>"""
-
-        debug_file = debug_dir / f"debug_{cache_key[:16]}.html"
-        with open(debug_file, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        print(f"  💾 デバッグHTML: {debug_file}")
-
     def _extract_goal_means_relations(
         self,
         intents_df: pd.DataFrame,
@@ -281,19 +233,6 @@ class GoalNetworkBuilder:
         Returns:
             [{"from": id, "to": id, "type": "goal-means"}, ...]
         """
-        # キャッシュキー生成
-        if use_intent_id and 'intent_id' in intents_df.columns:
-            cache_key_data = ",".join(sorted(intents_df['intent_id'].astype(str).tolist()))
-        else:
-            cache_key_data = ",".join(sorted(intents_df.index.astype(str).tolist()))
-
-        cache_key = hashlib.sha256(cache_key_data.encode("utf-8")).hexdigest()
-
-        # キャッシュから取得
-        cached_result = _cache.get(cache_key)
-        if cached_result is not None:
-            return cached_result
-
         # Intentリストを整形
         intents_list = []
         for i, (idx, row) in enumerate(intents_df.iterrows()):
@@ -323,14 +262,11 @@ class GoalNetworkBuilder:
 
         try:
             # Gemini API呼び出し
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            model = gemini_client.GenerativeModel()
             response = model.generate_content(prompt)
 
             # Markdownリストをパース
             response_text = response.text.strip()
-
-            # デバッグHTML生成
-            self._save_debug_html(prompt, response_text, cache_key)
 
             # Markdownコードブロックを除去
             if response_text.startswith("```markdown"):
@@ -414,14 +350,11 @@ class GoalNetworkBuilder:
                         'type': 'goal-means'
                     })
 
-            # キャッシュに保存
-            result = {
+            # 結果を返す
+            return {
                 'relations': relations,
                 'generated_nodes': generated_nodes
             }
-            _cache.set(cache_key, result)
-
-            return result
 
         except Exception as e:
             print(f"  ❌ エラー: {e}")

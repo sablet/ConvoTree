@@ -19,19 +19,17 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import argparse
 import os
+import sys
 from dotenv import load_dotenv
-import google.generativeai as genai
-from diskcache import Cache
 from tqdm import tqdm
-import hashlib
+
+# プロジェクトルートをパスに追加
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from lib import gemini_client
 
 
 OUTPUT_DIR = Path("output/intent_extraction")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
-CACHE_DIR = Path("output/.cache/intent_extraction")
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-cache = Cache(str(CACHE_DIR))
 
 TEMPLATE_DIR = Path("templates")
 TEMPLATE_FILE = TEMPLATE_DIR / "intent_extraction_prompt.md"
@@ -281,7 +279,7 @@ def call_gemini_api_with_postprocess(
     save_raw: bool = False
 ) -> Optional[List[Dict]]:
     """
-    【API呼び出し + 後処理】Gemini APIを使って意図を抽出（キャッシュ対応）
+    【API呼び出し + 後処理】Gemini APIを使って意図を抽出
 
     Args:
         prompt_text: 意図抽出プロンプト
@@ -292,28 +290,15 @@ def call_gemini_api_with_postprocess(
     Returns:
         抽出された意図オブジェクトのリスト（エラー時はNone）
     """
-    # キャッシュキーを生成（プロンプトのみで判定）
-    cache_key = f"intent_extraction_{hashlib.md5(prompt_text.encode()).hexdigest()}"
+    # API呼び出し（litellm側でキャッシュされる）
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
 
-    # キャッシュから生レスポンステキストを取得
-    cached_data = cache.get(cache_key)
-
-    if cached_data is not None and isinstance(cached_data, str):
-        # キャッシュヒット（新フォーマット）: 生レスポンスに対して後処理を実行
-        response_text = cached_data
-    else:
-        # キャッシュミス: API呼び出し
-        try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content(prompt_text)
-            response_text = response.text
-
-            # 生のレスポンステキストをキャッシュに保存
-            cache.set(cache_key, response_text)
-
-        except Exception as e:
-            print(f"\n❌ クラスタ {cluster_id} でエラー発生: {type(e).__name__}: {e}")
-            raise
+    except Exception as e:
+        print(f"\n❌ クラスタ {cluster_id} でエラー発生: {type(e).__name__}: {e}")
+        raise
 
     # 生のレスポンスを保存（オプション）
     if save_raw:
@@ -323,7 +308,7 @@ def call_gemini_api_with_postprocess(
         with open(raw_file, 'w', encoding='utf-8') as f:
             f.write(response_text)
 
-    # 後処理を実行（キャッシュヒット時も毎回実行）
+    # 後処理を実行
     intents = postprocess_enrich_and_save_intents(
         response_text,
         cluster_id,
@@ -389,28 +374,15 @@ def aggregate_intents_with_gemini(
         max_index=max_index
     )
 
-    # キャッシュキーを生成
-    cache_key = f"intent_aggregation_{hashlib.md5(prompt_text.encode()).hexdigest()}"
+    # API呼び出し（litellm側でキャッシュされる）
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
 
-    # キャッシュから生レスポンステキストを取得
-    cached_data = cache.get(cache_key)
-
-    if cached_data is not None and isinstance(cached_data, str):
-        # キャッシュヒット
-        response_text = cached_data
-    else:
-        # キャッシュミス: API呼び出し
-        try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content(prompt_text)
-            response_text = response.text
-
-            # 生のレスポンステキストをキャッシュに保存
-            cache.set(cache_key, response_text)
-
-        except Exception as e:
-            print(f"\n❌ クラスタ {cluster_id} の上位意図抽出でエラー発生: {type(e).__name__}: {e}")
-            return None
+    except Exception as e:
+        print(f"\n❌ クラスタ {cluster_id} の上位意図抽出でエラー発生: {type(e).__name__}: {e}")
+        return None
 
     # 生のレスポンスを保存（オプション）
     if save_raw:
@@ -484,11 +456,11 @@ def aggregate_intents_with_gemini(
 
         meta_intent = {
             'meta_intent': group.get('group_name', '（未定義）'),
-            'description': group.get('description', ''),
+            'objective_facts': group.get('objective_facts', ''),
+            'context': group.get('context', ''),
             'covered_intent_ids': covered_intent_ids,
             'source_full_paths': aggregated_full_paths,
             'min_start_timestamp': aggregated_min_timestamp,
-            'rationale': group.get('rationale', ''),
             'aggregate_status': aggregate_status
         }
         meta_intents.append(meta_intent)
@@ -576,29 +548,33 @@ def aggregate_cross_cluster_intents(
     if not meta_intents:
         return None
 
-    # LLMには意図の全プロパティ（ID系以外）を渡す
+    # LLMには簡潔な情報のみ渡す
     intent_texts = []
-    excluded_keys = {'covered_intent_ids', 'source_cluster_id', 'covered_intent_indices'}
 
     for i, meta in enumerate(meta_intents):
         # 意図の主要情報を構築
         parts = [f"{i}."]
 
-        # meta_intent フィールド（必須）
+        # meta_intent本文（必須）
         meta_text = meta.get('meta_intent') or '（未定義）'
         parts.append(f"【意図】{meta_text}")
 
-        # その他のプロパティを追加
-        for key, value in meta.items():
-            if key in excluded_keys or key == 'meta_intent':
-                continue
+        # objective_facts（客観的事実）
+        if meta.get('objective_facts'):
+            parts.append(f"【客観的事実】{meta['objective_facts']}")
 
-            if value:  # 値がある場合のみ追加
-                if isinstance(value, list):
-                    if value:  # 空リストでない場合
-                        parts.append(f"【{key}】{', '.join(str(v) for v in value)}")
-                else:
-                    parts.append(f"【{key}】{value}")
+        # context（背景）
+        if meta.get('context'):
+            parts.append(f"【背景】{meta['context']}")
+
+        # source_full_paths（プロジェクト判断に必要）
+        if meta.get('source_full_paths'):
+            paths = ', '.join(meta['source_full_paths'])
+            parts.append(f"【プロジェクト】{paths}")
+
+        # aggregate_status
+        if meta.get('aggregate_status'):
+            parts.append(f"【ステータス】{meta['aggregate_status']}")
 
         intent_texts.append(" ".join(parts))
 
@@ -611,28 +587,15 @@ def aggregate_cross_cluster_intents(
         max_index=max_index
     )
 
-    # キャッシュキーを生成
-    cache_key = f"cross_cluster_aggregation_{hashlib.md5(prompt_text.encode()).hexdigest()}"
+    # API呼び出し（litellm側でキャッシュされる）
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
 
-    # キャッシュから生レスポンステキストを取得
-    cached_data = cache.get(cache_key)
-
-    if cached_data is not None and isinstance(cached_data, str):
-        # キャッシュヒット
-        response_text = cached_data
-    else:
-        # キャッシュミス: API呼び出し
-        try:
-            model = genai.GenerativeModel("gemini-2.5-flash")
-            response = model.generate_content(prompt_text)
-            response_text = response.text
-
-            # 生のレスポンステキストをキャッシュに保存
-            cache.set(cache_key, response_text)
-
-        except Exception as e:
-            print(f"\n❌ クラスタ横断上位意図抽出でエラー発生: {type(e).__name__}: {e}")
-            return None
+    except Exception as e:
+        print(f"\n❌ クラスタ横断上位意図抽出でエラー発生: {type(e).__name__}: {e}")
+        return None
 
     # 生のレスポンスを保存（オプション）
     if save_raw:
@@ -719,12 +682,12 @@ def aggregate_cross_cluster_intents(
 
         super_intent = {
             'super_intent': group.get('group_name', '（未定義）'),
-            'description': group.get('description', ''),
+            'objective_facts': group.get('objective_facts', ''),
+            'context': group.get('context', ''),
             'covered_meta_intent_indices': member_indices,
             'covered_intent_ids_flat': covered_intent_ids_flat,
             'source_full_paths': aggregated_full_paths,
             'min_start_timestamp': aggregated_min_timestamp,
-            'rationale': group.get('rationale', ''),
             'aggregate_status': aggregate_status
         }
         super_intents.append(super_intent)
@@ -853,10 +816,8 @@ def main():
         if not api_key:
             print("❌ エラー: GEMINI_API_KEY が .env ファイルに設定されていません")
             return
-        genai.configure(api_key=api_key)
-        print("✓ Gemini API を初期化しました")
-        print(f"✓ キャッシュディレクトリ: {CACHE_DIR}")
-        print(f"✓ キャッシュサイズ: {len(cache)}件")
+        gemini_client.configure(api_key=api_key)
+        print("✓ Gemini API を初期化しました（litellm + diskcacheでキャッシュ有効）")
 
     # テンプレート読み込み
     print("\nプロンプトテンプレートを読み込み中...")
@@ -1150,21 +1111,21 @@ def generate_intent_review_html(all_prompts: List[Dict], include_meta_intents: b
                     "          </div>",
                 ])
 
-                # description
-                if meta_intent.get('description'):
+                # objective_facts
+                if meta_intent.get('objective_facts'):
                     html_parts.extend([
                         "          <div class='meta-intent-field'>",
-                        "            <div class='field-label'>説明:</div>",
-                        f"            <div class='field-value'>{meta_intent['description']}</div>",
+                        "            <div class='field-label'>客観的事実:</div>",
+                        f"            <div class='field-value'>{meta_intent['objective_facts']}</div>",
                         "          </div>",
                     ])
 
-                # rationale
-                if meta_intent.get('rationale'):
+                # context
+                if meta_intent.get('context'):
                     html_parts.extend([
                         "          <div class='meta-intent-field'>",
-                        "            <div class='field-label'>グループ化の根拠:</div>",
-                        f"            <div class='field-value'>{meta_intent['rationale']}</div>",
+                        "            <div class='field-label'>背景:</div>",
+                        f"            <div class='field-value'>{meta_intent['context']}</div>",
                         "          </div>",
                     ])
 
