@@ -516,10 +516,23 @@ def collect_all_meta_intents(cluster_ids: List[int]) -> tuple[List[Dict], Dict]:
             # クラスタIDを追加
             meta_intent_with_cluster = meta_intent.copy()
             meta_intent_with_cluster['source_cluster_id'] = int(cluster_id)
+
+            # source_full_pathsを安定した順序にソート（キャッシュヒット率向上）
+            if 'source_full_paths' in meta_intent_with_cluster:
+                meta_intent_with_cluster['source_full_paths'] = sorted(meta_intent_with_cluster['source_full_paths'])
+
             all_meta_intents.append(meta_intent_with_cluster)
 
         # 個別意図の総数を集計
         total_individual_intents += data.get('original_intents_count', 0)
+
+    # meta_intentsを安定した順序にソート（キャッシュヒット率向上）
+    # 1. source_cluster_id（クラスタID）でソート
+    # 2. min_start_timestamp（時系列）でソート
+    all_meta_intents.sort(key=lambda x: (
+        x.get('source_cluster_id', 0),
+        x.get('min_start_timestamp', '')
+    ))
 
     stats = {
         'total_individual_intents': total_individual_intents
@@ -587,6 +600,11 @@ def aggregate_cross_cluster_intents(
         intent_list=intent_list,
         max_index=max_index
     )
+
+    # プロンプトを保存
+    prompt_output_file = CROSS_CLUSTER_DIR / "cross_cluster_prompt.md"
+    with open(prompt_output_file, 'w', encoding='utf-8') as f:
+        f.write(prompt_text)
 
     # API呼び出し（litellm側でキャッシュされる）
     try:
