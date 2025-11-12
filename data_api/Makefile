@@ -1,4 +1,4 @@
-.PHONY: help test-api run-all run-1 run-2 run-3 run-4 run-5 report clean
+.PHONY: help test-api jscpd run-all run-1 run-2 run-3 run-4 run-5 report clean
 
 help: ## ヘルプを表示
 	@echo "使用可能なコマンド:"
@@ -6,6 +6,9 @@ help: ## ヘルプを表示
 
 test-api: ## Gemini API の動作確認
 	uv run python scripts/test_gemini_api.py
+
+jscpd: ## コードの重複をチェック
+	jscpd .
 
 run-full: ## 全パイプライン実行 (Pipeline 1-5)
 	@echo "Pipeline 1-3を実行..."

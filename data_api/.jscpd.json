@@ -1,0 +1,13 @@
+{
+  "threshold": 0,
+  "languages": ["python"],
+  "reporters": ["console"],
+  "ignore": [
+    "**/.venv/**",
+    "**/output/**",
+    "**/__pycache__/**",
+    "**/data/**"
+  ],
+  "path": ["app", "scripts", "lib"],
+  "minTokens": 50
+}
