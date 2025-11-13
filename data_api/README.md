@@ -29,9 +29,6 @@
 # 基本実行（全パイプライン）
 uv run python main.py
 
-# HTMLレポートを自動で開かない
-uv run python main.py --no-open
-
 # ゴールネットワークのプロンプト/レスポンスも保存
 uv run python main.py --save-prompts
 ```
@@ -72,11 +69,8 @@ uv run python scripts/run_clustering_with_report.py --method kmeans_constrained 
 # 重み調整
 uv run python scripts/run_clustering_with_report.py --embedding-weight 0.7 --time-weight 0.15 --hierarchy-weight 0.15
 
-# HTMLを自動で開かない
-uv run python scripts/run_clustering_with_report.py --no-open
-
 # 直接実行（詳細オプション指定時）
-uv run python message_clustering.py --method hdbscan --min-cluster-size 5
+uv run python scripts/message_clustering.py --method hdbscan --min-cluster-size 5
 ```
 
 **出力先**:
@@ -251,9 +245,12 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
 ```
 templates/
 ├── common/
-│   └── intent_object_common.md           # 共通定義（全レベルで共有）
-├── intent_extraction_prompt.md           # メッセージ → 個別意図
-└── intent_grouping_prompt.md             # 意図のグループ化（統一テンプレート）
+│   └── intent_object_common.md               # 共通定義（全レベルで共有）
+├── intent_extraction_prompt.md               # メッセージ → 個別意図
+├── intent_grouping_prompt.md                 # 意図のグループ化（統一テンプレート）
+├── intent_reassignment_prompt.md             # 意図の再割り当て
+├── goal_network_extraction_prompt.md         # ゴールネットワーク抽出
+└── ultra_sub_intent_relations_prompt.md      # Ultra配下の階層構造抽出
 ```
 
 `intent_grouping_prompt.md`は以下の両方で使用:
@@ -352,10 +349,13 @@ data_api/
 │   │   └── intent_object_common.md               # 意図定義の共通部分
 │   ├── intent_extraction_prompt.md               # メッセージ → 個別意図
 │   ├── intent_grouping_prompt.md                 # 意図のグループ化（統一）
+│   ├── intent_reassignment_prompt.md             # 意図の再割り当て
+│   ├── goal_network_extraction_prompt.md         # ゴールネットワーク抽出
 │   └── ultra_sub_intent_relations_prompt.md      # Ultra配下の階層構造抽出
 ├── scripts/
 │   ├── generate_intent_extraction_prompts.py     # 意図抽出・階層化
 │   ├── run_clustering_with_report.py             # メッセージクラスタリング実行
+│   ├── message_clustering.py                     # メッセージクラスタリングメイン
 │   └── goal_network_builder.py                   # ゴールネットワーク構築
 ├── output/
 │   ├── .cache/
@@ -381,11 +381,8 @@ data_api/
 │           ├── intent_relations_ultra_X_prompt.md        # プロンプト
 │           ├── intent_relations_ultra_X_raw_response.md  # 生レスポンス
 │           └── intent_relations_ultra_X_parsed.json      # パース済みJSON
-├── lib/
-│   └── gemini_client.py                          # Gemini APIクライアント
-├── app/
-│   └── cache.py                                  # キャッシュ管理（message_clustering.pyから使用）
-└── message_clustering.py                         # メッセージクラスタリングメイン
+└── lib/
+    └── gemini_client.py                          # Gemini APIクライアント
 ```
 
 **注**: 入力ファイル `messages_with_hierarchy.csv` は chat-line アプリから別途エクスポートされます。

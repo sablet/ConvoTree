@@ -7,7 +7,6 @@ messages_with_hierarchy.csv から ultra_intent_goal_network.json までの
 
 使用例:
   python main.py
-  python main.py --no-open  # HTMLレポートを自動で開かない
   python main.py --save-prompts  # ゴールネットワークのプロンプト/レスポンスを保存
 """
 
@@ -15,8 +14,6 @@ import subprocess
 import sys
 from pathlib import Path
 import argparse
-
-
 
 
 def run_step(step_num, step_name, command, description):
@@ -28,12 +25,7 @@ def run_step(step_num, step_name, command, description):
     print(f"コマンド: {' '.join(command)}\n")
 
     try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=False,
-            text=True
-        )
+        subprocess.run(command, check=True, capture_output=False, text=True)
         print(f"\n✓ ステップ {step_num} 完了")
         return True
     except subprocess.CalledProcessError as e:
@@ -57,16 +49,11 @@ def verify_output(output_file, description):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='メッセージ意図分析パイプライン全実行')
+    parser = argparse.ArgumentParser(description="メッセージ意図分析パイプライン全実行")
     parser.add_argument(
-        '--no-open',
-        action='store_true',
-        help='HTMLレポートを自動で開かない'
-    )
-    parser.add_argument(
-        '--save-prompts',
-        action='store_true',
-        help='ゴールネットワークのプロンプト/レスポンスを保存'
+        "--save-prompts",
+        action="store_true",
+        help="ゴールネットワークのプロンプト/レスポンスを保存",
     )
     args = parser.parse_args()
 
@@ -77,60 +64,52 @@ def main():
 
     # ステップ1: メッセージクラスタリング
     cmd1 = ["uv", "run", "python", "scripts/run_clustering_with_report.py"]
-    if args.no_open:
-        cmd1.append("--no-open")
 
     if not run_step(
-        1,
-        "メッセージクラスタリング",
-        cmd1,
-        "意味的に類似したメッセージをグループ化"
+        1, "メッセージクラスタリング", cmd1, "意味的に類似したメッセージをグループ化"
     ):
         sys.exit(1)
 
     verify_output(
-        Path("output/message_clustering/clustered_messages.csv"),
-        "クラスタリング結果"
+        Path("output/message_clustering/clustered_messages.csv"), "クラスタリング結果"
     )
 
     # ステップ2: 意図抽出と階層化
     cmd2 = [
-        "uv", "run", "python", "scripts/generate_intent_extraction_prompts.py",
-        "--gemini", "--aggregate", "--aggregate-all"
+        "uv",
+        "run",
+        "python",
+        "scripts/generate_intent_extraction_prompts.py",
+        "--gemini",
+        "--aggregate",
+        "--aggregate-all",
     ]
 
     if not run_step(
         2,
         "意図抽出と階層化",
         cmd2,
-        "個別意図 → 上位意図 → 最上位意図（Ultra Intents）を抽出"
+        "個別意図 → 上位意図 → 最上位意図（Ultra Intents）を抽出",
     ):
         sys.exit(1)
 
     verify_output(
         Path("output/intent_extraction/cross_cluster/ultra_intents_enriched.json"),
-        "エンリッチ済み最上位意図"
+        "エンリッチ済み最上位意図",
     )
 
     # ステップ3: ゴールネットワーク構築
-    cmd3 = [
-        "uv", "run", "python", "scripts/goal_network_builder.py",
-        "--mode", "ultra"
-    ]
+    cmd3 = ["uv", "run", "python", "scripts/goal_network_builder.py", "--mode", "ultra"]
     if args.save_prompts:
         cmd3.append("--save-prompts")
 
     if not run_step(
-        3,
-        "ゴールネットワーク構築",
-        cmd3,
-        "意図間の目的→手段リレーションを抽出"
+        3, "ゴールネットワーク構築", cmd3, "意図間の目的→手段リレーションを抽出"
     ):
         sys.exit(1)
 
     verify_output(
-        Path("output/goal_network/ultra_intent_goal_network.json"),
-        "ゴールネットワーク"
+        Path("output/goal_network/ultra_intent_goal_network.json"), "ゴールネットワーク"
     )
 
     # 完了メッセージ

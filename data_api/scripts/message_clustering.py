@@ -38,10 +38,10 @@ from sklearn.manifold import TSNE
 # グラフ分析
 
 # 日本語フォント設定
-plt.rcParams['font.family'] = 'Hiragino Sans'
-plt.rcParams['axes.unicode_minus'] = False
+plt.rcParams["font.family"] = "Hiragino Sans"
+plt.rcParams["axes.unicode_minus"] = False
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 # 環境変数読み込み
 load_dotenv()
@@ -88,10 +88,7 @@ def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[fl
     print("  埋め込みを生成中...")
     model = _get_model()
     batch_embeddings = model.encode(
-        texts,
-        convert_to_tensor=False,
-        show_progress_bar=True,
-        batch_size=32
+        texts, convert_to_tensor=False, show_progress_bar=True, batch_size=32
     )
     return [embedding.tolist() for embedding in batch_embeddings]
 
@@ -99,9 +96,10 @@ def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[fl
 @dataclass
 class ClusteringConfig:
     """クラスタリング設定"""
+
     # 距離合成の重み（正規化後）
     embedding_weight: float = 0.75  # 埋め込み距離の重み
-    time_weight: float = 0.1   # 時間距離の重み
+    time_weight: float = 0.1  # 時間距離の重み
     hierarchy_weight: float = 0.15  # 階層距離の重み
 
     # 時間カーネル設定
@@ -121,8 +119,8 @@ class ClusteringConfig:
     # k-means-constrainedパラメータ
     size_min: int = 10  # クラスタの最小サイズ
     size_max: int = 50  # クラスタの最大サイズ
-    n_init: int = 10    # k-meansの初期化回数
-    max_iter: int = 300 # k-meansの最大反復回数
+    n_init: int = 10  # k-meansの初期化回数
+    max_iter: int = 300  # k-meansの最大反復回数
 
     # ノイズ処理
     convert_noise_to_cluster: bool = True  # ノイズを「その他」クラスタとして扱う
@@ -137,7 +135,12 @@ class ClusteringConfig:
 class MessageData:
     """メッセージデータの管理"""
 
-    def __init__(self, csv_path: str, embedding_path: Optional[str] = None, generate_embeddings: bool = True):
+    def __init__(
+        self,
+        csv_path: str,
+        embedding_path: Optional[str] = None,
+        generate_embeddings: bool = True,
+    ):
         """
         Args:
             csv_path: メッセージCSVのパス
@@ -163,51 +166,53 @@ class MessageData:
     def _preprocess_dataframe(self):
         """DataFrameの前処理"""
         # 時刻をdatetimeに変換
-        self.df['start_time'] = pd.to_datetime(self.df['start_time'])
-        self.df['end_time'] = pd.to_datetime(self.df['end_time'])
+        self.df["start_time"] = pd.to_datetime(self.df["start_time"])
+        self.df["end_time"] = pd.to_datetime(self.df["end_time"])
 
         # メッセージIDを生成（行番号ベース）
-        self.df['message_id'] = [f"msg_{i:05d}" for i in range(len(self.df))]
+        self.df["message_id"] = [f"msg_{i:05d}" for i in range(len(self.df))]
 
         # パス処理: Inboxのみの場合はそのまま、Inbox->A->Bの場合はA->Bとして扱う
         def normalize_path(path: str) -> str:
             # ' -> ' で分割（実際の区切り文字）
-            if ' -> ' not in path:
+            if " -> " not in path:
                 # Inboxのみの場合はそのまま
                 return path
             else:
                 # Inbox -> A -> B の場合、Inboxを除去してA -> Bにする
-                parts = path.split(' -> ')
-                if len(parts) > 1 and parts[0] == 'Inbox':
-                    return ' -> '.join(parts[1:])
+                parts = path.split(" -> ")
+                if len(parts) > 1 and parts[0] == "Inbox":
+                    return " -> ".join(parts[1:])
                 return path
 
-        self.df['normalized_path'] = self.df['full_path'].apply(normalize_path)
+        self.df["normalized_path"] = self.df["full_path"].apply(normalize_path)
 
         # 階層深さを計算（正規化パスの ' -> ' の出現回数）
-        self.df['hierarchy_depth'] = self.df['normalized_path'].str.count(' -> ')
+        self.df["hierarchy_depth"] = self.df["normalized_path"].str.count(" -> ")
 
         print(f"✓ {len(self.df)}件のメッセージを読み込みました")
-        print(f"  - 期間: {self.df['start_time'].min()} 〜 {self.df['start_time'].max()}")
+        print(
+            f"  - 期間: {self.df['start_time'].min()} 〜 {self.df['start_time'].max()}"
+        )
         print(f"  - チャネル数: {self.df['full_path'].nunique()}")
         print(f"  - 正規化チャネル数: {self.df['normalized_path'].nunique()}")
         print(f"  - 最大階層深さ: {self.df['hierarchy_depth'].max()}")
 
     def _load_embeddings(self):
         """埋め込みデータの読み込み"""
-        with open(self.embedding_path, 'r', encoding='utf-8') as f:
+        with open(self.embedding_path, "r", encoding="utf-8") as f:
             embedding_data = json.load(f)
 
         # message_idとembeddingの対応を作成
-        embedding_dict = {item['id']: item['embedding'] for item in embedding_data}
+        embedding_dict = {item["id"]: item["embedding"] for item in embedding_data}
 
         # 埋め込み次元数を取得
-        first_embedding = embedding_data[0]['embedding']
+        first_embedding = embedding_data[0]["embedding"]
         embedding_dim = len(first_embedding)
 
         # DataFrameの順序に合わせて埋め込みを配置
         embeddings_list = []
-        for msg_id in self.df['message_id']:
+        for msg_id in self.df["message_id"]:
             if msg_id in embedding_dict:
                 embeddings_list.append(embedding_dict[msg_id])
             else:
@@ -227,7 +232,7 @@ class MessageData:
         texts = []
         indices = []
         for idx, row in self.df.iterrows():
-            text = row['combined_content']
+            text = row["combined_content"]
             if not pd.isna(text) and str(text).strip() != "":
                 texts.append(str(text))
                 indices.append(idx)
@@ -239,7 +244,7 @@ class MessageData:
         print(f"  処理対象: {len(texts)}件")
 
         # キャッシュキー生成（全テキストのハッシュ）
-        cache_key = hashlib.sha256("\n".join(texts).encode('utf-8')).hexdigest()
+        cache_key = hashlib.sha256("\n".join(texts).encode("utf-8")).hexdigest()
 
         # 実行時間計測開始
         start_time = time.time()
@@ -271,15 +276,14 @@ class MessageData:
     def _save_embeddings(self):
         """埋め込みをJSON形式で保存"""
         embeddings_data = []
-        for i, msg_id in enumerate(self.df['message_id']):
-            embeddings_data.append({
-                'id': msg_id,
-                'embedding': self.embeddings[i].tolist()
-            })
+        for i, msg_id in enumerate(self.df["message_id"]):
+            embeddings_data.append(
+                {"id": msg_id, "embedding": self.embeddings[i].tolist()}
+            )
 
         # 出力パス
         output_path = OUTPUT_DIR / "messages_embedded.json"
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, "w", encoding="utf-8") as f:
             json.dump(embeddings_data, f, ensure_ascii=False, indent=2)
 
         print(f"  → 埋め込みを保存: {output_path}")
@@ -323,7 +327,7 @@ class DistanceCalculator:
             時間距離行列 (n_samples, n_samples)
         """
         # 時刻を数値化（Unix timestamp）
-        timestamps = df['start_time'].astype(np.int64) / 1e9 / 3600  # 時間単位
+        timestamps = df["start_time"].astype(np.int64) / 1e9 / 3600  # 時間単位
         timestamps = timestamps.values.reshape(-1, 1)
 
         # ユークリッド距離を計算
@@ -331,7 +335,7 @@ class DistanceCalculator:
 
         # ガウシアンカーネルで距離化（0〜1の範囲に正規化）
         # 近い時刻ほど距離が小さくなる
-        time_distance = 1 - np.exp(-(time_diff ** 2) / (2 * bandwidth_hours ** 2))
+        time_distance = 1 - np.exp(-(time_diff**2) / (2 * bandwidth_hours**2))
         np.fill_diagonal(time_distance, 0)
 
         return time_distance
@@ -351,13 +355,13 @@ class DistanceCalculator:
         hierarchy_distance = np.zeros((n, n))
 
         # 正規化パスを使用
-        paths = df['normalized_path'].values
+        paths = df["normalized_path"].values
 
         for i in range(n):
             for j in range(i + 1, n):
                 # 共通パス長を計算（' -> ' で分割）
-                path_i = paths[i].split(' -> ')
-                path_j = paths[j].split(' -> ')
+                path_i = paths[i].split(" -> ")
+                path_j = paths[j].split(" -> ")
 
                 common_depth = 0
                 for pi, pj in zip(path_i, path_j):
@@ -368,7 +372,9 @@ class DistanceCalculator:
 
                 # 距離 = 最大深さ - 共通深さ（正規化）
                 max_depth = max(len(path_i), len(path_j))
-                distance = (max_depth - common_depth) / max_depth if max_depth > 0 else 0
+                distance = (
+                    (max_depth - common_depth) / max_depth if max_depth > 0 else 0
+                )
 
                 hierarchy_distance[i, j] = distance
                 hierarchy_distance[j, i] = distance
@@ -380,7 +386,7 @@ class DistanceCalculator:
         embedding_dist: Optional[np.ndarray],
         time_dist: np.ndarray,
         hierarchy_dist: np.ndarray,
-        config: ClusteringConfig
+        config: ClusteringConfig,
     ) -> np.ndarray:
         """
         複数の距離行列を正規化して重み付け合成
@@ -432,8 +438,8 @@ class DistanceCalculator:
             # 埋め込みが無い場合は時間と階層のみ
             total_weight = config.time_weight + config.hierarchy_weight
             combined = (
-                config.time_weight / total_weight * time_normalized +
-                config.hierarchy_weight / total_weight * hier_normalized
+                config.time_weight / total_weight * time_normalized
+                + config.hierarchy_weight / total_weight * hier_normalized
             )
         else:
             # 埋め込み距離の正規化（最小値0にシフト、標準偏差で割る）
@@ -451,9 +457,9 @@ class DistanceCalculator:
 
             # 全ての距離を合成
             combined = (
-                config.embedding_weight * embed_normalized +
-                config.time_weight * time_normalized +
-                config.hierarchy_weight * hier_normalized
+                config.embedding_weight * embed_normalized
+                + config.time_weight * time_normalized
+                + config.hierarchy_weight * hier_normalized
             )
 
         return combined
@@ -477,7 +483,9 @@ class ClusterAnalyzer:
 
         # 埋め込み距離
         if self.data.has_embeddings():
-            self.embedding_dist = calculator.compute_embedding_distance(self.data.embeddings)
+            self.embedding_dist = calculator.compute_embedding_distance(
+                self.data.embeddings
+            )
             print(f"  ✓ 埋め込み距離: {self.embedding_dist.shape}")
         else:
             self.embedding_dist = None
@@ -510,10 +518,10 @@ class ClusterAnalyzer:
 
         if self.config.method == "hdbscan":
             clusterer = hdbscan.HDBSCAN(
-                metric='precomputed',
+                metric="precomputed",
                 min_cluster_size=self.config.min_cluster_size,
                 min_samples=self.config.min_samples,
-                cluster_selection_method='eom'
+                cluster_selection_method="eom",
             )
             labels = clusterer.fit_predict(self.combined_dist)
 
@@ -525,9 +533,7 @@ class ClusterAnalyzer:
                 n_clusters = int(np.sqrt(len(self.data.df)))
 
             clusterer = AgglomerativeClustering(
-                n_clusters=n_clusters,
-                metric='precomputed',
-                linkage=self.config.linkage
+                n_clusters=n_clusters, metric="precomputed", linkage=self.config.linkage
             )
             labels = clusterer.fit_predict(self.combined_dist)
 
@@ -542,9 +548,12 @@ class ClusterAnalyzer:
             # k-means-constrainedは距離行列ではなく特徴ベクトルが必要
             # 距離行列から埋め込み空間を再構成（MDS的アプローチ）
             from sklearn.manifold import MDS
+
             # 次元数はクラスタ数の2倍程度（経験則）
             n_components = min(n_clusters * 2, len(self.data.df) - 1)
-            mds = MDS(n_components=n_components, dissimilarity='precomputed', random_state=42)
+            mds = MDS(
+                n_components=n_components, dissimilarity="precomputed", random_state=42
+            )
             X_embedded = mds.fit_transform(self.combined_dist)
 
             clusterer = KMeansConstrained(
@@ -553,7 +562,7 @@ class ClusterAnalyzer:
                 size_max=self.config.size_max,
                 n_init=self.config.n_init,
                 max_iter=self.config.max_iter,
-                random_state=42
+                random_state=42,
             )
             labels = clusterer.fit_predict(X_embedded)
 
@@ -586,17 +595,21 @@ class ClusterAnalyzer:
         Returns:
             評価指標の辞書
         """
-        from sklearn.metrics import silhouette_score, calinski_harabasz_score, davies_bouldin_score
+        from sklearn.metrics import (
+            silhouette_score,
+            calinski_harabasz_score,
+            davies_bouldin_score,
+        )
 
         # ノイズを除外
         mask = labels != -1
         if mask.sum() < 2:
             return {
-                'silhouette_score': 0,
-                'calinski_harabasz_score': 0,
-                'davies_bouldin_score': 0,
-                'n_clusters': 0,
-                'n_noise': len(labels)
+                "silhouette_score": 0,
+                "calinski_harabasz_score": 0,
+                "davies_bouldin_score": 0,
+                "n_clusters": 0,
+                "n_noise": len(labels),
             }
 
         filtered_dist = self.combined_dist[mask][:, mask]
@@ -607,11 +620,11 @@ class ClusterAnalyzer:
 
         try:
             # シルエット係数（-1〜1、大きいほど良い）
-            metrics['silhouette_score'] = silhouette_score(
-                filtered_dist, filtered_labels, metric='precomputed'
+            metrics["silhouette_score"] = silhouette_score(
+                filtered_dist, filtered_labels, metric="precomputed"
             )
         except Exception:
-            metrics['silhouette_score'] = 0
+            metrics["silhouette_score"] = 0
 
         # Calinski-HarabaszとDavies-Bouldinは特徴ベクトルが必要
         # 埋め込みがない場合はMDSで距離行列から座標を復元
@@ -621,8 +634,9 @@ class ClusterAnalyzer:
         else:
             try:
                 from sklearn.manifold import MDS
+
                 # 距離行列から2次元座標を復元
-                mds = MDS(n_components=2, dissimilarity='precomputed', random_state=42)
+                mds = MDS(n_components=2, dissimilarity="precomputed", random_state=42)
                 feature_matrix = mds.fit_transform(filtered_dist)
             except Exception:
                 feature_matrix = None
@@ -630,28 +644,28 @@ class ClusterAnalyzer:
         try:
             # Calinski-Harabasz指数（大きいほど良い）
             if feature_matrix is not None:
-                metrics['calinski_harabasz_score'] = calinski_harabasz_score(
+                metrics["calinski_harabasz_score"] = calinski_harabasz_score(
                     feature_matrix, filtered_labels
                 )
             else:
-                metrics['calinski_harabasz_score'] = 0
+                metrics["calinski_harabasz_score"] = 0
         except Exception:
-            metrics['calinski_harabasz_score'] = 0
+            metrics["calinski_harabasz_score"] = 0
 
         try:
             # Davies-Bouldin指数（小さいほど良い）
             if feature_matrix is not None:
-                metrics['davies_bouldin_score'] = davies_bouldin_score(
+                metrics["davies_bouldin_score"] = davies_bouldin_score(
                     feature_matrix, filtered_labels
                 )
             else:
-                metrics['davies_bouldin_score'] = 0
+                metrics["davies_bouldin_score"] = 0
         except Exception:
-            metrics['davies_bouldin_score'] = 0
+            metrics["davies_bouldin_score"] = 0
 
         # クラスタ統計
-        metrics['n_clusters'] = len(set(filtered_labels))
-        metrics['n_noise'] = list(labels).count(-1)
+        metrics["n_clusters"] = len(set(filtered_labels))
+        metrics["n_noise"] = list(labels).count(-1)
 
         return metrics
 
@@ -666,17 +680,21 @@ class ClusterVisualizer:
     def plot_cluster_distribution(self, output_path: Path):
         """クラスタサイズ分布を可視化"""
         unique_labels = set(self.labels)
-        cluster_sizes = [list(self.labels).count(label) for label in unique_labels if label != -1]
+        cluster_sizes = [
+            list(self.labels).count(label) for label in unique_labels if label != -1
+        ]
 
         fig, ax = plt.subplots(figsize=(10, 6))
         ax.bar(range(len(cluster_sizes)), sorted(cluster_sizes, reverse=True))
-        ax.set_xlabel('クラスタID（サイズ順）')
-        ax.set_ylabel('メッセージ数')
-        ax.set_title(f'クラスタサイズ分布（合計{len(unique_labels) - (1 if -1 in unique_labels else 0)}クラスタ）')
+        ax.set_xlabel("クラスタID（サイズ順）")
+        ax.set_ylabel("メッセージ数")
+        ax.set_title(
+            f"クラスタサイズ分布（合計{len(unique_labels) - (1 if -1 in unique_labels else 0)}クラスタ）"
+        )
         ax.grid(alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.close()
 
     def plot_tsne_projection(self, output_path: Path):
@@ -700,52 +718,63 @@ class ClusterVisualizer:
                 # ノイズは黒でプロット
                 mask = self.labels == label
                 ax.scatter(
-                    embeddings_2d[mask, 0], embeddings_2d[mask, 1],
-                    c='black', marker='x', s=50, alpha=0.5, label='Noise'
+                    embeddings_2d[mask, 0],
+                    embeddings_2d[mask, 1],
+                    c="black",
+                    marker="x",
+                    s=50,
+                    alpha=0.5,
+                    label="Noise",
                 )
             else:
                 mask = self.labels == label
                 ax.scatter(
-                    embeddings_2d[mask, 0], embeddings_2d[mask, 1],
-                    c=[color], s=100, alpha=0.6, label=f'Cluster {label}'
+                    embeddings_2d[mask, 0],
+                    embeddings_2d[mask, 1],
+                    c=[color],
+                    s=100,
+                    alpha=0.6,
+                    label=f"Cluster {label}",
                 )
 
-        ax.set_xlabel('t-SNE Component 1')
-        ax.set_ylabel('t-SNE Component 2')
-        ax.set_title('メッセージクラスタの2次元投影（t-SNE）')
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', ncol=2)
+        ax.set_xlabel("t-SNE Component 1")
+        ax.set_ylabel("t-SNE Component 2")
+        ax.set_title("メッセージクラスタの2次元投影（t-SNE）")
+        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", ncol=2)
 
         plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.close()
 
     def plot_temporal_clusters(self, output_path: Path):
         """時系列でのクラスタ分布を可視化"""
         df_with_labels = self.data.df.copy()
-        df_with_labels['cluster'] = self.labels
+        df_with_labels["cluster"] = self.labels
 
         # ノイズを除外
-        df_plot = df_with_labels[df_with_labels['cluster'] != -1].copy()
+        df_plot = df_with_labels[df_with_labels["cluster"] != -1].copy()
 
         if len(df_plot) == 0:
             print("  ! 有効なクラスタが無いため時系列可視化をスキップ")
             return
 
         # 日付ごとのクラスタカウント
-        df_plot['date'] = df_plot['start_time'].dt.date
-        cluster_counts = df_plot.groupby(['date', 'cluster']).size().unstack(fill_value=0)
+        df_plot["date"] = df_plot["start_time"].dt.date
+        cluster_counts = (
+            df_plot.groupby(["date", "cluster"]).size().unstack(fill_value=0)
+        )
 
         # プロット
         fig, ax = plt.subplots(figsize=(14, 6))
-        cluster_counts.plot(kind='area', stacked=True, ax=ax, alpha=0.7)
-        ax.set_xlabel('日付')
-        ax.set_ylabel('メッセージ数')
-        ax.set_title('時系列でのクラスタ分布')
-        ax.legend(title='クラスタ', bbox_to_anchor=(1.05, 1), loc='upper left')
+        cluster_counts.plot(kind="area", stacked=True, ax=ax, alpha=0.7)
+        ax.set_xlabel("日付")
+        ax.set_ylabel("メッセージ数")
+        ax.set_title("時系列でのクラスタ分布")
+        ax.legend(title="クラスタ", bbox_to_anchor=(1.05, 1), loc="upper left")
         ax.grid(alpha=0.3)
 
         plt.tight_layout()
-        plt.savefig(output_path, dpi=150, bbox_inches='tight')
+        plt.savefig(output_path, dpi=150, bbox_inches="tight")
         plt.close()
 
 
@@ -753,7 +782,7 @@ def run_clustering_with_config(
     csv_path: str,
     embedding_path: Optional[str],
     config: ClusteringConfig,
-    generate_embeddings: bool = True
+    generate_embeddings: bool = True,
 ) -> Tuple[MessageData, np.ndarray, Dict]:
     """
     設定に基づいてクラスタリングを実行
@@ -768,7 +797,9 @@ def run_clustering_with_config(
         (データ, ラベル, 評価指標)
     """
     # データ読み込み（埋め込み自動生成含む）
-    data = MessageData(csv_path, embedding_path, generate_embeddings=generate_embeddings)
+    data = MessageData(
+        csv_path, embedding_path, generate_embeddings=generate_embeddings
+    )
 
     # クラスタリング実行
     analyzer = ClusterAnalyzer(data, config)
@@ -784,7 +815,7 @@ def tune_parameters(
     csv_path: str,
     embedding_path: Optional[str],
     param_grid: Dict,
-    generate_embeddings: bool = True
+    generate_embeddings: bool = True,
 ) -> Dict:
     """
     パラメータチューニング
@@ -813,7 +844,7 @@ def tune_parameters(
     for i, combination in enumerate(product(*values)):
         params = dict(zip(keys, combination))
 
-        print(f"\n[{i+1}] パラメータ: {params}")
+        print(f"\n[{i + 1}] パラメータ: {params}")
 
         # 設定作成
         config = ClusteringConfig(**params)
@@ -821,14 +852,13 @@ def tune_parameters(
         try:
             # クラスタリング実行
             data, labels, metrics = run_clustering_with_config(
-                csv_path, embedding_path, config, generate_embeddings=generate_embeddings
+                csv_path,
+                embedding_path,
+                config,
+                generate_embeddings=generate_embeddings,
             )
 
-            result = {
-                'params': params,
-                'metrics': metrics,
-                'labels': labels
-            }
+            result = {"params": params, "metrics": metrics, "labels": labels}
             results.append(result)
 
             print(f"  結果: {metrics}")
@@ -838,7 +868,7 @@ def tune_parameters(
             continue
 
     # 最適パラメータを選定（シルエット係数を基準）
-    best_result = max(results, key=lambda x: x['metrics']['silhouette_score'])
+    best_result = max(results, key=lambda x: x["metrics"]["silhouette_score"])
 
     print("\n" + "=" * 60)
     print("最適パラメータ")
@@ -853,20 +883,75 @@ def main():
     """メイン処理"""
     import argparse
 
-    parser = argparse.ArgumentParser(description='メッセージクラスタリングシステム')
-    parser.add_argument('--embedding-weight', type=float, default=0.5, help='埋め込み重み (default: 0.5)')
-    parser.add_argument('--time-weight', type=float, default=0.2, help='時間重み (default: 0.2)')
-    parser.add_argument('--hierarchy-weight', type=float, default=0.3, help='階層重み (default: 0.3)')
-    parser.add_argument('--time-bandwidth-hours', type=float, default=168.0, help='時間カーネル帯域幅（時間） (default: 168.0)')
-    parser.add_argument('--method', type=str, default='hdbscan', choices=['hdbscan', 'hierarchical', 'kmeans_constrained'], help='クラスタリング手法 (default: hdbscan)')
-    parser.add_argument('--min-cluster-size', type=int, default=5, help='HDBSCANの最小クラスタサイズ (default: 5)')
-    parser.add_argument('--min-samples', type=int, default=3, help='HDBSCANの最小サンプル数 (default: 3)')
-    parser.add_argument('--n-clusters', type=int, default=None, help='階層的/k-meansのクラスタ数 (default: sqrt(n))')
-    parser.add_argument('--linkage', type=str, default='average', choices=['average', 'complete', 'single', 'ward'], help='階層的クラスタリングの結合法 (default: average)')
-    parser.add_argument('--size-min', type=int, default=10, help='k-means-constrainedの最小クラスタサイズ (default: 10)')
-    parser.add_argument('--size-max', type=int, default=50, help='k-means-constrainedの最大クラスタサイズ (default: 50)')
-    parser.add_argument('--n-init', type=int, default=10, help='k-meansの初期化回数 (default: 10)')
-    parser.add_argument('--max-iter', type=int, default=300, help='k-meansの最大反復回数 (default: 300)')
+    parser = argparse.ArgumentParser(description="メッセージクラスタリングシステム")
+    parser.add_argument(
+        "--embedding-weight",
+        type=float,
+        default=0.5,
+        help="埋め込み重み (default: 0.5)",
+    )
+    parser.add_argument(
+        "--time-weight", type=float, default=0.2, help="時間重み (default: 0.2)"
+    )
+    parser.add_argument(
+        "--hierarchy-weight", type=float, default=0.3, help="階層重み (default: 0.3)"
+    )
+    parser.add_argument(
+        "--time-bandwidth-hours",
+        type=float,
+        default=168.0,
+        help="時間カーネル帯域幅（時間） (default: 168.0)",
+    )
+    parser.add_argument(
+        "--method",
+        type=str,
+        default="hdbscan",
+        choices=["hdbscan", "hierarchical", "kmeans_constrained"],
+        help="クラスタリング手法 (default: hdbscan)",
+    )
+    parser.add_argument(
+        "--min-cluster-size",
+        type=int,
+        default=5,
+        help="HDBSCANの最小クラスタサイズ (default: 5)",
+    )
+    parser.add_argument(
+        "--min-samples",
+        type=int,
+        default=3,
+        help="HDBSCANの最小サンプル数 (default: 3)",
+    )
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        default=None,
+        help="階層的/k-meansのクラスタ数 (default: sqrt(n))",
+    )
+    parser.add_argument(
+        "--linkage",
+        type=str,
+        default="average",
+        choices=["average", "complete", "single", "ward"],
+        help="階層的クラスタリングの結合法 (default: average)",
+    )
+    parser.add_argument(
+        "--size-min",
+        type=int,
+        default=10,
+        help="k-means-constrainedの最小クラスタサイズ (default: 10)",
+    )
+    parser.add_argument(
+        "--size-max",
+        type=int,
+        default=50,
+        help="k-means-constrainedの最大クラスタサイズ (default: 50)",
+    )
+    parser.add_argument(
+        "--n-init", type=int, default=10, help="k-meansの初期化回数 (default: 10)"
+    )
+    parser.add_argument(
+        "--max-iter", type=int, default=300, help="k-meansの最大反復回数 (default: 300)"
+    )
     args = parser.parse_args()
 
     print("=" * 60)
@@ -891,7 +976,7 @@ def main():
         size_min=args.size_min,
         size_max=args.size_max,
         n_init=args.n_init,
-        max_iter=args.max_iter
+        max_iter=args.max_iter,
     )
 
     # クラスタリング実行
@@ -909,26 +994,26 @@ def main():
 
     # 結果をDataFrameに保存
     df_result = data.df.copy()
-    df_result['cluster'] = labels
+    df_result["cluster"] = labels
     output_csv = OUTPUT_DIR / "clustered_messages.csv"
-    df_result.to_csv(output_csv, index=False, encoding='utf-8')
+    df_result.to_csv(output_csv, index=False, encoding="utf-8")
     print(f"\n✓ クラスタリング結果を保存: {output_csv}")
 
     # メトリクスと設定を保存
     result_metadata = {
-        'metrics': metrics,
-        'config': {
-            'embedding_weight': config.embedding_weight,
-            'time_weight': config.time_weight,
-            'hierarchy_weight': config.hierarchy_weight,
-            'time_bandwidth_hours': config.time_bandwidth_hours,
-            'method': config.method,
-            'min_cluster_size': config.min_cluster_size,
-            'min_samples': config.min_samples
-        }
+        "metrics": metrics,
+        "config": {
+            "embedding_weight": config.embedding_weight,
+            "time_weight": config.time_weight,
+            "hierarchy_weight": config.hierarchy_weight,
+            "time_bandwidth_hours": config.time_bandwidth_hours,
+            "method": config.method,
+            "min_cluster_size": config.min_cluster_size,
+            "min_samples": config.min_samples,
+        },
     }
     metadata_path = OUTPUT_DIR / "clustering_metadata.json"
-    with open(metadata_path, 'w', encoding='utf-8') as f:
+    with open(metadata_path, "w", encoding="utf-8") as f:
         json.dump(result_metadata, f, ensure_ascii=False, indent=2)
     print(f"✓ メトリクスと設定を保存: {metadata_path}")
 

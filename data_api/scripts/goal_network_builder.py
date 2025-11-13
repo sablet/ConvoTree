@@ -50,9 +50,7 @@ class UltraIntentGoalNetworkBuilder:
             if 0 <= target_ultra_id < len(all_ultra_intents):
                 self.ultra_intents = [all_ultra_intents[target_ultra_id]]
                 self.target_ultra_id = target_ultra_id
-                print(
-                    f"✓ Ultra Intent {target_ultra_id} のみを処理対象としました"
-                )
+                print(f"✓ Ultra Intent {target_ultra_id} のみを処理対象としました")
             else:
                 raise ValueError(
                     f"Ultra Intent ID {target_ultra_id} は範囲外です "
@@ -86,7 +84,9 @@ class UltraIntentGoalNetworkBuilder:
             処理結果の辞書
         """
         ultra_intent = self.ultra_intents[list_idx]
-        ultra_idx = self.target_ultra_id if self.target_ultra_id is not None else list_idx
+        ultra_idx = (
+            self.target_ultra_id if self.target_ultra_id is not None else list_idx
+        )
         ultra_id = f"ultra_{ultra_idx}"
 
         # Ultra Intentノード情報
@@ -179,7 +179,9 @@ class UltraIntentGoalNetworkBuilder:
         raw_responses = {}
 
         # 各 Ultra Intent 配下の個別 intent 間のリレーション抽出（並列実行）
-        print("\n各 Ultra Intent 配下の個別 intent 間のゴール-手段リレーション抽出中...")
+        print(
+            "\n各 Ultra Intent 配下の個別 intent 間のゴール-手段リレーション抽出中..."
+        )
 
         # 並列実行用のインデックスリスト
         ultra_indices = list(range(len(self.ultra_intents)))
@@ -214,7 +216,7 @@ class UltraIntentGoalNetworkBuilder:
             if result["raw_response"]:
                 raw_responses[ultra_id] = {
                     "raw_response": result["raw_response"],
-                    "ultra_intent": result["ultra_node"]["intent"]
+                    "ultra_intent": result["ultra_node"]["intent"],
                 }
 
             # ログ出力
@@ -280,7 +282,11 @@ class UltraIntentGoalNetworkBuilder:
         return result
 
     def _print_statistics(
-        self, result: Dict, all_relations: List[Dict], all_nodes: Dict, raw_responses: Dict
+        self,
+        result: Dict,
+        all_relations: List[Dict],
+        all_nodes: Dict,
+        raw_responses: Dict,
     ):
         """
         構築されたゴールネットワークの統計情報を出力
@@ -303,7 +309,7 @@ class UltraIntentGoalNetworkBuilder:
             ultra_intent_text = response_data["ultra_intent"]
 
             # レスポンスの最初の行にUltra Intentが含まれているかチェック
-            first_line = raw_response.split('\n')[0] if raw_response else ""
+            first_line = raw_response.split("\n")[0] if raw_response else ""
             if ultra_id not in first_line or ultra_intent_text not in first_line:
                 missing_root_ultras.append(ultra_id)
 
@@ -312,7 +318,9 @@ class UltraIntentGoalNetworkBuilder:
             for ultra_id in missing_root_ultras:
                 print(f"    - {ultra_id}")
         else:
-            print(f"  ✓ 全てのLLMレスポンスにUltra Intentが含まれています ({len(raw_responses)}件)")
+            print(
+                f"  ✓ 全てのLLMレスポンスにUltra Intentが含まれています ({len(raw_responses)}件)"
+            )
 
         # 2. 入力intentの網羅率
         print("\n[2] 入力intentの網羅率")
@@ -322,9 +330,7 @@ class UltraIntentGoalNetworkBuilder:
 
         # ノードに含まれるintent（generated以外）
         covered_intent_nodes = [
-            node_id
-            for node_id, node in all_nodes.items()
-            if node["type"] == "intent"
+            node_id for node_id, node in all_nodes.items() if node["type"] == "intent"
         ]
 
         coverage_rate = (
@@ -347,7 +353,9 @@ class UltraIntentGoalNetworkBuilder:
         print(f"  生成ノード数: {len(generated_nodes)}件")
 
         if generated_nodes:
-            print(f"  生成割合: {len(generated_nodes) / total_input_intents * 100:.1f}%")
+            print(
+                f"  生成割合: {len(generated_nodes) / total_input_intents * 100:.1f}%"
+            )
             print("  生成ノード一覧:")
             for gen_node in generated_nodes[:5]:  # 最初の5件のみ表示
                 node_id = gen_node.get("intent_id", "N/A")
@@ -359,7 +367,11 @@ class UltraIntentGoalNetworkBuilder:
         print("\n" + "=" * 60)
 
     def _extract_intent_relations_under_ultra(
-        self, ultra_idx: int, ultra_id: str, covered_intents: List[Dict], ultra_intent: Dict
+        self,
+        ultra_idx: int,
+        ultra_id: str,
+        covered_intents: List[Dict],
+        ultra_intent: Dict,
     ) -> Dict:
         """
         1つの Ultra Intent 配下の個別 intent 間のゴール-手段リレーションをLLMで抽出
@@ -413,10 +425,14 @@ class UltraIntentGoalNetworkBuilder:
                 ultra_text = ultra_intent.get("ultra_intent", "")
                 ultra_props = []
                 if ultra_intent.get("objective_facts"):
-                    ultra_props.append(f'objective_facts="{ultra_intent["objective_facts"]}"')
+                    ultra_props.append(
+                        f'objective_facts="{ultra_intent["objective_facts"]}"'
+                    )
                 if ultra_intent.get("context"):
                     ultra_props.append(f'context="{ultra_intent["context"]}"')
-                ultra_props.append(f'status={ultra_intent.get("aggregate_status", "idea")}')
+                ultra_props.append(
+                    f"status={ultra_intent.get('aggregate_status', 'idea')}"
+                )
                 ultra_props.append(f"id={ultra_id}")
                 root_info = f"{ultra_text} {{{' '.join(ultra_props)}}}"
 
@@ -483,7 +499,7 @@ class UltraIntentGoalNetworkBuilder:
             ultra_props.append(f'objective_facts="{ultra_intent["objective_facts"]}"')
         if ultra_intent.get("context"):
             ultra_props.append(f'context="{ultra_intent["context"]}"')
-        ultra_props.append(f'status={ultra_intent.get("aggregate_status", "idea")}')
+        ultra_props.append(f"status={ultra_intent.get('aggregate_status', 'idea')}")
         ultra_props.append(f"id={ultra_id}")
         root_ultra_intent = f"{ultra_text} {{{' '.join(ultra_props)}}}"
 
@@ -500,7 +516,7 @@ class UltraIntentGoalNetworkBuilder:
                 props.append(f'objective_facts="{intent["objective_facts"]}"')
             if intent.get("context"):
                 props.append(f'context="{intent["context"]}"')
-            props.append(f'status={intent.get("status", "idea")}')
+            props.append(f"status={intent.get('status', 'idea')}")
             props.append(f"id={intent_id}")
 
             formatted = f"{intent_text} {{{' '.join(props)}}}"
@@ -578,9 +594,7 @@ class UltraIntentGoalNetworkBuilder:
                     context = match_context.group(1) if match_context else ""
 
                     # objective_factsを抽出（任意）
-                    match_facts = re.search(
-                        r'objective_facts="([^"]*)"', line_stripped
-                    )
+                    match_facts = re.search(r'objective_facts="([^"]*)"', line_stripped)
                     objective_facts = match_facts.group(1) if match_facts else ""
 
                     generated_nodes.append(
@@ -661,7 +675,9 @@ class UltraIntentGoalNetworkBuilder:
         intent_def_match = re.search(
             r"## intent の定義\n\n(.+?)(?=\n## |\Z)", common_content, re.DOTALL
         )
-        intent_definition = intent_def_match.group(1).strip() if intent_def_match else ""
+        intent_definition = (
+            intent_def_match.group(1).strip() if intent_def_match else ""
+        )
 
         # objective_facts_definition を抽出
         facts_def_match = re.search(
@@ -921,7 +937,7 @@ class GoalNetworkBuilder:
         # プロンプト作成（新形式: {} プロパティ記法、冗長なintentフィールドは除く）
         intents_text = "\n".join(
             [
-                f"{i+1}. {intent['text']} {{id={intent['id']}}}"
+                f"{i + 1}. {intent['text']} {{id={intent['id']}}}"
                 for i, intent in enumerate(intents_list)
             ]
         )

@@ -26,3 +26,27 @@ dependencies = [
 
 [project.scripts]
 test-gemini = "test_gemini_api:main"
+
+[dependency-groups]
+dev = [
+    "deptry>=0.23.1",
+    "mypy>=1.18.2",
+    "pylint>=4.0.2",
+    "ruff>=0.14.4",
+    "vulture>=2.14",
+    "xenon>=0.9.3",
+]
+
+[tool.pylint.main]
+disable = "all"
+enable = "too-many-lines"
+
+[tool.pylint.format]
+max-module-lines = 500
+
+[tool.deptry]
+extend_exclude = ["output"]
+ignore_notebooks = true
+
+[tool.deptry.per_rule_ignores]
+DEP004 = ["pytest"]  # pytest is dev dependency but used in test files
