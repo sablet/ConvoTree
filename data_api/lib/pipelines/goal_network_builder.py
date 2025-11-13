@@ -9,8 +9,8 @@
 import json
 import sys
 from pathlib import Path
-from typing import List, Dict, Optional
-import pandas as pd
+from typing import List, Dict, Optional, Tuple
+import pandas as pd  # type: ignore[import-untyped]
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -26,12 +26,22 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # テンプレートディレクトリ
 TEMPLATE_DIR = Path("templates")
 
+# ゴールネットワーク構築用定数
+MIN_COVERED_INTENTS = (
+    2  # Ultra Intent配下のIntentが少なすぎる場合にリレーション抽出をスキップ
+)
+FULL_COVERAGE_RATE = 100  # 完全網羅率（パーセント）
+MAX_DISPLAY_NODES = 5  # レポート表示時の最大ノード表示数
+
 
 class UltraIntentGoalNetworkBuilder:
     """Ultra Intentsをルートとしたゴールネットワークの構築"""
 
     def __init__(
-        self, ultra_intents_path: str, target_ultra_id: int = None, save_prompts=False
+        self,
+        ultra_intents_path: str,
+        target_ultra_id: Optional[int] = None,
+        save_prompts: bool = False,
     ):
         """
         Args:
@@ -46,6 +56,7 @@ class UltraIntentGoalNetworkBuilder:
         all_ultra_intents = self.data.get("ultra_intents", [])
 
         # target_ultra_id が指定されている場合はフィルタ
+        self.target_ultra_id: int | None
         if target_ultra_id is not None:
             if 0 <= target_ultra_id < len(all_ultra_intents):
                 self.ultra_intents = [all_ultra_intents[target_ultra_id]]
@@ -53,8 +64,7 @@ class UltraIntentGoalNetworkBuilder:
                 print(f"✓ Ultra Intent {target_ultra_id} のみを処理対象としました")
             else:
                 raise ValueError(
-                    f"Ultra Intent ID {target_ultra_id} は範囲外です "
-                    f"(有効範囲: 0-{len(all_ultra_intents) - 1})"
+                    f"Ultra Intent ID {target_ultra_id} は範囲外です (有効範囲: 0-{len(all_ultra_intents) - 1})"
                 )
         else:
             self.ultra_intents = all_ultra_intents
@@ -123,11 +133,11 @@ class UltraIntentGoalNetworkBuilder:
                 "source_full_paths": intent.get("source_full_paths", []),
             }
 
-        if len(covered_intents) < 2:
+        if len(covered_intents) < MIN_COVERED_INTENTS:
             # スキップ: 親子リレーションのみ
             relations = [
                 {"from": intent_id, "to": ultra_id, "type": "goal-means"}
-                for intent_id in intent_nodes.keys()
+                for intent_id in intent_nodes
             ]
             return {
                 "ultra_idx": ultra_idx,
@@ -287,7 +297,7 @@ class UltraIntentGoalNetworkBuilder:
         all_relations: List[Dict],
         all_nodes: Dict,
         raw_responses: Dict,
-    ):
+    ) -> None:
         """
         構築されたゴールネットワークの統計情報を出力
 
@@ -343,7 +353,7 @@ class UltraIntentGoalNetworkBuilder:
         print(f"  出力に含まれるintent数: {len(covered_intent_nodes)}件")
         print(f"  網羅率: {coverage_rate:.1f}%")
 
-        if coverage_rate < 100:
+        if coverage_rate < FULL_COVERAGE_RATE:
             missing_count = total_input_intents - len(covered_intent_nodes)
             print(f"  ⚠️  警告: {missing_count}件のintentが欠落しています")
 
@@ -357,14 +367,68 @@ class UltraIntentGoalNetworkBuilder:
                 f"  生成割合: {len(generated_nodes) / total_input_intents * 100:.1f}%"
             )
             print("  生成ノード一覧:")
-            for gen_node in generated_nodes[:5]:  # 最初の5件のみ表示
+            for gen_node in generated_nodes[:MAX_DISPLAY_NODES]:  # 最初の数件のみ表示
                 node_id = gen_node.get("intent_id", "N/A")
                 intent_text = gen_node.get("intent", "N/A")
                 print(f"    - {node_id}: {intent_text}")
-            if len(generated_nodes) > 5:
-                print(f"    ... 他{len(generated_nodes) - 5}件")
+            if len(generated_nodes) > MAX_DISPLAY_NODES:
+                print(f"    ... 他{len(generated_nodes) - MAX_DISPLAY_NODES}件")
 
         print("\n" + "=" * 60)
+
+    def _save_ultra_prompts_and_responses(
+        self, ultra_idx: int, ultra_id: str, ultra_intent: Dict, result: Dict
+    ) -> None:
+        """Ultra Intentのプロンプト/レスポンスを保存"""
+        if not self.save_prompts:
+            return
+
+        # プロンプトを保存
+        prompt_file = (
+            self.ultra_prompt_dir / f"intent_relations_ultra_{ultra_idx}_prompt.md"
+        )
+        with open(prompt_file, "w", encoding="utf-8") as f:
+            f.write(result.get("prompt", ""))
+        print(f"    💾 プロンプトを保存: {prompt_file}")
+
+        # 生のMarkdownレスポンスを保存（ルート情報付き）
+        raw_response_file = (
+            self.ultra_prompt_dir
+            / f"intent_relations_ultra_{ultra_idx}_raw_response.md"
+        )
+        root_info = self._format_ultra_root_info(ultra_intent, ultra_id)
+        with open(raw_response_file, "w", encoding="utf-8") as f:
+            f.write("# Ultra Intent 配下の個別 Intent 階層構造\n\n")
+            f.write("## ルート: Ultra Intent\n")
+            f.write(f"{root_info}\n\n")
+            f.write("## 階層構造（LLMレスポンス）\n")
+            f.write(result.get("raw_response", ""))
+        print(f"    💾 生レスポンスを保存: {raw_response_file}")
+
+        # パース済みJSON（relations + generated_nodes）を保存
+        parsed_file = (
+            self.ultra_prompt_dir / f"intent_relations_ultra_{ultra_idx}_parsed.json"
+        )
+        parsed_result = {
+            "relations": result["relations"],
+            "generated_nodes": result["generated_nodes"],
+        }
+        with open(parsed_file, "w", encoding="utf-8") as f:
+            json.dump(parsed_result, f, ensure_ascii=False, indent=2)
+        print(f"    💾 パース済みJSONを保存: {parsed_file}")
+
+    @staticmethod
+    def _format_ultra_root_info(ultra_intent: Dict, ultra_id: str) -> str:
+        """Ultra Intentのルート情報を整形"""
+        ultra_text = ultra_intent.get("ultra_intent", "")
+        ultra_props = []
+        if ultra_intent.get("objective_facts"):
+            ultra_props.append(f'objective_facts="{ultra_intent["objective_facts"]}"')
+        if ultra_intent.get("context"):
+            ultra_props.append(f'context="{ultra_intent["context"]}"')
+        ultra_props.append(f"status={ultra_intent.get('aggregate_status', 'idea')}")
+        ultra_props.append(f"id={ultra_id}")
+        return f"{ultra_text} {{{' '.join(ultra_props)}}}"
 
     def _extract_intent_relations_under_ultra(
         self,
@@ -406,59 +470,14 @@ class UltraIntentGoalNetworkBuilder:
         result["relations"] = relations
 
         # プロンプト/レスポンスを保存
-        if self.save_prompts:
-            # プロンプトを保存
-            prompt_file = (
-                self.ultra_prompt_dir / f"intent_relations_ultra_{ultra_idx}_prompt.md"
-            )
-            with open(prompt_file, "w", encoding="utf-8") as f:
-                f.write(result.get("prompt", ""))
-            print(f"    💾 プロンプトを保存: {prompt_file}")
-
-            # 生のMarkdownレスポンスを保存（ルート情報付き）
-            raw_response_file = (
-                self.ultra_prompt_dir
-                / f"intent_relations_ultra_{ultra_idx}_raw_response.md"
-            )
-            with open(raw_response_file, "w", encoding="utf-8") as f:
-                # ヘッダーとルート情報を追加
-                ultra_text = ultra_intent.get("ultra_intent", "")
-                ultra_props = []
-                if ultra_intent.get("objective_facts"):
-                    ultra_props.append(
-                        f'objective_facts="{ultra_intent["objective_facts"]}"'
-                    )
-                if ultra_intent.get("context"):
-                    ultra_props.append(f'context="{ultra_intent["context"]}"')
-                ultra_props.append(
-                    f"status={ultra_intent.get('aggregate_status', 'idea')}"
-                )
-                ultra_props.append(f"id={ultra_id}")
-                root_info = f"{ultra_text} {{{' '.join(ultra_props)}}}"
-
-                f.write("# Ultra Intent 配下の個別 Intent 階層構造\n\n")
-                f.write("## ルート: Ultra Intent\n")
-                f.write(f"{root_info}\n\n")
-                f.write("## 階層構造（LLMレスポンス）\n")
-                f.write(result.get("raw_response", ""))
-            print(f"    💾 生レスポンスを保存: {raw_response_file}")
-
-            # パース済みJSON（relations + generated_nodes）を保存
-            parsed_file = (
-                self.ultra_prompt_dir
-                / f"intent_relations_ultra_{ultra_idx}_parsed.json"
-            )
-            parsed_result = {
-                "relations": result["relations"],
-                "generated_nodes": result["generated_nodes"],
-            }
-            with open(parsed_file, "w", encoding="utf-8") as f:
-                json.dump(parsed_result, f, ensure_ascii=False, indent=2)
-            print(f"    💾 パース済みJSONを保存: {parsed_file}")
+        self._save_ultra_prompts_and_responses(
+            ultra_idx, ultra_id, ultra_intent, result
+        )
 
         return result
 
-    def save_network(self, network: Dict, output_path: Path = None):
+    @staticmethod
+    def save_network(network: Dict, output_path: Optional[Path] = None) -> None:
         """ゴールネットワークをJSONファイルに保存"""
         if output_path is None:
             output_path = OUTPUT_DIR / "ultra_intent_goal_network.json"
@@ -468,6 +487,226 @@ class UltraIntentGoalNetworkBuilder:
             json.dump(network, f, ensure_ascii=False, indent=2)
 
         print(f"\n💾 ゴールネットワークを保存: {output_path}")
+
+    @staticmethod
+    def _clean_markdown_response(response_text: str) -> str:
+        """Markdownコードブロックを除去"""
+        if response_text.startswith("```markdown"):
+            return response_text.replace("```markdown", "").replace("```", "").strip()
+        if response_text.startswith("```"):
+            return response_text.replace("```", "").strip()
+        return response_text
+
+    @staticmethod
+    def _extract_node_info(line_stripped: str, intent_id: str) -> Dict:
+        """generated_XXX または ultra_XXX ノードの情報を抽出"""
+        import re
+
+        # ラベルテキストから抽出: "- テキスト {..." の形式
+        match_label = re.match(r"^[\s\-\*]+(.+?)\s*\{", line_stripped)
+        intent_text = match_label.group(1).strip() if match_label else ""
+
+        # statusを抽出
+        match_status = re.search(r"status=(\w+)", line_stripped)
+        status = match_status.group(1) if match_status else "idea"
+
+        # contextを抽出（任意）
+        match_context = re.search(r'context="([^"]*)"', line_stripped)
+        context = match_context.group(1) if match_context else ""
+
+        # objective_factsを抽出（任意）
+        match_facts = re.search(r'objective_facts="([^"]*)"', line_stripped)
+        objective_facts = match_facts.group(1) if match_facts else ""
+
+        return {
+            "intent_id": intent_id,
+            "intent": intent_text,
+            "status": status,
+            "context": context,
+            "objective_facts": objective_facts,
+        }
+
+    @staticmethod
+    def _parse_line_with_level(line: str) -> Optional[Dict[str, int | str | None]]:
+        """行からインデントレベルとIntent IDを抽出"""
+        import re
+
+        line_stripped = line.rstrip()
+        if not line_stripped or not line_stripped.lstrip().startswith(("-", "*")):
+            return None
+
+        # インデントレベルを計算（2スペースごとに1レベル）
+        indent = len(line) - len(line.lstrip())
+        level: int = indent // 2
+
+        # Intent IDを抽出（intent_XXXXX, generated_XXX, ultra_XXX 対応）
+        match_id = re.search(
+            r"\{[^}]*id=(intent_\d+_\d+|generated_\d+|ultra_\d+)[^}]*\}",
+            line_stripped,
+        )
+        intent_id = match_id.group(1) if match_id else None
+
+        return {"level": level, "intent_id": intent_id, "text": line_stripped}
+
+    @staticmethod
+    def _build_hierarchical_relations(
+        lines_with_level: List[Dict[str, int | str | None]],
+    ) -> List[Dict]:
+        """階層構造をたどってリレーションを構築"""
+        relations = []
+        for i, current in enumerate(lines_with_level):
+            if current["intent_id"] is None:
+                continue
+
+            # 親を探す
+            parent_id = None
+            current_level = current["level"]
+            for j in range(i - 1, -1, -1):
+                # level is always int from indent // 2
+                prev_level = lines_with_level[j]["level"]
+                if (
+                    isinstance(prev_level, int)
+                    and isinstance(current_level, int)
+                    and prev_level < current_level
+                    and lines_with_level[j]["intent_id"]
+                ):
+                    parent_id = lines_with_level[j]["intent_id"]
+                    break
+
+            # 親が見つかった場合、リレーションを追加
+            if parent_id:
+                relations.append(
+                    {
+                        "from": current["intent_id"],
+                        "to": parent_id,
+                        "type": "goal-means",
+                    }
+                )
+        return relations
+
+    @staticmethod
+    def _format_intents_list(
+        intents_df: pd.DataFrame, use_intent_id: bool
+    ) -> List[Dict]:
+        """DataFrameからIntentリストを整形"""
+        intents_list = []
+        for i, (_idx, row) in enumerate(intents_df.iterrows()):
+            if use_intent_id and "intent_id" in intents_df.columns:
+                intent_id = row["intent_id"]
+            else:
+                intent_id = (
+                    row["intent_id"]
+                    if "intent_id" in intents_df.columns
+                    else f"intent_{i}"
+                )
+
+            intents_list.append({"id": intent_id, "text": row["intent"]})
+        return intents_list
+
+    def _parse_relations_and_nodes(
+        self, response_text: str
+    ) -> Tuple[List[Dict], List[Dict]]:
+        """レスポンステキストからリレーションとノードを抽出"""
+        relations = []
+        generated_nodes = []
+        lines_with_level: List[Dict[str, int | str | None]] = []
+
+        for line in response_text.split("\n"):
+            parsed = self._parse_line_with_level(line)
+            if parsed is None:
+                continue
+
+            intent_id = parsed["intent_id"]
+            # generated_XXX または ultra_XXX の場合、ノード情報を抽出
+            if (
+                intent_id
+                and isinstance(intent_id, str)
+                and (
+                    intent_id.startswith("generated_") or intent_id.startswith("ultra_")
+                )
+            ):
+                node_info = self._extract_node_info(parsed["text"], intent_id)  # type: ignore[arg-type]
+                generated_nodes.append(node_info)
+
+            lines_with_level.append(parsed)
+
+        # 階層構造をたどってリレーションを構築
+        relations = self._build_hierarchical_relations(lines_with_level)
+
+        return relations, generated_nodes
+
+    @staticmethod
+    def _format_ultra_intent_with_props(ultra_intent: Dict, ultra_id: str) -> str:
+        """Ultra intentをプロパティ付きでフォーマット"""
+        ultra_text = ultra_intent.get("ultra_intent", "")
+        ultra_props = []
+        if ultra_intent.get("objective_facts"):
+            ultra_props.append(f'objective_facts="{ultra_intent["objective_facts"]}"')
+        if ultra_intent.get("context"):
+            ultra_props.append(f'context="{ultra_intent["context"]}"')
+        ultra_props.append(f"status={ultra_intent.get('aggregate_status', 'idea')}")
+        ultra_props.append(f"id={ultra_id}")
+        return f"{ultra_text} {{{' '.join(ultra_props)}}}"
+
+    @staticmethod
+    def _format_intent_list_with_props(covered_intents: List[Dict]) -> str:
+        """Intentリストをプロパティ付きでフォーマット"""
+        intent_lines = []
+        for idx, intent in enumerate(covered_intents):
+            intent_id = (
+                intent.get("intent_id") or f"intent_{intent.get('cluster_id')}_unknown"
+            )
+            intent_text = intent.get("intent", "")
+            props = []
+            if intent.get("objective_facts"):
+                props.append(f'objective_facts="{intent["objective_facts"]}"')
+            if intent.get("context"):
+                props.append(f'context="{intent["context"]}"')
+            props.append(f"status={intent.get('status', 'idea')}")
+            props.append(f"id={intent_id}")
+            formatted = f"{intent_text} {{{' '.join(props)}}}"
+            intent_lines.append(f"{idx + 1}. {formatted}")
+        return "\n".join(intent_lines)
+
+    def _build_ultra_prompt(
+        self, root_ultra_intent: str, ultra_id: str, intents_text: str
+    ) -> str:
+        """Ultra専用プロンプトを構築"""
+        template_path = TEMPLATE_DIR / "ultra_sub_intent_relations_prompt.md"
+        with open(template_path, "r", encoding="utf-8") as f:
+            prompt_template = f.read()
+        prompt_template = self._expand_common_placeholders(prompt_template)
+        prompt = prompt_template.replace("{root_ultra_intent}", root_ultra_intent)
+        prompt = prompt.replace("{root_id}", ultra_id)
+        return prompt.replace("{intents_text}", intents_text)
+
+    def _parse_response_and_extract_relations(
+        self, response_text: str
+    ) -> tuple[list, list]:
+        """レスポンスをパースしてリレーションとノードを抽出"""
+        generated_nodes = []
+        lines_with_level: List[Dict[str, int | str | None]] = []
+
+        for line in response_text.split("\n"):
+            parsed = self._parse_line_with_level(line)
+            if parsed is None:
+                continue
+
+            intent_id = parsed["intent_id"]
+            if (
+                intent_id
+                and isinstance(intent_id, str)
+                and (
+                    intent_id.startswith("generated_") or intent_id.startswith("ultra_")
+                )
+            ):
+                node_info = self._extract_node_info(parsed["text"], intent_id)  # type: ignore[arg-type]
+                generated_nodes.append(node_info)
+
+            lines_with_level.append(parsed)
+
+        relations = self._build_hierarchical_relations(lines_with_level)
+        return relations, generated_nodes
 
     def _extract_ultra_sub_intent_relations(
         self, ultra_intent: Dict, ultra_idx: int, covered_intents: List[Dict]
@@ -488,153 +727,25 @@ class UltraIntentGoalNetworkBuilder:
                 "prompt": str
             }
         """
-        import re
-
         ultra_id = f"ultra_{ultra_idx}"
-
-        # ルート Ultra Intent を整形
-        ultra_text = ultra_intent.get("ultra_intent", "")
-        ultra_props = []
-        if ultra_intent.get("objective_facts"):
-            ultra_props.append(f'objective_facts="{ultra_intent["objective_facts"]}"')
-        if ultra_intent.get("context"):
-            ultra_props.append(f'context="{ultra_intent["context"]}"')
-        ultra_props.append(f"status={ultra_intent.get('aggregate_status', 'idea')}")
-        ultra_props.append(f"id={ultra_id}")
-        root_ultra_intent = f"{ultra_text} {{{' '.join(ultra_props)}}}"
-
-        # 個別 intent リストを整形
-        intent_lines = []
-        for idx, intent in enumerate(covered_intents):
-            intent_id = intent.get("intent_id")
-            if not intent_id:
-                intent_id = f"intent_{intent.get('cluster_id')}_unknown"
-
-            intent_text = intent.get("intent", "")
-            props = []
-            if intent.get("objective_facts"):
-                props.append(f'objective_facts="{intent["objective_facts"]}"')
-            if intent.get("context"):
-                props.append(f'context="{intent["context"]}"')
-            props.append(f"status={intent.get('status', 'idea')}")
-            props.append(f"id={intent_id}")
-
-            formatted = f"{intent_text} {{{' '.join(props)}}}"
-            intent_lines.append(f"{idx + 1}. {formatted}")
-
-        intents_text = "\n".join(intent_lines)
-
-        # Ultra専用テンプレート読み込み
-        template_path = TEMPLATE_DIR / "ultra_sub_intent_relations_prompt.md"
-        with open(template_path, "r", encoding="utf-8") as f:
-            prompt_template = f.read()
-
-        # common プレースホルダーを展開
-        prompt_template = self._expand_common_placeholders(prompt_template)
-
-        # プレースホルダーを置換
-        prompt = prompt_template.replace("{root_ultra_intent}", root_ultra_intent)
-        prompt = prompt.replace("{root_id}", ultra_id)
-        prompt = prompt.replace("{intents_text}", intents_text)
+        root_ultra_intent = (
+            UltraIntentGoalNetworkBuilder._format_ultra_intent_with_props(
+                ultra_intent, ultra_id
+            )
+        )
+        intents_text = UltraIntentGoalNetworkBuilder._format_intent_list_with_props(
+            covered_intents
+        )
+        prompt = self._build_ultra_prompt(root_ultra_intent, ultra_id, intents_text)
 
         try:
-            # Gemini API呼び出し
             model = gemini_client.GenerativeModel()
             response = model.generate_content(prompt)
+            response_text = self._clean_markdown_response(response.text.strip())
+            relations, generated_nodes = self._parse_response_and_extract_relations(
+                response_text
+            )
 
-            # Markdownリストをパース
-            response_text = response.text.strip()
-
-            # Markdownコードブロックを除去
-            if response_text.startswith("```markdown"):
-                response_text = (
-                    response_text.replace("```markdown", "").replace("```", "").strip()
-                )
-            elif response_text.startswith("```"):
-                response_text = response_text.replace("```", "").strip()
-
-            # リレーションとノード情報を抽出（多階層対応）
-            relations = []
-            generated_nodes = []
-
-            # 各行のインデントレベルとIntent IDを抽出
-            lines_with_level = []
-            for line in response_text.split("\n"):
-                line_stripped = line.rstrip()
-                if not line_stripped or not line_stripped.lstrip().startswith(
-                    ("-", "*")
-                ):
-                    continue
-
-                # インデントレベルを計算（2スペースごとに1レベル）
-                indent = len(line) - len(line.lstrip())
-                level = indent // 2
-
-                # Intent IDを抽出（intent_XXXXX, generated_XXX, ultra_XXX 対応）
-                match_id = re.search(
-                    r"\{[^}]*id=(intent_\d+_\d+|generated_\d+|ultra_\d+)[^}]*\}",
-                    line_stripped,
-                )
-                intent_id = match_id.group(1) if match_id else None
-
-                # generated_XXX または ultra_XXX の場合、ノード情報を抽出
-                if intent_id and (
-                    intent_id.startswith("generated_") or intent_id.startswith("ultra_")
-                ):
-                    # ラベルテキストから抽出: "- テキスト {..." の形式
-                    match_label = re.match(r"^[\s\-\*]+(.+?)\s*\{", line_stripped)
-                    intent_text = match_label.group(1).strip() if match_label else ""
-
-                    # statusを抽出
-                    match_status = re.search(r"status=(\w+)", line_stripped)
-                    status = match_status.group(1) if match_status else "idea"
-
-                    # contextを抽出（任意）
-                    match_context = re.search(r'context="([^"]*)"', line_stripped)
-                    context = match_context.group(1) if match_context else ""
-
-                    # objective_factsを抽出（任意）
-                    match_facts = re.search(r'objective_facts="([^"]*)"', line_stripped)
-                    objective_facts = match_facts.group(1) if match_facts else ""
-
-                    generated_nodes.append(
-                        {
-                            "intent_id": intent_id,
-                            "intent": intent_text,
-                            "status": status,
-                            "context": context,
-                            "objective_facts": objective_facts,
-                        }
-                    )
-
-                lines_with_level.append(
-                    {"level": level, "intent_id": intent_id, "text": line_stripped}
-                )
-
-            # 階層構造をたどってリレーションを構築
-            for i, current in enumerate(lines_with_level):
-                if current["intent_id"] is None:
-                    continue
-
-                # 親を探す
-                parent_id = None
-                for j in range(i - 1, -1, -1):
-                    if lines_with_level[j]["level"] < current["level"]:
-                        if lines_with_level[j]["intent_id"]:
-                            parent_id = lines_with_level[j]["intent_id"]
-                            break
-
-                # 親が見つかった場合、リレーションを追加
-                if parent_id:
-                    relations.append(
-                        {
-                            "from": current["intent_id"],
-                            "to": parent_id,
-                            "type": "goal-means",
-                        }
-                    )
-
-            # 結果を返す（クリーンアップ済みのresponse_textを使用）
             return {
                 "relations": relations,
                 "generated_nodes": generated_nodes,
@@ -654,7 +765,8 @@ class UltraIntentGoalNetworkBuilder:
                 "prompt": prompt if "prompt" in locals() else "",
             }
 
-    def _expand_common_placeholders(self, template: str) -> str:
+    @staticmethod
+    def _expand_common_placeholders(template: str) -> str:
         """
         {{common:xxx}} プレースホルダーを展開
 
@@ -692,12 +804,10 @@ class UltraIntentGoalNetworkBuilder:
             "{{common:intent_definition}}",
             f"## Intent（意図）の定義\n\n{intent_definition}",
         )
-        template = template.replace(
+        return template.replace(
             "{{common:objective_facts_definition}}",
             f"## objective_facts（客観的根拠）の判定基準\n\n{objective_facts_definition}",
         )
-
-        return template
 
 
 class GoalNetworkBuilder:
@@ -715,7 +825,7 @@ class GoalNetworkBuilder:
         print(f"✓ {len(self.clusters)}個のクラスタが存在します")
 
     def build_cluster_relations(
-        self, target_cluster_ids: List[int] = None
+        self, target_cluster_ids: List[int] | None = None
     ) -> Dict[int, List[Dict]]:
         """
         クラスタごとに目的→手段リレーションを抽出
@@ -726,7 +836,7 @@ class GoalNetworkBuilder:
         Returns:
             {cluster_id: [{"from": intent_id, "to": intent_id, "type": "goal-means"}, ...]}
         """
-        cluster_relations = {}
+        cluster_relations: Dict[int, List[Dict]] = {}
         all_generated_nodes = []
 
         print("\n" + "=" * 60)
@@ -746,7 +856,7 @@ class GoalNetworkBuilder:
             print(f"\nクラスタ {cluster_id} を処理中...")
             cluster_intents = self.df[self.df["cluster"] == cluster_id]
 
-            if len(cluster_intents) < 2:
+            if len(cluster_intents) < MIN_COVERED_INTENTS:
                 print(f"  ⚠️  スキップ（インテント数: {len(cluster_intents)}）")
                 cluster_relations[int(cluster_id)] = []
                 continue
@@ -799,9 +909,9 @@ class GoalNetworkBuilder:
         print("=" * 60)
 
         # 各Intentの「目的」としての参照回数をカウント
-        intent_as_goal_count = {}
+        intent_as_goal_count: Dict[str, int] = {}
 
-        for cluster_id, relations in cluster_relations.items():
+        for _cluster_id, relations in cluster_relations.items():
             for rel in relations:
                 # "to"が目的、"from"が手段
                 to_intent_id = rel["to"]
@@ -813,7 +923,7 @@ class GoalNetworkBuilder:
         hub_intents = []
 
         # cluster_relationsに含まれるクラスタのみ処理
-        target_clusters = sorted([int(c) for c in cluster_relations.keys()])
+        target_clusters = sorted([int(c) for c in cluster_relations])
         print(f"対象クラスタ: {target_clusters}")
 
         for cluster_id in target_clusters:
@@ -867,7 +977,7 @@ class GoalNetworkBuilder:
         print("ハブIntent間リレーション構築")
         print("=" * 60)
 
-        if len(hub_intents) < 2:
+        if len(hub_intents) < MIN_COVERED_INTENTS:
             print("  ⚠️  ハブIntentが不足（2件未満）")
             # 空のファイルを保存
             output_path = OUTPUT_DIR / "hub_relations.json"
@@ -902,8 +1012,9 @@ class GoalNetworkBuilder:
 
         return relations
 
+    @staticmethod
     def _extract_goal_means_relations(
-        self, intents_df: pd.DataFrame, use_intent_id: bool = False
+        intents_df: pd.DataFrame, use_intent_id: bool = False
     ) -> Dict:
         """
         LLMを使用して目的→手段リレーションを抽出
@@ -921,18 +1032,9 @@ class GoalNetworkBuilder:
             }
         """
         # Intentリストを整形
-        intents_list = []
-        for i, (idx, row) in enumerate(intents_df.iterrows()):
-            if use_intent_id and "intent_id" in intents_df.columns:
-                intent_id = row["intent_id"]
-            else:
-                intent_id = (
-                    row["intent_id"]
-                    if "intent_id" in intents_df.columns
-                    else f"intent_{i}"
-                )
-
-            intents_list.append({"id": intent_id, "text": row["intent"]})
+        intents_list = UltraIntentGoalNetworkBuilder._format_intents_list(
+            intents_df, use_intent_id
+        )
 
         # プロンプト作成（新形式: {} プロパティ記法、冗長なintentフィールドは除く）
         intents_text = "\n".join(
@@ -956,107 +1058,18 @@ class GoalNetworkBuilder:
             response = model.generate_content(prompt)
 
             # Markdownリストをパース
-            response_text = response.text.strip()
-
-            # Markdownコードブロックを除去
-            if response_text.startswith("```markdown"):
-                response_text = (
-                    response_text.replace("```markdown", "").replace("```", "").strip()
-                )
-            elif response_text.startswith("```"):
-                response_text = response_text.replace("```", "").strip()
+            response_text = UltraIntentGoalNetworkBuilder._clean_markdown_response(
+                response.text.strip()
+            )
 
             # リレーションとノード情報を抽出（多階層対応）
-            relations = []
-            generated_nodes = []
-            import re
-
-            # 各行のインデントレベルとIntent IDを抽出
-            lines_with_level = []
-            for line in response_text.split("\n"):
-                line_stripped = line.rstrip()
-                if not line_stripped or not line_stripped.lstrip().startswith(
-                    ("-", "*")
-                ):
-                    continue
-
-                # インデントレベルを計算（2スペースごとに1レベル）
-                indent = len(line) - len(line.lstrip())
-                level = indent // 2
-
-                # Intent IDを抽出（intent_XXXXX, generated_XXX, ultra_XXX 対応）
-                match_id = re.search(
-                    r"\{[^}]*id=(intent_\d+|generated_\d+|ultra_\d+)[^}]*\}",
-                    line_stripped,
-                )
-                intent_id = match_id.group(1) if match_id else None
-
-                # generated_XXX または ultra_XXX の場合、ノード情報を抽出
-                if intent_id and (
-                    intent_id.startswith("generated_") or intent_id.startswith("ultra_")
-                ):
-                    # intentテキストを抽出（intent="..." があればそれを使い、なければラベルテキストから）
-                    match_intent = re.search(r'intent="([^"]*)"', line_stripped)
-                    if match_intent:
-                        intent_text = match_intent.group(1)
-                    else:
-                        # ラベルテキストから抽出: "- テキスト {..." の形式
-                        match_label = re.match(r"^[\s\-\*]+(.+?)\s*\{", line_stripped)
-                        intent_text = (
-                            match_label.group(1).strip() if match_label else ""
-                        )
-
-                    # statusを抽出
-                    match_status = re.search(r"status=(\w+)", line_stripped)
-                    status = match_status.group(1) if match_status else "idea"
-
-                    # contextを抽出（任意）
-                    match_context = re.search(r'context="([^"]*)"', line_stripped)
-                    context = match_context.group(1) if match_context else ""
-
-                    # objective_factsを抽出（任意）
-                    match_facts = re.search(r'objective_facts="([^"]*)"', line_stripped)
-                    objective_facts = match_facts.group(1) if match_facts else ""
-
-                    generated_nodes.append(
-                        {
-                            "intent_id": intent_id,
-                            "intent": intent_text,
-                            "status": status,
-                            "context": context,
-                            "objective_facts": objective_facts,
-                        }
-                    )
-
-                lines_with_level.append(
-                    {"level": level, "intent_id": intent_id, "text": line_stripped}
-                )
-
-            # 階層構造をたどってリレーションを構築
-            # 各ノードの親を探す（上位レベルで最も近いIntent IDを持つノード）
-            for i, current in enumerate(lines_with_level):
-                if current["intent_id"] is None:
-                    continue
-
-                # 親を探す（上位レベルで最も近いIntent IDを持つノード）
-                # IDのない抽象ノードはスキップして、その上の親を探す
-                parent_id = None
-                for j in range(i - 1, -1, -1):
-                    # より上位のレベル（数値が小さい）で、Intent IDを持つノードを探す
-                    if lines_with_level[j]["level"] < current["level"]:
-                        if lines_with_level[j]["intent_id"]:
-                            parent_id = lines_with_level[j]["intent_id"]
-                            break
-
-                # 親が見つかった場合、リレーションを追加
-                if parent_id:
-                    relations.append(
-                        {
-                            "from": current["intent_id"],
-                            "to": parent_id,
-                            "type": "goal-means",
-                        }
-                    )
+            # _parse_relations_and_nodesを呼び出すために一時的にインスタンスを作成
+            temp_builder = UltraIntentGoalNetworkBuilder.__new__(
+                UltraIntentGoalNetworkBuilder
+            )
+            relations, generated_nodes = temp_builder._parse_relations_and_nodes(
+                response_text
+            )
 
             # 結果を返す（クリーンアップ済みのresponse_textとプロンプトも含める）
             return {

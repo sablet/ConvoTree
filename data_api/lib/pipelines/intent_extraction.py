@@ -13,13 +13,13 @@
 """
 
 import json
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
-import argparse
 import sys
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -28,6 +28,10 @@ from lib import gemini_client
 
 OUTPUT_DIR = Path("output/intent_extraction")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 意図抽出用定数
+MIN_SUPER_INTENTS_FOR_ULTRA = 10  # Ultra Intent抽出に必要な最小Super Intent数
+PREVIEW_PATH_LIMIT = 3  # プレビュー表示するパスの最大数
 
 TEMPLATE_DIR = Path("templates")
 TEMPLATE_FILE = TEMPLATE_DIR / "intent_extraction_prompt.md"
@@ -68,9 +72,7 @@ def load_template() -> str:
 
     # 共通定義を差し込み
     common_definition = load_common_intent_object_definition()
-    template = template.replace("{COMMON_INTENT_OBJECT}", common_definition)
-
-    return template
+    return template.replace("{COMMON_INTENT_OBJECT}", common_definition)
 
 
 def load_grouping_template() -> str:
@@ -85,9 +87,63 @@ def load_grouping_template() -> str:
 
     # 共通定義を差し込み
     common_definition = load_common_intent_object_definition()
-    template = template.replace("{COMMON_INTENT_OBJECT}", common_definition)
+    return template.replace("{COMMON_INTENT_OBJECT}", common_definition)
 
-    return template
+
+def build_deterministic_prompt(
+    intents: List[Dict], template: str, **format_kwargs
+) -> str:
+    """
+    決定的なプロンプトを生成（引数+template→具体プロンプト）
+
+    同じ引数からは必ず同じプロンプトを生成することを保証する。
+
+    Args:
+        intents: 意図オブジェクトのリスト
+        template: プロンプトテンプレート
+        **format_kwargs: テンプレートに渡す追加引数
+
+    Returns:
+        生成されたプロンプトテキスト
+    """
+    # 意図リストを決定的な順序で構築
+    intent_texts = []
+
+    for i, intent in enumerate(intents):
+        parts = [f"{i}."]
+
+        # 意図本文（meta_intent または super_intent）
+        intent_text = intent.get("meta_intent") or intent.get("super_intent") or "（未定義）"
+        parts.append(f"【意図】{intent_text}")
+
+        # objective_facts
+        if intent.get("objective_facts"):
+            parts.append(f"【客観的事実】{intent['objective_facts']}")
+
+        # context
+        if intent.get("context"):
+            parts.append(f"【背景】{intent['context']}")
+
+        # source_full_paths - 必ずソート
+        if intent.get("source_full_paths"):
+            paths = ", ".join(sorted(intent["source_full_paths"]))
+            parts.append(f"【プロジェクト】{paths}")
+
+        # aggregate_status
+        if intent.get("aggregate_status"):
+            parts.append(f"【ステータス】{intent['aggregate_status']}")
+
+        intent_texts.append(" ".join(parts))
+
+    # テンプレートに埋め込み
+    intent_list = "\n\n".join(intent_texts)
+    max_index = len(intents) - 1
+
+    return template.format(
+        intent_list=intent_list,
+        max_index=max_index,
+        **format_kwargs
+    )
 
 
 def load_reassignment_template() -> str:
@@ -98,9 +154,7 @@ def load_reassignment_template() -> str:
         )
 
     with open(REASSIGNMENT_TEMPLATE_FILE, "r", encoding="utf-8") as f:
-        template = f.read()
-
-    return template
+        return f.read()
 
 
 def load_clustered_messages() -> pd.DataFrame:
@@ -287,19 +341,279 @@ def postprocess_enrich_and_save_intents(
     # 処理後のJSONを保存
     output_file = PROCESSED_DIR / f"cluster_{cluster_id:02d}_processed.json"
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(intents, f, ensure_ascii=False, indent=2)
+        json.dump(intents, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     return intents
+
+
+def _get_group_name_key(group: Dict) -> str:
+    """グループ名のキーを取得"""
+    if "meta_intent" in group:
+        return "meta_intent"
+    if "super_intent" in group:
+        return "super_intent"
+    if "ultra_intent" in group:
+        return "ultra_intent"
+    return "meta_intent"  # デフォルト
+
+
+def _get_member_key(group: Dict) -> str:
+    """メンバーリストのキーを取得"""
+    if "covered_intent_ids" in group:
+        return "covered_intent_ids"
+    if "covered_meta_intent_indices" in group:
+        return "covered_meta_intent_indices"
+    if "covered_super_intent_indices" in group:
+        return "covered_super_intent_indices"
+    return "member_indices"
+
+
+def _build_existing_groups_summary(existing_groups: List[Dict]) -> str:
+    """既存グループの要約テキストを作成"""
+    existing_group_texts = []
+    for i, group in enumerate(existing_groups):
+        group_name_key = _get_group_name_key(group)
+        group_name = group.get(group_name_key, f"グループ {i}")
+        member_key = _get_member_key(group)
+        existing_members = group.get(member_key, [])
+        existing_group_texts.append(
+            f"{i}. {group_name} (既存メンバー: {len(existing_members)}件)"
+        )
+    return "\n".join(existing_group_texts)
+
+
+def _format_uncovered_item(item: Dict, index: int) -> str:
+    """未カバー項目を1行のテキストにフォーマット"""
+    parts = [f"{index}."]
+
+    # 項目の主要情報を構築
+    if "meta_intent" in item:
+        parts.append(f"【意図】{item.get('meta_intent', '（未定義）')}")
+    elif "super_intent" in item:
+        parts.append(f"【意図】{item.get('super_intent', '（未定義）')}")
+    elif "ultra_intent" in item:
+        parts.append(f"【意図】{item.get('ultra_intent', '（未定義）')}")
+    else:
+        intent_text = item.get("intent") or item.get("description") or "（未定義）"
+        parts.append(f"【意図】{intent_text}")
+
+    # objective_facts
+    if item.get("objective_facts"):
+        parts.append(f"【客観的事実】{item['objective_facts']}")
+
+    # context
+    if item.get("context"):
+        parts.append(f"【背景】{item['context']}")
+
+    return " ".join(parts)
+
+
+def _build_uncovered_items_text(
+    uncovered_list: List[int], original_items: List[Dict]
+) -> str:
+    """未カバー項目の詳細テキストを作成"""
+    uncovered_item_texts = []
+    for i, original_idx in enumerate(uncovered_list):
+        if original_idx >= len(original_items):
+            continue
+        item = original_items[original_idx]
+        uncovered_item_texts.append(_format_uncovered_item(item, i))
+    return "\n\n".join(uncovered_item_texts)
+
+
+def _create_member_values(
+    original_indices: List[int], original_items: List[Dict], member_key: str
+) -> object:
+    """メンバー値を作成（covered_intent_idsの場合は特殊処理）"""
+    if member_key == "covered_intent_ids":
+        return [
+            {
+                "cluster_id": int(original_items[idx]["cluster_id"]),
+                "intent_index": idx,
+            }
+            for idx in original_indices
+            if idx < len(original_items) and "cluster_id" in original_items[idx]
+        ]
+    return original_indices
+
+
+def _add_to_existing_group(
+    matched_group: Dict, original_indices: List[int], original_items: List[Dict]
+) -> None:
+    """既存グループにメンバーを追加"""
+    member_key = _get_member_key(matched_group)
+    if member_key == "covered_intent_ids":
+        for idx in original_indices:
+            if idx < len(original_items) and "cluster_id" in original_items[idx]:
+                matched_group[member_key].append(
+                    {
+                        "cluster_id": int(original_items[idx]["cluster_id"]),
+                        "intent_index": idx,
+                    }
+                )
+    else:
+        matched_group[member_key].extend(original_indices)
+
+
+def _create_new_group(
+    group_name: str,
+    group_name_key: str,
+    reassignment: Dict,
+    original_indices: List[int],
+    original_items: List[Dict],
+    existing_groups: List[Dict],
+) -> Dict:
+    """新しいグループを作成"""
+    # member_keyを推測
+    if existing_groups:
+        member_key = _get_member_key(existing_groups[0])
+    # 既存グループがない場合は、group_name_keyから推測
+    elif group_name_key == "meta_intent":
+        member_key = "covered_intent_ids"
+    elif group_name_key == "super_intent":
+        member_key = "covered_meta_intent_indices"
+    elif group_name_key == "ultra_intent":
+        member_key = "covered_super_intent_indices"
+    else:
+        member_key = "member_indices"
+
+    member_values = _create_member_values(original_indices, original_items, member_key)
+
+    return {
+        group_name_key: group_name,
+        "objective_facts": reassignment.get("objective_facts", ""),
+        "context": reassignment.get("context", ""),
+        member_key: member_values,
+    }
+
+
+def _find_matching_group(
+    group_name: str, existing_groups: List[Dict]
+) -> tuple[Optional[Dict], Optional[str]]:
+    """グループ名が既存グループと一致するか確認"""
+    for existing_group in existing_groups:
+        group_name_key = _get_group_name_key(existing_group)
+        existing_name = existing_group.get(group_name_key, "")
+        if group_name in existing_name or existing_name in group_name:
+            return existing_group, group_name_key
+    return None, None
+
+
+def _process_single_reassignment(
+    reassignment: Dict,
+    uncovered_list: List[int],
+    original_items: List[Dict],
+    existing_groups: List[Dict],
+) -> set:
+    """単一の再割り振り結果を処理"""
+    member_indices = reassignment.get("member_indices", [])
+
+    # 未カバーリスト内のインデックスを元のインデックスに変換
+    original_indices = [
+        uncovered_list[idx] for idx in member_indices if idx < len(uncovered_list)
+    ]
+
+    if not original_indices:
+        return set()
+
+    group_name = reassignment.get("group_name", "")
+    matched_group, matched_key = _find_matching_group(group_name, existing_groups)
+
+    # グループ名キーの決定
+    if not matched_key:
+        matched_key = (
+            _get_group_name_key(existing_groups[0])
+            if existing_groups
+            else "meta_intent"
+        )
+
+    if matched_group:
+        # 既存グループに追加
+        _add_to_existing_group(matched_group, original_indices, original_items)
+    else:
+        # 新しいグループを作成
+        new_group = _create_new_group(
+            group_name,
+            matched_key,
+            reassignment,
+            original_indices,
+            original_items,
+            existing_groups,
+        )
+        existing_groups.append(new_group)
+
+    return set(original_indices)
+
+
+@dataclass
+class ReassignmentContext:
+    """Context for reassignment operations"""
+
+    original_items: List[Dict]
+    reassignment_template: str
+    cluster_id: Optional[int] = None
+    save_raw: bool = False
+    level_name: str = "intent"
+
+
+def _request_and_parse_reassignments(
+    existing_groups: List[Dict],
+    uncovered_list: List[int],
+    context: ReassignmentContext,
+    retry_count: int,
+) -> Optional[List[Dict]]:
+    """再割り振りをリクエストしてパース"""
+    # プロンプトを生成
+    existing_groups_summary = _build_existing_groups_summary(existing_groups)
+    uncovered_items_text = _build_uncovered_items_text(
+        uncovered_list, context.original_items
+    )
+    max_index = len(uncovered_list) - 1
+
+    prompt_text = context.reassignment_template.format(
+        existing_groups=existing_groups_summary,
+        uncovered_items=uncovered_items_text,
+        max_index=max_index,
+    )
+
+    # API呼び出し
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
+    except Exception as e:
+        print(f"\n❌ 再割り振りでエラー発生: {type(e).__name__}: {e}")
+        return None
+
+    # 生のレスポンスを保存（オプション）
+    if context.save_raw:
+        raw_output_dir = OUTPUT_DIR / f"raw_reassignment_{context.level_name}_responses"
+        raw_output_dir.mkdir(exist_ok=True)
+        cluster_suffix = (
+            f"_cluster_{context.cluster_id:02d}"
+            if context.cluster_id is not None
+            else ""
+        )
+        raw_file = (
+            raw_output_dir / f"reassignment{cluster_suffix}_retry{retry_count}.txt"
+        )
+        with open(raw_file, "w", encoding="utf-8") as f:
+            f.write(response_text)
+
+    # JSONをパース
+    reassignments = preprocess_extract_json_from_response(response_text)
+    if reassignments is None:
+        print(f"\n⚠️ 再割り振り {retry_count}回目でJSONパース失敗")
+        return None
+
+    return reassignments
 
 
 def reassign_uncovered_items(
     existing_groups: List[Dict],
     uncovered_indices: set,
-    original_items: List[Dict],
-    reassignment_template: str,
-    cluster_id: Optional[int] = None,
-    save_raw: bool = False,
-    level_name: str = "intent",
+    context: ReassignmentContext,
+    *,
     max_retries: int = 3,
 ) -> List[Dict]:
     """
@@ -308,11 +622,7 @@ def reassign_uncovered_items(
     Args:
         existing_groups: 既存のグループ（meta_intents, super_intents, ultra_intentsなど）
         uncovered_indices: 未カバーのインデックスのセット
-        original_items: 元の項目リスト（intents, meta_intents, super_intentsなど）
-        reassignment_template: 再割り振り用テンプレート
-        cluster_id: クラスタID（オプション、クラスタ横断の場合はNone）
-        save_raw: 生レスポンス保存フラグ
-        level_name: レベル名（"meta", "super", "ultra"など、デバッグ用）
+        context: 再割り振りコンテキスト（original_items, reassignment_template等）
         max_retries: 最大試行回数
 
     Returns:
@@ -330,236 +640,23 @@ def reassign_uncovered_items(
             f"\n🔄 再割り振り試行 {retry_count}/{max_retries} - {len(current_uncovered)}件の未カバー項目"
         )
 
-        # 既存グループの要約を作成
-        existing_group_texts = []
-        for i, group in enumerate(existing_groups):
-            group_name_key = (
-                "meta_intent"
-                if "meta_intent" in group
-                else "super_intent"
-                if "super_intent" in group
-                else "ultra_intent"
-            )
-            group_name = group.get(group_name_key, f"グループ {i}")
-
-            # グループの既存メンバー数を表示
-            member_key = (
-                "covered_intent_ids"
-                if "covered_intent_ids" in group
-                else "covered_meta_intent_indices"
-                if "covered_meta_intent_indices" in group
-                else "covered_super_intent_indices"
-                if "covered_super_intent_indices" in group
-                else "member_indices"
-            )
-            existing_members = group.get(member_key, [])
-            existing_group_texts.append(
-                f"{i}. {group_name} (既存メンバー: {len(existing_members)}件)"
-            )
-
-        existing_groups_summary = "\n".join(existing_group_texts)
-
-        # 未カバー項目の詳細を作成
-        uncovered_item_texts = []
         uncovered_list = sorted(current_uncovered)
 
-        for i, original_idx in enumerate(uncovered_list):
-            if original_idx >= len(original_items):
-                continue
-
-            item = original_items[original_idx]
-            parts = [f"{i}."]
-
-            # 項目の主要情報を構築
-            if "meta_intent" in item:
-                parts.append(f"【意図】{item.get('meta_intent', '（未定義）')}")
-            elif "super_intent" in item:
-                parts.append(f"【意図】{item.get('super_intent', '（未定義）')}")
-            elif "ultra_intent" in item:
-                parts.append(f"【意図】{item.get('ultra_intent', '（未定義）')}")
-            else:
-                intent_text = (
-                    item.get("intent") or item.get("description") or "（未定義）"
-                )
-                parts.append(f"【意図】{intent_text}")
-
-            # objective_facts
-            if item.get("objective_facts"):
-                parts.append(f"【客観的事実】{item['objective_facts']}")
-
-            # context
-            if item.get("context"):
-                parts.append(f"【背景】{item['context']}")
-
-            uncovered_item_texts.append(" ".join(parts))
-
-        uncovered_items_text = "\n\n".join(uncovered_item_texts)
-        max_index = len(uncovered_list) - 1
-
-        # プロンプトを生成
-        prompt_text = reassignment_template.format(
-            existing_groups=existing_groups_summary,
-            uncovered_items=uncovered_items_text,
-            max_index=max_index,
+        # API呼び出し + パース
+        reassignments = _request_and_parse_reassignments(
+            existing_groups, uncovered_list, context, retry_count
         )
 
-        # API呼び出し
-        try:
-            model = gemini_client.GenerativeModel()
-            response = model.generate_content(prompt_text)
-            response_text = response.text
-
-        except Exception as e:
-            print(f"\n❌ 再割り振りでエラー発生: {type(e).__name__}: {e}")
-            break
-
-        # 生のレスポンスを保存（オプション）
-        if save_raw:
-            raw_output_dir = OUTPUT_DIR / f"raw_reassignment_{level_name}_responses"
-            raw_output_dir.mkdir(exist_ok=True)
-            cluster_suffix = (
-                f"_cluster_{cluster_id:02d}" if cluster_id is not None else ""
-            )
-            raw_file = (
-                raw_output_dir / f"reassignment{cluster_suffix}_retry{retry_count}.txt"
-            )
-            with open(raw_file, "w", encoding="utf-8") as f:
-                f.write(response_text)
-
-        # JSONをパース
-        reassignments = preprocess_extract_json_from_response(response_text)
         if reassignments is None:
-            print(f"\n⚠️ 再割り振り {retry_count}回目でJSONパース失敗")
             break
 
         # 再割り振り結果を既存グループに統合
         newly_covered = set()
-
         for reassignment in reassignments:
-            member_indices = reassignment.get("member_indices", [])
-
-            # 未カバーリスト内のインデックスを元のインデックスに変換
-            original_indices = [
-                uncovered_list[idx]
-                for idx in member_indices
-                if idx < len(uncovered_list)
-            ]
-
-            if not original_indices:
-                continue
-
-            # グループ名が既存グループと一致するか確認
-            group_name = reassignment.get("group_name", "")
-            matched_existing_group = None
-            matched_group_name_key = None
-
-            for existing_group in existing_groups:
-                current_group_name_key = (
-                    "meta_intent"
-                    if "meta_intent" in existing_group
-                    else "super_intent"
-                    if "super_intent" in existing_group
-                    else "ultra_intent"
-                )
-                existing_name = existing_group.get(current_group_name_key, "")
-                if group_name in existing_name or existing_name in group_name:
-                    matched_existing_group = existing_group
-                    matched_group_name_key = current_group_name_key
-                    break
-
-            # グループ名キーの決定（既存グループから推測）
-            if not matched_group_name_key:
-                # 既存グループから推測
-                if existing_groups:
-                    first_group = existing_groups[0]
-                    matched_group_name_key = (
-                        "meta_intent"
-                        if "meta_intent" in first_group
-                        else "super_intent"
-                        if "super_intent" in first_group
-                        else "ultra_intent"
-                    )
-                else:
-                    matched_group_name_key = "meta_intent"  # デフォルト
-
-            if matched_existing_group:
-                # 既存グループに追加
-                member_key = (
-                    "covered_intent_ids"
-                    if "covered_intent_ids" in matched_existing_group
-                    else "covered_meta_intent_indices"
-                    if "covered_meta_intent_indices" in matched_existing_group
-                    else "covered_super_intent_indices"
-                    if "covered_super_intent_indices" in matched_existing_group
-                    else "member_indices"
-                )
-
-                # covered_intent_idsの場合は特殊処理
-                if member_key == "covered_intent_ids":
-                    for idx in original_indices:
-                        if (
-                            idx < len(original_items)
-                            and "cluster_id" in original_items[idx]
-                        ):
-                            matched_existing_group[member_key].append(
-                                {
-                                    "cluster_id": int(
-                                        original_items[idx]["cluster_id"]
-                                    ),
-                                    "intent_index": idx,
-                                }
-                            )
-                else:
-                    matched_existing_group[member_key].extend(original_indices)
-
-                newly_covered.update(original_indices)
-            else:
-                # 新しいグループを作成
-                # 既存グループからmember_keyを推測
-                if existing_groups:
-                    first_group = existing_groups[0]
-                    if "covered_intent_ids" in first_group:
-                        member_key = "covered_intent_ids"
-                    elif "covered_meta_intent_indices" in first_group:
-                        member_key = "covered_meta_intent_indices"
-                    elif "covered_super_intent_indices" in first_group:
-                        member_key = "covered_super_intent_indices"
-                    else:
-                        member_key = "member_indices"
-                else:
-                    # 既存グループがない場合は、group_name_keyから推測
-                    member_key = (
-                        "covered_intent_ids"
-                        if matched_group_name_key == "meta_intent"
-                        else "covered_meta_intent_indices"
-                        if matched_group_name_key == "super_intent"
-                        else "covered_super_intent_indices"
-                        if matched_group_name_key == "ultra_intent"
-                        else "member_indices"
-                    )
-
-                # covered_intent_idsの場合は特殊処理
-                if member_key == "covered_intent_ids":
-                    member_values = [
-                        {
-                            "cluster_id": int(original_items[idx]["cluster_id"]),
-                            "intent_index": idx,
-                        }
-                        for idx in original_indices
-                        if idx < len(original_items)
-                        and "cluster_id" in original_items[idx]
-                    ]
-                else:
-                    member_values = original_indices
-
-                new_group = {
-                    matched_group_name_key: group_name,
-                    "objective_facts": reassignment.get("objective_facts", ""),
-                    "context": reassignment.get("context", ""),
-                    member_key: member_values,
-                }
-                existing_groups.append(new_group)
-                newly_covered.update(original_indices)
+            covered = _process_single_reassignment(
+                reassignment, uncovered_list, context.original_items, existing_groups
+            )
+            newly_covered.update(covered)
 
         # 次の試行のために未カバーを更新
         current_uncovered -= newly_covered
@@ -618,14 +715,41 @@ def call_gemini_api_with_postprocess(
             f.write(response_text)
 
     # 後処理を実行
-    intents = postprocess_enrich_and_save_intents(
+    return postprocess_enrich_and_save_intents(
         response_text, cluster_id, message_metadata
     )
 
-    return intents
+
+def _format_property_value(key: str, value: object) -> str:
+    """プロパティ値をフォーマット"""
+    if isinstance(value, list) and value:
+        return f"【{key}】{', '.join(str(v) for v in value)}"
+    if not isinstance(value, list):
+        return f"【{key}】{value}"
+    return ""
 
 
-def aggregate_intents_with_gemini(
+def _format_intent_as_text(intent: Dict, index: int, excluded_keys: set) -> str:
+    """意図オブジェクトをテキスト形式にフォーマット"""
+    parts = [f"{index}."]
+
+    # intent フィールド（必須）
+    intent_text = intent.get("intent") or intent.get("description") or "（未定義）"
+    parts.append(f"【意図】{intent_text}")
+
+    # その他のプロパティを追加
+    for key, value in intent.items():
+        if key in excluded_keys or key in {"intent", "description"}:
+            continue
+        if value:  # 値がある場合のみ追加
+            formatted = _format_property_value(key, value)
+            if formatted:
+                parts.append(formatted)
+
+    return " ".join(parts)
+
+
+def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
     intents: List[Dict], cluster_id: int, grouping_template: str, save_raw: bool = False
 ) -> Optional[List[Dict]]:
     """
@@ -644,30 +768,11 @@ def aggregate_intents_with_gemini(
         return None
 
     # LLMには意図の全プロパティ（ID系以外）を渡す
-    intent_texts = []
     excluded_keys = {"source_message_ids", "cluster_id"}
-
-    for i, intent in enumerate(intents):
-        # 意図の主要情報を構築
-        parts = [f"{i}."]
-
-        # intent フィールド（必須）
-        intent_text = intent.get("intent") or intent.get("description") or "（未定義）"
-        parts.append(f"【意図】{intent_text}")
-
-        # その他のプロパティを追加
-        for key, value in intent.items():
-            if key in excluded_keys or key in ("intent", "description"):
-                continue
-
-            if value:  # 値がある場合のみ追加
-                if isinstance(value, list):
-                    if value:  # 空リストでない場合
-                        parts.append(f"【{key}】{', '.join(str(v) for v in value)}")
-                else:
-                    parts.append(f"【{key}】{value}")
-
-        intent_texts.append(" ".join(parts))
+    intent_texts = [
+        _format_intent_as_text(intent, i, excluded_keys)
+        for i, intent in enumerate(intents)
+    ]
 
     intent_list = "\n\n".join(intent_texts)
     max_index = len(intents) - 1
@@ -722,16 +827,19 @@ def aggregate_intents_with_gemini(
         # 再割り振りテンプレートを読み込み
         try:
             reassignment_template = load_reassignment_template()
-
-            # 未カバーの意図を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
+            context = ReassignmentContext(
                 original_items=intents,
                 reassignment_template=reassignment_template,
                 cluster_id=cluster_id,
                 save_raw=save_raw,
                 level_name="meta",
+            )
+
+            # 未カバーの意図を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                context=context,
                 max_retries=3,
             )
 
@@ -773,15 +881,19 @@ def aggregate_intents_with_gemini(
         try:
             reassignment_template = load_reassignment_template()
 
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
+            context = ReassignmentContext(
                 original_items=intents,
                 reassignment_template=reassignment_template,
                 cluster_id=cluster_id,
                 save_raw=save_raw,
                 level_name="meta_duplicate",
+            )
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                context=context,
                 max_retries=3,
             )
 
@@ -860,7 +972,7 @@ def aggregate_intents_with_gemini(
     }
 
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(aggregation_result, f, ensure_ascii=False, indent=2)
+        json.dump(aggregation_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     return meta_intents
 
@@ -910,8 +1022,13 @@ def collect_all_meta_intents(cluster_ids: List[int]) -> tuple[List[Dict], Dict]:
     # meta_intentsを安定した順序にソート（キャッシュヒット率向上）
     # 1. source_cluster_id（クラスタID）でソート
     # 2. min_start_timestamp（時系列）でソート
+    # 3. meta_intent（テキスト）でソート - 完全な決定性を保証
     all_meta_intents.sort(
-        key=lambda x: (x.get("source_cluster_id", 0), x.get("min_start_timestamp", ""))
+        key=lambda x: (
+            x.get("source_cluster_id", 0),
+            x.get("min_start_timestamp", ""),
+            x.get("meta_intent", ""),
+        )
     )
 
     stats = {"total_individual_intents": total_individual_intents}
@@ -919,12 +1036,12 @@ def collect_all_meta_intents(cluster_ids: List[int]) -> tuple[List[Dict], Dict]:
     return all_meta_intents, stats
 
 
-def aggregate_cross_cluster_intents(
+def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
     meta_intents: List[Dict],
     grouping_template: str,
     total_individual_intents: int,
     save_raw: bool = False,
-) -> Optional[List[Dict]]:
+) -> tuple[List[Dict], List[Dict], int] | None:
     """
     【クラスタ横断上位意図抽出】全クラスタの上位意図からさらに上位の意図を抽出
 
@@ -940,41 +1057,8 @@ def aggregate_cross_cluster_intents(
     if not meta_intents:
         return None
 
-    # LLMには簡潔な情報のみ渡す
-    intent_texts = []
-
-    for i, meta in enumerate(meta_intents):
-        # 意図の主要情報を構築
-        parts = [f"{i}."]
-
-        # meta_intent本文（必須）
-        meta_text = meta.get("meta_intent") or "（未定義）"
-        parts.append(f"【意図】{meta_text}")
-
-        # objective_facts（客観的事実）
-        if meta.get("objective_facts"):
-            parts.append(f"【客観的事実】{meta['objective_facts']}")
-
-        # context（背景）
-        if meta.get("context"):
-            parts.append(f"【背景】{meta['context']}")
-
-        # source_full_paths（プロジェクト判断に必要）
-        if meta.get("source_full_paths"):
-            paths = ", ".join(meta["source_full_paths"])
-            parts.append(f"【プロジェクト】{paths}")
-
-        # aggregate_status
-        if meta.get("aggregate_status"):
-            parts.append(f"【ステータス】{meta['aggregate_status']}")
-
-        intent_texts.append(" ".join(parts))
-
-    intent_list = "\n\n".join(intent_texts)
-    max_index = len(meta_intents) - 1
-
-    # テンプレートに値を埋め込み
-    prompt_text = grouping_template.format(intent_list=intent_list, max_index=max_index)
+    # 決定的なプロンプトを生成
+    prompt_text = build_deterministic_prompt(meta_intents, grouping_template)
 
     # プロンプトを保存
     prompt_output_file = CROSS_CLUSTER_DIR / "cross_cluster_prompt.md"
@@ -1024,16 +1108,19 @@ def aggregate_cross_cluster_intents(
         # 再割り振りテンプレートを読み込み
         try:
             reassignment_template = load_reassignment_template()
-
-            # 未カバーのmeta_intentを再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
+            context = ReassignmentContext(
                 original_items=meta_intents,
                 reassignment_template=reassignment_template,
                 cluster_id=None,  # クラスタ横断なのでNone
                 save_raw=save_raw,
                 level_name="super",
+            )
+
+            # 未カバーのmeta_intentを再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                context=context,
                 max_retries=3,
             )
 
@@ -1072,16 +1159,19 @@ def aggregate_cross_cluster_intents(
         # 再割り振りテンプレートを読み込んで再判定
         try:
             reassignment_template = load_reassignment_template()
-
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
+            context = ReassignmentContext(
                 original_items=meta_intents,
                 reassignment_template=reassignment_template,
                 cluster_id=None,  # クラスタ横断なのでNone
                 save_raw=save_raw,
                 level_name="super_duplicate",
+            )
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                context=context,
                 max_retries=3,
             )
 
@@ -1230,7 +1320,7 @@ def aggregate_cross_cluster_intents(
     }
 
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(cross_cluster_result, f, ensure_ascii=False, indent=2)
+        json.dump(cross_cluster_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     # 詳細展開版も生成（元データは変更しない）
     enrich_and_save_super_intents(cross_cluster_result, output_file.parent)
@@ -1343,7 +1433,7 @@ def save_enriched_intents(
 
     # ファイル保存
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(enriched_result, f, ensure_ascii=False, indent=2)
+        json.dump(enriched_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     print(f"✓ 詳細展開版を保存: {output_file}")
 
@@ -1408,7 +1498,7 @@ def enrich_and_save_super_intents(super_result: Dict, output_dir: Path):
     )
 
 
-def aggregate_super_intents_recursively(
+def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR0914
     super_intents: List[Dict],
     meta_intents: List[Dict],
     total_individual_intents: int,
@@ -1428,48 +1518,15 @@ def aggregate_super_intents_recursively(
     Returns:
         最終的な上位意図オブジェクトのリスト（エラー時はNone）
     """
-    if not super_intents or len(super_intents) < 10:
+    if not super_intents or len(super_intents) < MIN_SUPER_INTENTS_FOR_ULTRA:
         return None
 
     print(
         f"\n📊 super_intentsが{len(super_intents)}件あるため、さらに抽象化を実行します"
     )
 
-    # LLMには簡潔な情報のみ渡す（meta_intentsと同じ形式）
-    intent_texts = []
-
-    for i, super_intent in enumerate(super_intents):
-        # 意図の主要情報を構築
-        parts = [f"{i}."]
-
-        # super_intent本文（必須）
-        super_text = super_intent.get("super_intent") or "（未定義）"
-        parts.append(f"【意図】{super_text}")
-
-        # objective_facts（客観的事実）
-        if super_intent.get("objective_facts"):
-            parts.append(f"【客観的事実】{super_intent['objective_facts']}")
-
-        # context（背景）
-        if super_intent.get("context"):
-            parts.append(f"【背景】{super_intent['context']}")
-
-        # source_full_paths（プロジェクト判断に必要）
-        if super_intent.get("source_full_paths"):
-            paths = ", ".join(super_intent["source_full_paths"])
-            parts.append(f"【プロジェクト】{paths}")
-
-        # aggregate_status
-        if super_intent.get("aggregate_status"):
-            parts.append(f"【ステータス】{super_intent['aggregate_status']}")
-
-        intent_texts.append(" ".join(parts))
-
-    intent_list = "\n\n".join(intent_texts)
-    max_index = len(super_intents) - 1
-
-    # テンプレートに値を埋め込み
-    prompt_text = grouping_template.format(intent_list=intent_list, max_index=max_index)
+    # 決定的なプロンプトを生成
+    prompt_text = build_deterministic_prompt(super_intents, grouping_template)
 
     # プロンプトを保存
     prompt_output_file = CROSS_CLUSTER_DIR / "ultra_intent_prompt.md"
@@ -1519,16 +1576,19 @@ def aggregate_super_intents_recursively(
         # 再割り振りテンプレートを読み込み
         try:
             reassignment_template = load_reassignment_template()
-
-            # 未カバーのsuper_intentを再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
+            context = ReassignmentContext(
                 original_items=super_intents,
                 reassignment_template=reassignment_template,
                 cluster_id=None,  # クラスタ横断なのでNone
                 save_raw=save_raw,
                 level_name="ultra",
+            )
+
+            # 未カバーのsuper_intentを再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                context=context,
                 max_retries=3,
             )
 
@@ -1567,16 +1627,19 @@ def aggregate_super_intents_recursively(
         # 再割り振りテンプレートを読み込んで再判定
         try:
             reassignment_template = load_reassignment_template()
-
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
+            context = ReassignmentContext(
                 original_items=super_intents,
                 reassignment_template=reassignment_template,
                 cluster_id=None,  # クラスタ横断なのでNone
                 save_raw=save_raw,
                 level_name="ultra_duplicate",
+            )
+
+            # 重複項目を再割り振り
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=duplicate_set,
+                context=context,
                 max_retries=3,
             )
 
@@ -1724,12 +1787,361 @@ def aggregate_super_intents_recursively(
     }
 
     with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(ultra_result, f, ensure_ascii=False, indent=2)
+        json.dump(ultra_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
     # 詳細展開版も生成（元データは変更しない）
     enrich_and_save_ultra_intents(ultra_result, output_file.parent)
 
     return ultra_intents
+
+
+def _validate_pipeline_options(
+    gemini: bool, aggregate: bool, aggregate_all: bool, cluster: Optional[int]
+) -> bool:
+    """パイプラインオプションのバリデーション"""
+    if aggregate and not gemini:
+        print(
+            "❌ エラー: --aggregate オプションは --gemini オプションと併用してください"
+        )
+        return False
+
+    if aggregate_all:
+        if not gemini or not aggregate:
+            print(
+                "❌ エラー: --aggregate-all オプションは --gemini --aggregate オプションと併用してください"
+            )
+            return False
+        if cluster is not None:
+            print(
+                "❌ エラー: --aggregate-all オプションは --cluster オプションと併用できません（全クラスタ処理が必要）"
+            )
+            return False
+
+    return True
+
+
+def _print_pipeline_config(
+    gemini: bool,
+    cluster: Optional[int],
+    save_raw: bool,
+    aggregate: bool,
+    aggregate_all: bool,
+    max_workers: int,
+) -> None:
+    """パイプライン設定の出力"""
+    print("=" * 60)
+    print("意図抽出プロンプト生成")
+    if gemini:
+        print(f"+ Gemini API で意図抽出を実行（並列数: {max_workers}）")
+    if aggregate:
+        print("+ 上位意図を抽出")
+    if aggregate_all:
+        print("+ クラスタ横断上位意図を抽出")
+    if cluster is not None:
+        print(f"+ クラスタ {cluster} のみ処理")
+    if save_raw:
+        print("+ 生レスポンスを保存")
+    print("=" * 60)
+
+
+def _initialize_gemini_client() -> bool:
+    """Gemini APIクライアントの初期化"""
+    try:
+        gemini_client.initialize()
+        return True
+    except SystemExit:
+        return False
+
+
+def _load_templates(aggregate: bool, aggregate_all: bool) -> tuple[str, Optional[str]]:
+    """テンプレートファイルの読み込み"""
+    print("\nプロンプトテンプレートを読み込み中...")
+    try:
+        template = load_template()
+        print(f"✓ テンプレート読み込み完了: {TEMPLATE_FILE}")
+    except FileNotFoundError as e:
+        print(f"❌ エラー: {e}")
+        raise
+
+    grouping_template = None
+    if aggregate or aggregate_all:
+        print("\n意図グループ化テンプレートを読み込み中...")
+        try:
+            grouping_template = load_grouping_template()
+            print(f"✓ テンプレート読み込み完了: {GROUPING_TEMPLATE_FILE}")
+        except FileNotFoundError as e:
+            print(f"❌ エラー: {e}")
+            raise
+
+    return template, grouping_template
+
+
+def _load_and_prepare_data(cluster: Optional[int]) -> tuple[pd.DataFrame, Dict, List]:
+    """データの読み込みと準備"""
+    print("\nクラスタリング結果を読み込み中...")
+    df = load_clustered_messages()
+    print(f"✓ {len(df)}件のメッセージを読み込みました")
+
+    print("\nメッセージメタデータを構築中...")
+    message_metadata = build_message_metadata(df)
+    print(f"✓ {len(message_metadata)}件のメッセージメタデータを構築しました")
+
+    cluster_ids = sorted(df["cluster"].unique())
+
+    if cluster is not None:
+        if cluster not in cluster_ids:
+            print(f"❌ エラー: クラスタ {cluster} は存在しません")
+            print(f"利用可能なクラスタID: {cluster_ids}")
+            raise ValueError(f"Invalid cluster ID: {cluster}")
+        cluster_ids = [cluster]
+
+    print(f"\n{len(cluster_ids)}個のクラスタに対してプロンプトを生成します")
+    return df, message_metadata, cluster_ids
+
+
+@dataclass
+class ClusterProcessingContext:
+    """Context for processing clusters with Gemini API"""
+
+    df: pd.DataFrame
+    template: str
+    message_metadata: Dict
+    gemini: bool
+    aggregate: bool
+    grouping_template: Optional[str]
+    save_raw: bool
+
+
+def _process_single_cluster(cluster_id: int, context: ClusterProcessingContext) -> Dict:
+    """単一クラスタの処理"""
+    cluster_df = context.df[context.df["cluster"] == cluster_id]
+    prompt_info = generate_cluster_prompt(cluster_id, cluster_df, context.template)
+
+    if context.gemini:
+        intents = call_gemini_api_with_postprocess(
+            prompt_info["prompt"],
+            cluster_id,
+            context.message_metadata,
+            save_raw=context.save_raw,
+        )
+        prompt_info["extracted_intents"] = intents
+
+        if context.aggregate and intents and context.grouping_template:
+            meta_intents = aggregate_intents_with_gemini(
+                intents,
+                cluster_id,
+                context.grouping_template,
+                save_raw=context.save_raw,
+            )
+            prompt_info["meta_intents"] = meta_intents
+
+    output_file = OUTPUT_DIR / f"cluster_{cluster_id:02d}_prompt.md"
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write(prompt_info["prompt"])
+
+    return prompt_info
+
+
+def _process_all_clusters(
+    cluster_ids: List[int],
+    context: ClusterProcessingContext,
+    *,
+    max_workers: int,
+) -> List[Dict]:
+    """全クラスタの処理（並列または逐次）"""
+
+    def process_cluster(cluster_id: int) -> Dict:
+        return _process_single_cluster(cluster_id, context)
+
+    if context.gemini:
+        return gemini_client.parallel_execute(
+            cluster_ids,
+            process_cluster,
+            max_workers=max_workers,
+            desc="Gemini API で意図抽出中",
+            unit="cluster",
+        )
+    all_prompts = []
+    for cluster_id in tqdm(cluster_ids, desc="プロンプト生成中", unit="cluster"):
+        all_prompts.append(process_cluster(cluster_id))
+    return all_prompts
+
+
+def _save_generation_summary(
+    all_prompts: List[Dict], cluster_ids: List[int], df: pd.DataFrame
+) -> None:
+    """生成サマリーの保存"""
+    summary = {
+        "generated_at": datetime.now().isoformat(),
+        "total_clusters": int(len(cluster_ids)),
+        "total_messages": int(len(df)),
+        "clusters": [
+            {
+                "cluster_id": int(p["cluster_id"]),
+                "message_count": int(p["message_count"]),
+                "prompt_file": f"cluster_{p['cluster_id']:02d}_prompt.md",
+            }
+            for p in all_prompts
+        ],
+    }
+
+    summary_file = OUTPUT_DIR / "generation_summary.json"
+    with open(summary_file, "w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2, sort_keys=True)
+
+    print(f"\n✓ サマリー情報を保存: {summary_file}")
+
+
+def _print_ultra_intent(ultra_intent: Dict, index: int) -> None:
+    """Ultra Intentの詳細を出力"""
+    covered_super_count = len(ultra_intent.get("covered_super_intent_indices", []))
+    covered_intent_count = len(ultra_intent.get("covered_intent_ids_flat", []))
+
+    print(f"【Ultra Intent {index}】")
+    print(f"  意図: {ultra_intent.get('ultra_intent', '（未定義）')}")
+    if ultra_intent.get("objective_facts"):
+        print(f"  客観的事実: {ultra_intent['objective_facts']}")
+    if ultra_intent.get("context"):
+        print(f"  背景: {ultra_intent['context']}")
+    print(
+        f"  カバー範囲: {covered_super_count}件のsuper_intent / {covered_intent_count}件の個別意図"
+    )
+    if ultra_intent.get("source_full_paths"):
+        paths = ", ".join(ultra_intent["source_full_paths"][:PREVIEW_PATH_LIMIT])
+        if len(ultra_intent["source_full_paths"]) > PREVIEW_PATH_LIMIT:
+            paths += (
+                f" 他{len(ultra_intent['source_full_paths']) - PREVIEW_PATH_LIMIT}件"
+            )
+        print(f"  プロジェクト: {paths}")
+    print(f"  ステータス: {ultra_intent.get('aggregate_status', 'unknown')}")
+    print()
+
+
+def _process_cross_cluster_aggregation(
+    cluster_ids: List[int], grouping_template: str, save_raw: bool
+) -> None:
+    """クラスタ横断上位意図抽出の処理"""
+    print("\n" + "=" * 60)
+    print("クラスタ横断上位意図抽出")
+    print("=" * 60)
+
+    print("\n全クラスタの上位意図を収集中...")
+    all_meta_intents, stats = collect_all_meta_intents(cluster_ids)
+    print(f"✓ {len(all_meta_intents)}件の上位意図を収集しました")
+    print(f"✓ {stats['total_individual_intents']}件の個別意図（全クラスタ合計）")
+
+    print("\nクラスタ横断上位意図を抽出中...")
+    result = aggregate_cross_cluster_intents(
+        all_meta_intents,
+        grouping_template,
+        stats["total_individual_intents"],
+        save_raw=save_raw,
+    )
+
+    if result is None:
+        print("❌ クラスタ横断上位意図の抽出に失敗しました")
+        return
+
+    super_intents, meta_intents, total_individual_intents = result
+
+    if not super_intents:
+        print("❌ クラスタ横断上位意図の抽出に失敗しました")
+        return
+
+    print(f"✓ {len(super_intents)}件のクラスタ横断上位意図を抽出しました")
+    for i, super_intent in enumerate(super_intents, 1):
+        covered_count = len(super_intent.get("covered_meta_intent_indices", []))
+        print(
+            f"  {i}. {super_intent.get('super_intent', '（未定義）')} ({covered_count}件のmeta_intentをカバー)"
+        )
+
+    ultra_intents = aggregate_super_intents_recursively(
+        super_intents,
+        meta_intents,
+        total_individual_intents,
+        grouping_template,
+        save_raw=save_raw,
+    )
+
+    if ultra_intents:
+        print("\n" + "=" * 60)
+        print("最終上位意図抽出結果（ultra_intents）")
+        print("=" * 60)
+        print(
+            f"\n✓ {len(ultra_intents)}件の最終上位意図（ultra_intents）を抽出しました\n"
+        )
+
+        for i, ultra_intent in enumerate(ultra_intents, 1):
+            _print_ultra_intent(ultra_intent, i)
+
+
+def _print_gemini_output_files(aggregate: bool, aggregate_all: bool) -> None:
+    """Gemini実行時の出力ファイル一覧を表示"""
+    print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
+    print(f"📄 レビュー用HTML: {OUTPUT_DIR / 'intent_review.html'}")
+    print(f"📄 後処理済みJSON: {PROCESSED_DIR}/")
+
+    if aggregate:
+        print(f"📄 上位意図JSON: {AGGREGATED_DIR}/")
+
+    if aggregate_all:
+        print(f"📄 クラスタ横断上位意図JSON: {CROSS_CLUSTER_DIR}/super_intents.json")
+        super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
+        if super_enriched.exists():
+            print(f"📄 クラスタ横断上位意図JSON（詳細展開版）: {super_enriched}")
+        ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
+        if ultra_file.exists():
+            print(f"📄 最終上位意図JSON（2段階抽象化）: {ultra_file}")
+            enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
+            if enriched_file.exists():
+                print(f"📄 最終上位意図JSON（詳細展開版）: {enriched_file}")
+
+
+def _print_gemini_next_steps(aggregate: bool, aggregate_all: bool) -> None:
+    """Gemini実行時の次のステップを表示"""
+    print("\n次のステップ:")
+    print(f"  1. {OUTPUT_DIR}/intent_review.html をブラウザで開く")
+    print("  2. 抽出された意図を確認・レビュー")
+
+    if aggregate_all:
+        print("  3. クラスタ横断上位意図の階層構造を確認")
+        print(f"  4. {CROSS_CLUSTER_DIR}/super_intents.json のJSONファイルを確認")
+        super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
+        if super_enriched.exists():
+            print(f"  5. {super_enriched} の詳細展開版（個別意図詳細含む）を確認")
+        ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
+        enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
+        if ultra_file.exists():
+            print(f"  6. {ultra_file} の最終上位意図（2段階抽象化）を確認")
+        if enriched_file.exists():
+            print(f"  7. {enriched_file} の詳細展開版（個別意図詳細含む）を確認")
+    elif aggregate:
+        print("  3. 上位意図と個別意図のマッピングを確認")
+        print(f"  4. {AGGREGATED_DIR}/ のJSONファイルを確認")
+    else:
+        print(f"  3. {PROCESSED_DIR}/ のJSONファイルを確認")
+
+
+def _print_completion_message(
+    gemini: bool, aggregate: bool, aggregate_all: bool
+) -> None:
+    """完了メッセージの出力"""
+    print("\n" + "=" * 60)
+
+    if gemini:
+        print("✅ 意図抽出完了！")
+        print("=" * 60)
+        _print_gemini_output_files(aggregate, aggregate_all)
+        _print_gemini_next_steps(aggregate, aggregate_all)
+    else:
+        print("✅ プロンプト生成完了！")
+        print("=" * 60)
+        print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
+        print(f"📄 レビュー用インデックス: {OUTPUT_DIR / 'index.html'}")
+        print("\n次のステップ:")
+        print(f"  1. {OUTPUT_DIR}/index.html をブラウザで開く")
+        print("  2. 各クラスタのプロンプトをレビュー")
+        print("  3. --gemini オプションで意図抽出を実行")
 
 
 def run_intent_extraction_pipeline(
@@ -1751,308 +2163,48 @@ def run_intent_extraction_pipeline(
         aggregate_all: 最上位意図を生成
         max_workers: 並列実行の最大ワーカー数
     """
-
-    print("=" * 60)
-    print("意図抽出プロンプト生成")
-    if gemini:
-        print(f"+ Gemini API で意図抽出を実行（並列数: {max_workers}）")
-    if aggregate:
-        if not gemini:
-            print(
-                "❌ エラー: --aggregate オプションは --gemini オプションと併用してください"
-            )
-            return
-        print("+ 上位意図を抽出")
-    if aggregate_all:
-        if not gemini or not aggregate:
-            print(
-                "❌ エラー: --aggregate-all オプションは --gemini --aggregate オプションと併用してください"
-            )
-            return
-        if cluster is not None:
-            print(
-                "❌ エラー: --aggregate-all オプションは --cluster オプションと併用できません（全クラスタ処理が必要）"
-            )
-            return
-        print("+ クラスタ横断上位意図を抽出")
-    if cluster is not None:
-        print(f"+ クラスタ {cluster} のみ処理")
-    if save_raw:
-        print("+ 生レスポンスを保存")
-    print("=" * 60)
-
-    # Gemini API の初期化（--gemini オプション指定時）
-    if gemini:
-        try:
-            gemini_client.initialize()
-        except SystemExit:
-            return
-
-    # テンプレート読み込み
-    print("\nプロンプトテンプレートを読み込み中...")
-    try:
-        template = load_template()
-        print(f"✓ テンプレート読み込み完了: {TEMPLATE_FILE}")
-    except FileNotFoundError as e:
-        print(f"❌ エラー: {e}")
+    if not _validate_pipeline_options(gemini, aggregate, aggregate_all, cluster):
         return
 
-    # 意図グループ化テンプレート読み込み（--aggregate または --aggregate-all オプション指定時）
-    grouping_template = None
-    if aggregate or aggregate_all:
-        print("\n意図グループ化テンプレートを読み込み中...")
-        try:
-            grouping_template = load_grouping_template()
-            print(f"✓ テンプレート読み込み完了: {GROUPING_TEMPLATE_FILE}")
-        except FileNotFoundError as e:
-            print(f"❌ エラー: {e}")
-            return
+    _print_pipeline_config(
+        gemini, cluster, save_raw, aggregate, aggregate_all, max_workers
+    )
 
-    # データ読み込み
-    print("\nクラスタリング結果を読み込み中...")
-    df = load_clustered_messages()
-    print(f"✓ {len(df)}件のメッセージを読み込みました")
+    if gemini and not _initialize_gemini_client():
+        return
 
-    # メッセージメタデータを構築
-    print("\nメッセージメタデータを構築中...")
-    message_metadata = build_message_metadata(df)
-    print(f"✓ {len(message_metadata)}件のメッセージメタデータを構築しました")
+    try:
+        template, grouping_template = _load_templates(aggregate, aggregate_all)
+        df, message_metadata, cluster_ids = _load_and_prepare_data(cluster)
+    except (FileNotFoundError, ValueError):
+        return
 
-    # クラスタごとにプロンプト生成
-    cluster_ids = sorted(df["cluster"].unique())
+    context = ClusterProcessingContext(
+        df=df,
+        template=template,
+        message_metadata=message_metadata,
+        gemini=gemini,
+        aggregate=aggregate,
+        grouping_template=grouping_template,
+        save_raw=save_raw,
+    )
+    all_prompts = _process_all_clusters(cluster_ids, context, max_workers=max_workers)
+    _save_generation_summary(all_prompts, cluster_ids, df)
 
-    # 特定のクラスタのみ処理する場合はフィルタリング
-    if cluster is not None:
-        if cluster not in cluster_ids:
-            print(f"❌ エラー: クラスタ {cluster} は存在しません")
-            print(f"利用可能なクラスタID: {cluster_ids}")
-            return
-        cluster_ids = [cluster]
-
-    print(f"\n{len(cluster_ids)}個のクラスタに対してプロンプトを生成します")
-
-    # 既存の結果を読み込み（部分更新の場合）
-    all_prompts = []
-    # if cluster is not None and (OUTPUT_DIR / "generation_summary.json").exists():
-    #     # 既存のサマリーから他のクラスタの情報を読み込む
-    #     with open(OUTPUT_DIR / "generation_summary.json", 'r', encoding='utf-8') as f:
-    #         existing_summary = json.load(f)
-    #     # 既存の抽出結果も読み込み（HTML再生成のため）
-    #     # ここでは簡略化のため、指定クラスタのみ再生成
-
-    # 並列化する場合の処理関数を定義
-    def process_cluster(cluster_id: int) -> Dict:
-        """1つのクラスタを処理する関数（並列実行用）"""
-        cluster_df = df[df["cluster"] == cluster_id]
-        prompt_info = generate_cluster_prompt(cluster_id, cluster_df, template)
-
-        # Gemini APIで意図抽出（オプション指定時）
-        if gemini:
-            intents = call_gemini_api_with_postprocess(
-                prompt_info["prompt"],
-                cluster_id,
-                message_metadata,
-                save_raw=save_raw,
-            )
-            prompt_info["extracted_intents"] = intents
-
-            # 上位意図抽出（--aggregate オプション指定時）
-            if aggregate and intents and grouping_template:
-                meta_intents = aggregate_intents_with_gemini(
-                    intents, cluster_id, grouping_template, save_raw=save_raw
-                )
-                prompt_info["meta_intents"] = meta_intents
-
-        # 個別ファイルとして保存
-        output_file = OUTPUT_DIR / f"cluster_{cluster_id:02d}_prompt.md"
-        with open(output_file, "w", encoding="utf-8") as f:
-            f.write(prompt_info["prompt"])
-
-        return prompt_info
-
-    # Gemini API使用時は並列実行、それ以外は逐次実行
-    if gemini:
-        progress_desc = "Gemini API で意図抽出中"
-        all_prompts = gemini_client.parallel_execute(
-            cluster_ids,
-            process_cluster,
-            max_workers=max_workers,
-            desc=progress_desc,
-            unit="cluster",
-        )
-    else:
-        # プロンプト生成のみの場合は逐次実行（高速なので並列化不要）
-        progress_desc = "プロンプト生成中"
-        all_prompts = []
-        for cluster_id in tqdm(cluster_ids, desc=progress_desc, unit="cluster"):
-            prompt_info = process_cluster(cluster_id)
-            all_prompts.append(prompt_info)
-
-    # サマリー情報を保存
-    summary = {
-        "generated_at": datetime.now().isoformat(),
-        "total_clusters": int(len(cluster_ids)),
-        "total_messages": int(len(df)),
-        "clusters": [
-            {
-                "cluster_id": int(p["cluster_id"]),
-                "message_count": int(p["message_count"]),
-                "prompt_file": f"cluster_{p['cluster_id']:02d}_prompt.md",
-            }
-            for p in all_prompts
-        ],
-    }
-
-    summary_file = OUTPUT_DIR / "generation_summary.json"
-    with open(summary_file, "w", encoding="utf-8") as f:
-        json.dump(summary, f, ensure_ascii=False, indent=2)
-
-    print(f"\n✓ サマリー情報を保存: {summary_file}")
-
-    # クラスタ横断上位意図抽出（--aggregate-all オプション指定時）
     if aggregate_all and grouping_template:
-        print("\n" + "=" * 60)
-        print("クラスタ横断上位意図抽出")
-        print("=" * 60)
+        _process_cross_cluster_aggregation(cluster_ids, grouping_template, save_raw)
 
-        # 全クラスタの上位意図を収集
-        print("\n全クラスタの上位意図を収集中...")
-        all_meta_intents, stats = collect_all_meta_intents(cluster_ids)
-        print(f"✓ {len(all_meta_intents)}件の上位意図を収集しました")
-        print(f"✓ {stats['total_individual_intents']}件の個別意図（全クラスタ合計）")
-
-        # クラスタ横断上位意図抽出
-        print("\nクラスタ横断上位意図を抽出中...")
-        super_intents, meta_intents, total_individual_intents = (
-            aggregate_cross_cluster_intents(
-                all_meta_intents,
-                grouping_template,
-                stats["total_individual_intents"],
-                save_raw=save_raw,
-            )
-        )
-
-        if super_intents:
-            print(f"✓ {len(super_intents)}件のクラスタ横断上位意図を抽出しました")
-            for i, super_intent in enumerate(super_intents, 1):
-                covered_count = len(super_intent.get("covered_meta_intent_indices", []))
-                print(
-                    f"  {i}. {super_intent.get('super_intent', '（未定義）')} ({covered_count}件のmeta_intentをカバー)"
-                )
-
-            # 2段階目の抽象化（super_intentsが50件以上の場合）
-            ultra_intents = aggregate_super_intents_recursively(
-                super_intents,
-                meta_intents,
-                total_individual_intents,
-                grouping_template,
-                save_raw=save_raw,
-            )
-
-            if ultra_intents:
-                print("\n" + "=" * 60)
-                print("最終上位意図抽出結果（ultra_intents）")
-                print("=" * 60)
-                print(
-                    f"\n✓ {len(ultra_intents)}件の最終上位意図（ultra_intents）を抽出しました\n"
-                )
-                for i, ultra_intent in enumerate(ultra_intents, 1):
-                    covered_super_count = len(
-                        ultra_intent.get("covered_super_intent_indices", [])
-                    )
-                    covered_intent_count = len(
-                        ultra_intent.get("covered_intent_ids_flat", [])
-                    )
-                    print(f"【Ultra Intent {i}】")
-                    print(f"  意図: {ultra_intent.get('ultra_intent', '（未定義）')}")
-                    if ultra_intent.get("objective_facts"):
-                        print(f"  客観的事実: {ultra_intent['objective_facts']}")
-                    if ultra_intent.get("context"):
-                        print(f"  背景: {ultra_intent['context']}")
-                    print(
-                        f"  カバー範囲: {covered_super_count}件のsuper_intent / {covered_intent_count}件の個別意図"
-                    )
-                    if ultra_intent.get("source_full_paths"):
-                        paths = ", ".join(ultra_intent["source_full_paths"][:3])
-                        if len(ultra_intent["source_full_paths"]) > 3:
-                            paths += (
-                                f" 他{len(ultra_intent['source_full_paths']) - 3}件"
-                            )
-                        print(f"  プロジェクト: {paths}")
-                    print(
-                        f"  ステータス: {ultra_intent.get('aggregate_status', 'unknown')}"
-                    )
-                    print()
-        else:
-            print("❌ クラスタ横断上位意図の抽出に失敗しました")
-
-    # レビュー用のHTMLを生成
     if gemini:
-        # Gemini抽出結果のレビューHTML
         generate_intent_review_html(all_prompts, include_meta_intents=aggregate)
-        print("\n" + "=" * 60)
-        print("✅ 意図抽出完了！")
-        print("=" * 60)
-        print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
-        print(f"📄 レビュー用HTML: {OUTPUT_DIR / 'intent_review.html'}")
-        print(f"📄 後処理済みJSON: {PROCESSED_DIR}/")
-        if aggregate:
-            print(f"📄 上位意図JSON: {AGGREGATED_DIR}/")
-        if aggregate_all:
-            print(
-                f"📄 クラスタ横断上位意図JSON: {CROSS_CLUSTER_DIR}/super_intents.json"
-            )
-            # super_intents_enriched.json の存在をチェック
-            super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
-            if super_enriched.exists():
-                print(f"📄 クラスタ横断上位意図JSON（詳細展開版）: {super_enriched}")
-
-            # ultra_intents.json の存在をチェック
-            ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
-            if ultra_file.exists():
-                print(f"📄 最終上位意図JSON（2段階抽象化）: {ultra_file}")
-                enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
-                if enriched_file.exists():
-                    print(f"📄 最終上位意図JSON（詳細展開版）: {enriched_file}")
-        print("\n次のステップ:")
-        print(f"  1. {OUTPUT_DIR}/intent_review.html をブラウザで開く")
-        print("  2. 抽出された意図を確認・レビュー")
-        if aggregate_all:
-            print("  3. クラスタ横断上位意図の階層構造を確認")
-            print(f"  4. {CROSS_CLUSTER_DIR}/super_intents.json のJSONファイルを確認")
-            super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
-            if super_enriched.exists():
-                print(f"  5. {super_enriched} の詳細展開版（個別意図詳細含む）を確認")
-            ultra_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
-            enriched_file = CROSS_CLUSTER_DIR / "ultra_intents_enriched.json"
-            if ultra_file.exists():
-                print(f"  6. {ultra_file} の最終上位意図（2段階抽象化）を確認")
-            if enriched_file.exists():
-                print(f"  7. {enriched_file} の詳細展開版（個別意図詳細含む）を確認")
-        elif aggregate:
-            print("  3. 上位意図と個別意図のマッピングを確認")
-            print(f"  4. {AGGREGATED_DIR}/ のJSONファイルを確認")
-        else:
-            print(f"  3. {PROCESSED_DIR}/ のJSONファイルを確認")
     else:
-        # プロンプト一覧のインデックスHTML
         generate_review_index(all_prompts)
-        print("\n" + "=" * 60)
-        print("✅ プロンプト生成完了！")
-        print("=" * 60)
-        print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
-        print(f"📄 レビュー用インデックス: {OUTPUT_DIR / 'index.html'}")
-        print("\n次のステップ:")
-        print(f"  1. {OUTPUT_DIR}/index.html をブラウザで開く")
-        print("  2. 各クラスタのプロンプトをレビュー")
-        print("  3. --gemini オプションで意図抽出を実行")
+
+    _print_completion_message(gemini, aggregate, aggregate_all)
 
 
-def generate_intent_review_html(
-    all_prompts: List[Dict], include_meta_intents: bool = False
-):
-    """Gemini抽出結果のレビュー用HTMLを生成"""
-    html_parts = [
+def _generate_html_header() -> List[str]:
+    """HTML ヘッダーとスタイルを生成"""
+    return [
         "<!DOCTYPE html>",
         "<html lang='ja'>",
         "<head>",
@@ -2104,7 +2256,9 @@ def generate_intent_review_html(
         "    <h1>🎯 意図抽出結果 - レビュー</h1>",
     ]
 
-    # 統計情報を計算
+
+def _generate_summary_stats(all_prompts: List[Dict]) -> List[str]:
+    """統計情報セクションを生成"""
     total_clusters = len(all_prompts)
     total_intents = sum(
         len(p.get("extracted_intents", []))
@@ -2114,206 +2268,181 @@ def generate_intent_review_html(
     failed_clusters = sum(1 for p in all_prompts if not p.get("extracted_intents"))
     success_clusters = total_clusters - failed_clusters
 
-    html_parts.extend(
-        [
-            "    <div class='summary'>",
-            f"      <strong>生成日時:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br>",
-            "      <strong>モデル:</strong> Gemini 2.5 Flash",
-            "    </div>",
-            "    <div class='stats'>",
-            f"      <div class='stat-card'><div class='stat-value'>{total_clusters}</div><div class='stat-label'>クラスタ数</div></div>",
-            f"      <div class='stat-card'><div class='stat-value'>{total_intents}</div><div class='stat-label'>抽出された意図</div></div>",
-            f"      <div class='stat-card'><div class='stat-value'>{success_clusters}</div><div class='stat-label'>成功</div></div>",
-            f"      <div class='stat-card'><div class='stat-value'>{failed_clusters}</div><div class='stat-label'>失敗</div></div>",
-            "    </div>",
-        ]
-    )
+    return [
+        "    <div class='summary'>",
+        f"      <strong>生成日時:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br>",
+        "      <strong>モデル:</strong> Gemini 2.5 Flash",
+        "    </div>",
+        "    <div class='stats'>",
+        f"      <div class='stat-card'><div class='stat-value'>{total_clusters}</div><div class='stat-label'>クラスタ数</div></div>",
+        f"      <div class='stat-card'><div class='stat-value'>{total_intents}</div><div class='stat-label'>抽出された意図</div></div>",
+        f"      <div class='stat-card'><div class='stat-value'>{success_clusters}</div><div class='stat-label'>成功</div></div>",
+        f"      <div class='stat-card'><div class='stat-value'>{failed_clusters}</div><div class='stat-label'>失敗</div></div>",
+        "    </div>",
+    ]
 
-    # 各クラスタの結果を表示
-    for prompt_info in all_prompts:
-        cluster_id = prompt_info["cluster_id"]
-        message_count = prompt_info["message_count"]
-        intents = prompt_info.get("extracted_intents")
-        meta_intents = prompt_info.get("meta_intents")
 
-        html_parts.extend(
+def _generate_meta_intent_html(meta_intent: Dict, idx: int) -> List[str]:
+    """単一の上位意図のHTMLを生成"""
+    meta_status = meta_intent.get("aggregate_status", "unknown")
+    status_class = f"status-{meta_status}"
+
+    html = [
+        "        <div class='meta-intent-card'>",
+        "          <div class='meta-intent-header'>",
+        f"            <div class='meta-intent-title'>{idx}. {meta_intent.get('meta_intent', '（未定義）')}</div>",
+        f"            <div class='intent-status {status_class}'>{meta_status}</div>",
+        "          </div>",
+    ]
+
+    if meta_intent.get("objective_facts"):
+        html.extend(
             [
-                "    <div class='cluster-section'>",
-                "      <div class='cluster-header'>",
-                f"        <div class='cluster-title'>クラスタ {cluster_id}</div>",
-                f"        <div class='cluster-meta'>{message_count}件のメッセージ</div>",
-                "      </div>",
+                "          <div class='meta-intent-field'>",
+                "            <div class='field-label'>客観的事実:</div>",
+                f"            <div class='field-value'>{meta_intent['objective_facts']}</div>",
+                "          </div>",
             ]
         )
 
-        # 上位意図を表示（--aggregate 指定時）
+    if meta_intent.get("context"):
+        html.extend(
+            [
+                "          <div class='meta-intent-field'>",
+                "            <div class='field-label'>背景:</div>",
+                f"            <div class='field-value'>{meta_intent['context']}</div>",
+                "          </div>",
+            ]
+        )
+
+    if meta_intent.get("covered_intent_indices"):
+        html.extend(
+            [
+                "          <div class='meta-intent-field'>",
+                "            <div class='field-label'>含まれる個別意図:</div>",
+                "            <div class='covered-intents'>",
+            ]
+        )
+        for intent_idx in meta_intent["covered_intent_indices"]:
+            html.append(
+                f"              <span class='covered-intent-link'>Intent #{intent_idx}</span>"
+            )
+        html.extend(["            </div>", "          </div>"])
+
+    html.append("        </div>")
+    return html
+
+
+def _generate_intent_field_html(intent: Dict, covered_class: str) -> List[str]:
+    """個別意図のフィールドHTMLを生成"""
+    status = intent.get("status", "unknown")
+    status_class = f"status-{status}"
+    description = intent.get("description") or intent.get("intent") or "（説明なし）"
+
+    html = [
+        f"        <div class='intent-card{covered_class}'>",
+        "          <div class='intent-header'>",
+        f"            <div class='intent-description'><span class='intent-index'>#{intent.get('_index', 0)}</span>{description}</div>",
+        f"            <div class='intent-status {status_class}'>{status}</div>",
+        "          </div>",
+    ]
+
+    special_keys = {"description", "intent", "status", "source_message_ids", "_index"}
+    label_map = {
+        "target": "対象",
+        "motivation": "動機",
+        "why": "理由",
+        "objective_facts": "客観的事実",
+    }
+
+    for key, value in intent.items():
+        if key in special_keys or value is None or value == "":
+            continue
+        label = label_map.get(key, key)
+        html.extend(
+            [
+                "          <div class='intent-field'>",
+                f"            <div class='field-label'>{label}:</div>",
+                f"            <div class='field-value'>{value}</div>",
+                "          </div>",
+            ]
+        )
+
+    if intent.get("source_message_ids"):
+        html.extend(
+            [
+                "          <div class='intent-field'>",
+                "            <div class='field-label'>メッセージID:</div>",
+                "            <div class='message-ids'>",
+            ]
+        )
+        for msg_id in intent["source_message_ids"]:
+            html.append(f"              <span class='message-id-tag'>{msg_id}</span>")
+        html.extend(["            </div>", "          </div>"])
+
+    html.append("        </div>")
+    return html
+
+
+def _generate_cluster_section(
+    prompt_info: Dict, include_meta_intents: bool
+) -> List[str]:
+    """クラスタセクション全体のHTMLを生成"""
+    cluster_id = prompt_info["cluster_id"]
+    message_count = prompt_info["message_count"]
+    intents = prompt_info.get("extracted_intents")
+    meta_intents = prompt_info.get("meta_intents")
+
+    html = [
+        "    <div class='cluster-section'>",
+        "      <div class='cluster-header'>",
+        f"        <div class='cluster-title'>クラスタ {cluster_id}</div>",
+        f"        <div class='cluster-meta'>{message_count}件のメッセージ</div>",
+        "      </div>",
+    ]
+
+    covered_indices = set()
+    if include_meta_intents and meta_intents:
+        html.append("      <h2>🎯 上位意図（Meta Intents）</h2>")
+        html.append("      <div class='meta-intents-container'>")
+
+        for meta_intent in meta_intents:
+            covered_indices.update(meta_intent.get("covered_intent_indices", []))
+
+        for idx, meta_intent in enumerate(meta_intents, 1):
+            html.extend(_generate_meta_intent_html(meta_intent, idx))
+
+        html.append("      </div>")
+
+    if intents:
         if include_meta_intents and meta_intents:
-            html_parts.append("      <h2>🎯 上位意図（Meta Intents）</h2>")
-            html_parts.append("      <div class='meta-intents-container'>")
+            html.append("      <h2>📝 個別意図（Individual Intents）</h2>")
+        html.append("      <div class='intents-container'>")
 
-            # どの意図が上位意図でカバーされているか追跡
-            covered_indices = set()
-            for meta_intent in meta_intents:
-                covered_indices.update(meta_intent.get("covered_intent_indices", []))
+        for i, intent in enumerate(intents):
+            covered_class = " covered" if i in covered_indices else ""
+            intent["_index"] = i
+            html.extend(_generate_intent_field_html(intent, covered_class))
 
-            for idx, meta_intent in enumerate(meta_intents, 1):
-                meta_status = meta_intent.get("aggregate_status", "unknown")
-                status_class = f"status-{meta_status}"
+        html.append("      </div>")
+    else:
+        html.append("      <div class='error-message'>⚠️ 意図抽出に失敗しました</div>")
 
-                html_parts.extend(
-                    [
-                        "        <div class='meta-intent-card'>",
-                        "          <div class='meta-intent-header'>",
-                        f"            <div class='meta-intent-title'>{idx}. {meta_intent.get('meta_intent', '（未定義）')}</div>",
-                        f"            <div class='intent-status {status_class}'>{meta_status}</div>",
-                        "          </div>",
-                    ]
-                )
+    html.append("    </div>")
+    return html
 
-                # objective_facts
-                if meta_intent.get("objective_facts"):
-                    html_parts.extend(
-                        [
-                            "          <div class='meta-intent-field'>",
-                            "            <div class='field-label'>客観的事実:</div>",
-                            f"            <div class='field-value'>{meta_intent['objective_facts']}</div>",
-                            "          </div>",
-                        ]
-                    )
 
-                # context
-                if meta_intent.get("context"):
-                    html_parts.extend(
-                        [
-                            "          <div class='meta-intent-field'>",
-                            "            <div class='field-label'>背景:</div>",
-                            f"            <div class='field-value'>{meta_intent['context']}</div>",
-                            "          </div>",
-                        ]
-                    )
+def generate_intent_review_html(
+    all_prompts: List[Dict], include_meta_intents: bool = False
+):
+    """Gemini抽出結果のレビュー用HTMLを生成"""
+    html_parts = _generate_html_header()
+    html_parts.extend(_generate_summary_stats(all_prompts))
 
-                # covered intents
-                if meta_intent.get("covered_intent_indices"):
-                    html_parts.extend(
-                        [
-                            "          <div class='meta-intent-field'>",
-                            "            <div class='field-label'>含まれる個別意図:</div>",
-                            "            <div class='covered-intents'>",
-                        ]
-                    )
-                    for intent_idx in meta_intent["covered_intent_indices"]:
-                        html_parts.append(
-                            f"              <span class='covered-intent-link'>Intent #{intent_idx}</span>"
-                        )
-                    html_parts.extend(
-                        [
-                            "            </div>",
-                            "          </div>",
-                        ]
-                    )
+    for prompt_info in all_prompts:
+        html_parts.extend(_generate_cluster_section(prompt_info, include_meta_intents))
 
-                html_parts.append("        </div>")
-
-            html_parts.append("      </div>")
-        else:
-            covered_indices = set()
-
-        # 個別意図を表示
-        if intents:
-            html_parts.append(
-                "      <h2>📝 個別意図（Individual Intents）</h2>"
-                if include_meta_intents and meta_intents
-                else ""
-            )
-            html_parts.append("      <div class='intents-container'>")
-            for i, intent in enumerate(intents):
-                status = intent.get("status", "unknown")
-                status_class = f"status-{status}"
-
-                # カバーされている意図は薄く表示
-                covered_class = " covered" if i in covered_indices else ""
-
-                # 意図の説明文を柔軟に取得（description, intent, その他の順で探す）
-                description = (
-                    intent.get("description") or intent.get("intent") or "（説明なし）"
-                )
-
-                html_parts.extend(
-                    [
-                        f"        <div class='intent-card{covered_class}'>",
-                        "          <div class='intent-header'>",
-                        f"            <div class='intent-description'><span class='intent-index'>#{i}</span>{description}</div>",
-                        f"            <div class='intent-status {status_class}'>{status}</div>",
-                        "          </div>",
-                    ]
-                )
-
-                # 特別なキーを除外して、残りのフィールドを動的に表示
-                special_keys = {"description", "intent", "status", "source_message_ids"}
-
-                # 日本語ラベルマッピング
-                label_map = {
-                    "target": "対象",
-                    "motivation": "動機",
-                    "why": "理由",
-                    "objective_facts": "客観的事実",
-                }
-
-                for key, value in intent.items():
-                    if key in special_keys:
-                        continue
-                    if key == "source_message_ids":
-                        continue
-                    if value is None or value == "":
-                        continue
-
-                    label = label_map.get(key, key)
-                    html_parts.extend(
-                        [
-                            "          <div class='intent-field'>",
-                            f"            <div class='field-label'>{label}:</div>",
-                            f"            <div class='field-value'>{value}</div>",
-                            "          </div>",
-                        ]
-                    )
-
-                # source_message_ids（常に表示）
-                if intent.get("source_message_ids"):
-                    html_parts.extend(
-                        [
-                            "          <div class='intent-field'>",
-                            "            <div class='field-label'>メッセージID:</div>",
-                            "            <div class='message-ids'>",
-                        ]
-                    )
-                    for msg_id in intent["source_message_ids"]:
-                        html_parts.append(
-                            f"              <span class='message-id-tag'>{msg_id}</span>"
-                        )
-                    html_parts.extend(
-                        [
-                            "            </div>",
-                            "          </div>",
-                        ]
-                    )
-
-                html_parts.append("        </div>")
-
-            html_parts.append("      </div>")
-        else:
-            html_parts.append(
-                "      <div class='error-message'>⚠️ 意図抽出に失敗しました</div>"
-            )
-
-        html_parts.append("    </div>")
-
-    html_parts.extend(
-        [
-            "  </div>",
-            "</body>",
-            "</html>",
-        ]
-    )
+    html_parts.extend(["  </div>", "</body>", "</html>"])
 
     output_file = OUTPUT_DIR / "intent_review.html"
     with open(output_file, "w", encoding="utf-8") as f:
@@ -2412,4 +2541,3 @@ def generate_review_index(all_prompts: List[Dict]):
         f.write("\n".join(html_parts))
 
     print(f"\n✓ レビュー用インデックスを生成: {index_file}")
-

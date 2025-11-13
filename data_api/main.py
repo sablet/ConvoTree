@@ -14,14 +14,34 @@ messages_with_hierarchy.csv から ultra_intent_goal_network.json までの
 
 import sys
 from pathlib import Path
-import fire
+from typing import TypedDict, Unpack
+
+import fire  # type: ignore[import-untyped]
 
 # lib/pipelines をインポート可能にする
 sys.path.insert(0, str(Path(__file__).parent))
 
-from lib.pipelines.message_clustering import run_clustering_pipeline
-from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
 from lib.pipelines.goal_network_builder import build_ultra_goal_network
+from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
+from lib.pipelines.message_clustering import ClusteringConfig, run_clustering_pipeline
+
+
+class ClusteringKwargs(TypedDict, total=False):
+    """クラスタリングのオプション引数"""
+
+    embedding_weight: float
+    time_weight: float
+    hierarchy_weight: float
+    time_bandwidth_hours: float
+    method: str
+    min_cluster_size: int
+    min_samples: int
+    n_clusters: int | None
+    linkage: str
+    size_min: int
+    size_max: int
+    n_init: int
+    max_iter: int
 
 
 class Pipeline:
@@ -30,42 +50,29 @@ class Pipeline:
     def clustering(
         self,
         csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
-        embedding_weight: float = 0.7,
-        time_weight: float = 0.15,
-        hierarchy_weight: float = 0.15,
-        time_bandwidth_hours: float = 168.0,
-        method: str = "kmeans_constrained",
-        size_min: int = 10,
-        size_max: int = 50,
+        **kwargs: Unpack[ClusteringKwargs],
     ):
         """
         ステップ1: メッセージクラスタリング
 
         Args:
             csv_path: 入力CSVファイルパス
-            embedding_weight: 埋め込み重み
-            time_weight: 時間重み
-            hierarchy_weight: 階層重み
-            time_bandwidth_hours: 時間カーネル帯域幅
-            method: クラスタリング手法
-            size_min: 最小クラスタサイズ
-            size_max: 最大クラスタサイズ
+            **kwargs: ClusteringConfigの追加パラメータ
+                embedding_weight: 埋め込み重み (default: 0.7)
+                time_weight: 時間重み (default: 0.15)
+                hierarchy_weight: 階層重み (default: 0.15)
+                time_bandwidth_hours: 時間カーネル帯域幅 (default: 168.0)
+                method: クラスタリング手法 (default: "kmeans_constrained")
+                size_min: 最小クラスタサイズ (default: 10)
+                size_max: 最大クラスタサイズ (default: 50)
         """
-        run_clustering_pipeline(
-            csv_path=csv_path,
-            embedding_weight=embedding_weight,
-            time_weight=time_weight,
-            hierarchy_weight=hierarchy_weight,
-            time_bandwidth_hours=time_bandwidth_hours,
-            method=method,
-            size_min=size_min,
-            size_max=size_max,
-        )
+        config = ClusteringConfig(csv_path=csv_path, **kwargs)
+        run_clustering_pipeline(config)
 
     def intent_extraction(
         self,
         gemini: bool = False,
-        cluster: int = None,
+        cluster: int | None = None,
         save_raw: bool = False,
         aggregate: bool = False,
         aggregate_all: bool = False,
@@ -94,7 +101,7 @@ class Pipeline:
     def goal_network(
         self,
         input_path: str = "output/intent_extraction/cross_cluster/ultra_intents_enriched.json",
-        ultra_id: int = None,
+        ultra_id: int | None = None,
         save_prompts: bool = False,
     ):
         """

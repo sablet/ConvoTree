@@ -7,22 +7,24 @@ Gemini APIをlitellm経由で呼び出し、diskcacheで自動キャッシュす
 
 import os
 import litellm
-from litellm import completion
+from litellm import ModelResponse, completion
 from litellm.caching import Cache
 from pathlib import Path
-from typing import Optional, Callable, TypeVar, List
+from typing import Optional, Callable, TypeVar, List, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore[import-untyped]
 
 T = TypeVar("T")
 
+# キャッシュ判定用定数
+CACHE_HIT_THRESHOLD_SECONDS = 0.1  # キャッシュヒットは通常0.1秒未満
 
 # デフォルトのキャッシュディレクトリ
 DEFAULT_CACHE_DIR = Path("output/.cache/litellm")
 DEFAULT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # グローバルなキャッシュインスタンス（litellmが内部で使用）
-litellm.cache = Cache(type="disk", disk_cache_dir=str(DEFAULT_CACHE_DIR))
+litellm.cache = Cache(type="disk", disk_cache_dir=str(DEFAULT_CACHE_DIR))  # type: ignore[arg-type]
 
 
 class GenerativeModel:
@@ -49,7 +51,7 @@ class GenerativeModel:
         if cache_dir is not None:
             cache_dir = Path(cache_dir)
             cache_dir.mkdir(parents=True, exist_ok=True)
-            litellm.cache = Cache(type="disk", disk_cache_dir=str(cache_dir))
+            litellm.cache = Cache(type="disk", disk_cache_dir=str(cache_dir))  # type: ignore[arg-type]
 
     def generate_content(self, prompt: str, temperature: float = 0.0) -> "Response":
         """
@@ -62,12 +64,20 @@ class GenerativeModel:
         Returns:
             Response オブジェクト（.text 属性でテキスト取得可能）
         """
+        import time as _time
+
+        _start = _time.time()
         response = completion(
             model=self.model_name,
             messages=[{"role": "user", "content": prompt}],
             caching=True,
             temperature=temperature,
         )
+        _elapsed = _time.time() - _start
+
+        # キャッシュヒット判定
+        _status = "CACHE" if _elapsed < CACHE_HIT_THRESHOLD_SECONDS else "API"
+        print(f"[{_status}] {_elapsed:.3f}s", flush=True)
 
         return Response(response)
 
@@ -78,7 +88,7 @@ class Response:
     litellm のレスポンスをラップ
     """
 
-    def __init__(self, litellm_response):
+    def __init__(self, litellm_response: ModelResponse):
         """
         Args:
             litellm_response: litellm.completion() の返り値
@@ -88,7 +98,11 @@ class Response:
     @property
     def text(self) -> str:
         """レスポンステキストを取得"""
-        return self._response.choices[0].message.content
+        choice = self._response.choices[0]
+        if hasattr(choice, "message"):
+            content = choice.message.content
+            return content if content is not None else ""
+        return ""
 
 
 def configure(api_key: Optional[str] = None):
@@ -156,7 +170,7 @@ def get_cache_stats() -> dict:
 
 def parallel_execute(
     items: List,
-    process_func: Callable[[any], T],
+    process_func: Callable[[Any], T],
     max_workers: int = 5,
     desc: str = "Processing",
     unit: str = "item",
@@ -183,7 +197,7 @@ def parallel_execute(
         ...     return result
         >>> results = parallel_execute(cluster_ids, process, max_workers=5)
     """
-    results = [None] * len(items)  # 順序を保持するための結果配列
+    results: List[Optional[T]] = [None] * len(items)  # 順序を保持するための結果配列
     item_to_index = {id(item): idx for idx, item in enumerate(items)}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -207,4 +221,5 @@ def parallel_execute(
                     executor.shutdown(wait=False, cancel_futures=True)
                     raise
 
-    return results
+    # Cast to List[T] - all items should be filled by this point
+    return results  # type: ignore[return-value]

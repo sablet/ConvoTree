@@ -16,24 +16,24 @@ import json
 import hashlib
 import time
 import numpy as np
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 from dataclasses import dataclass
 import warnings
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
-from joblib import Memory
+from joblib import Memory  # type: ignore[import-untyped]
 
 # クラスタリング関連
-from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
-from sklearn.cluster import AgglomerativeClustering
-import hdbscan
-from k_means_constrained import KMeansConstrained
+from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances  # type: ignore[import-untyped]
+from sklearn.cluster import AgglomerativeClustering  # type: ignore[import-untyped]
+import hdbscan  # type: ignore[import-untyped]
+from k_means_constrained import KMeansConstrained  # type: ignore[import-untyped]
 
 # 可視化
 import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE
+from sklearn.manifold import TSNE  # type: ignore[import-untyped]
 
 # グラフ分析
 
@@ -49,6 +49,9 @@ load_dotenv()
 # 出力ディレクトリ
 OUTPUT_DIR = Path("output/message_clustering")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# クラスタリング評価用定数
+MIN_SAMPLES_FOR_SILHOUETTE = 2  # シルエットスコア計算に必要な最小サンプル数
 
 # キャッシュ設定（joblib.Memory使用）
 CACHE_DIR = Path("output/cache/message_clustering_embeddings_ruri")
@@ -96,6 +99,8 @@ def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[fl
 @dataclass
 class ClusteringConfig:
     """クラスタリング設定"""
+
+    csv_path: str  # 入力CSVファイルパス
 
     # 距離合成の重み（正規化後）
     embedding_weight: float = 0.75  # 埋め込み距離の重み
@@ -156,14 +161,14 @@ class MessageData:
         self._preprocess_dataframe()
 
         # 埋め込み読み込みまたは生成
-        self.embeddings = None
-        self.embedding_dim = None
+        self.embeddings: np.ndarray[tuple, np.dtype[np.float64]] | None = None
+        self.embedding_dim: int | None = None
         if self.embedding_path and self.embedding_path.exists():
             self._load_embeddings()
         elif self.generate_embeddings_flag:
             self._generate_embeddings()
 
-    def _preprocess_dataframe(self):
+    def _preprocess_dataframe(self) -> None:
         """DataFrameの前処理"""
         # 時刻をdatetimeに変換
         self.df["start_time"] = pd.to_datetime(self.df["start_time"])
@@ -178,12 +183,11 @@ class MessageData:
             if " -> " not in path:
                 # Inboxのみの場合はそのまま
                 return path
-            else:
-                # Inbox -> A -> B の場合、Inboxを除去してA -> Bにする
-                parts = path.split(" -> ")
-                if len(parts) > 1 and parts[0] == "Inbox":
-                    return " -> ".join(parts[1:])
-                return path
+            # Inbox -> A -> B の場合、Inboxを除去してA -> Bにする
+            parts = path.split(" -> ")
+            if len(parts) > 1 and parts[0] == "Inbox":
+                return " -> ".join(parts[1:])
+            return path
 
         self.df["normalized_path"] = self.df["full_path"].apply(normalize_path)
 
@@ -198,8 +202,9 @@ class MessageData:
         print(f"  - 正規化チャネル数: {self.df['normalized_path'].nunique()}")
         print(f"  - 最大階層深さ: {self.df['hierarchy_depth'].max()}")
 
-    def _load_embeddings(self):
+    def _load_embeddings(self) -> None:
         """埋め込みデータの読み込み"""
+        assert self.embedding_path is not None, "embedding_path must be set"
         with open(self.embedding_path, "r", encoding="utf-8") as f:
             embedding_data = json.load(f)
 
@@ -224,7 +229,7 @@ class MessageData:
 
         print(f"✓ 埋め込みを読み込みました: {self.embeddings.shape}")
 
-    def _generate_embeddings(self):
+    def _generate_embeddings(self) -> None:
         """埋め込みベクトルを生成（ruri-large-v2モデル使用）"""
         print("\n埋め込みベクトルを生成中...")
 
@@ -256,7 +261,7 @@ class MessageData:
         elapsed_time = time.time() - start_time
 
         # 結果を対応するインデックスに格納
-        for idx, embedding in zip(indices, batch_embeddings):
+        for idx, embedding in zip(indices, batch_embeddings, strict=False):
             embeddings_list[idx] = embedding
 
         self.embeddings = np.array(embeddings_list)
@@ -273,8 +278,9 @@ class MessageData:
         # オプション: JSON形式で保存
         self._save_embeddings()
 
-    def _save_embeddings(self):
+    def _save_embeddings(self) -> None:
         """埋め込みをJSON形式で保存"""
+        assert self.embeddings is not None, "embeddings must be loaded"
         embeddings_data = []
         for i, msg_id in enumerate(self.df["message_id"]):
             embeddings_data.append(
@@ -364,7 +370,7 @@ class DistanceCalculator:
                 path_j = paths[j].split(" -> ")
 
                 common_depth = 0
-                for pi, pj in zip(path_i, path_j):
+                for pi, pj in zip(path_i, path_j, strict=False):
                     if pi == pj:
                         common_depth += 1
                     else:
@@ -382,7 +388,7 @@ class DistanceCalculator:
         return hierarchy_distance
 
     @staticmethod
-    def combine_distances(
+    def combine_distances(  # noqa: PLR0914
         embedding_dist: Optional[np.ndarray],
         time_dist: np.ndarray,
         hierarchy_dist: np.ndarray,
@@ -413,26 +419,20 @@ class DistanceCalculator:
         time_min = time_vals.min()
         time_shifted = time_vals - time_min
         time_std = time_shifted.std()
-        if time_std > 0:
-            time_normalized_vals = time_shifted / time_std
-        else:
-            time_normalized_vals = time_shifted
+        time_normalized_vals = time_shifted / time_std if time_std > 0 else time_shifted
         time_normalized = np.zeros_like(time_dist)
         time_normalized[triu_indices] = time_normalized_vals
-        time_normalized = time_normalized + time_normalized.T
+        time_normalized += time_normalized.T
 
         # 階層距離の正規化（最小値0にシフト、標準偏差で割る）
         hier_vals = hierarchy_dist[triu_indices]
         hier_min = hier_vals.min()
         hier_shifted = hier_vals - hier_min
         hier_std = hier_shifted.std()
-        if hier_std > 0:
-            hier_normalized_vals = hier_shifted / hier_std
-        else:
-            hier_normalized_vals = hier_shifted
+        hier_normalized_vals = hier_shifted / hier_std if hier_std > 0 else hier_shifted
         hier_normalized = np.zeros_like(hierarchy_dist)
         hier_normalized[triu_indices] = hier_normalized_vals
-        hier_normalized = hier_normalized + hier_normalized.T
+        hier_normalized += hier_normalized.T
 
         if embedding_dist is None:
             # 埋め込みが無い場合は時間と階層のみ
@@ -447,13 +447,12 @@ class DistanceCalculator:
             embed_min = embed_vals.min()
             embed_shifted = embed_vals - embed_min
             embed_std = embed_shifted.std()
-            if embed_std > 0:
-                embed_normalized_vals = embed_shifted / embed_std
-            else:
-                embed_normalized_vals = embed_shifted
+            embed_normalized_vals = (
+                embed_shifted / embed_std if embed_std > 0 else embed_shifted
+            )
             embed_normalized = np.zeros_like(embedding_dist)
             embed_normalized[triu_indices] = embed_normalized_vals
-            embed_normalized = embed_normalized + embed_normalized.T
+            embed_normalized += embed_normalized.T
 
             # 全ての距離を合成
             combined = (
@@ -475,14 +474,16 @@ class ClusterAnalyzer:
         # 距離行列を計算
         self._compute_distances()
 
-    def _compute_distances(self):
+    def _compute_distances(self) -> None:
         """各種距離行列を計算"""
         print("\n距離行列を計算中...")
 
         calculator = DistanceCalculator()
 
         # 埋め込み距離
+        self.embedding_dist: np.ndarray[tuple, np.dtype[np.float64]] | None
         if self.data.has_embeddings():
+            assert self.data.embeddings is not None
             self.embedding_dist = calculator.compute_embedding_distance(
                 self.data.embeddings
             )
@@ -595,7 +596,7 @@ class ClusterAnalyzer:
         Returns:
             評価指標の辞書
         """
-        from sklearn.metrics import (
+        from sklearn.metrics import (  # type: ignore[import-untyped]
             silhouette_score,
             calinski_harabasz_score,
             davies_bouldin_score,
@@ -603,7 +604,7 @@ class ClusterAnalyzer:
 
         # ノイズを除外
         mask = labels != -1
-        if mask.sum() < 2:
+        if mask.sum() < MIN_SAMPLES_FOR_SILHOUETTE:
             return {
                 "silhouette_score": 0,
                 "calinski_harabasz_score": 0,
@@ -630,6 +631,7 @@ class ClusterAnalyzer:
         # 埋め込みがない場合はMDSで距離行列から座標を復元
         feature_matrix = None
         if self.data.has_embeddings():
+            assert self.data.embeddings is not None
             feature_matrix = self.data.embeddings[mask]
         else:
             try:
@@ -711,9 +713,9 @@ class ClusterVisualizer:
         fig, ax = plt.subplots(figsize=(12, 10))
 
         unique_labels = set(self.labels)
-        colors = plt.cm.tab20(np.linspace(0, 1, len(unique_labels)))
+        colors = plt.cm.tab20(np.linspace(0, 1, len(unique_labels)))  # type: ignore[attr-defined]
 
-        for label, color in zip(unique_labels, colors):
+        for label, color in zip(unique_labels, colors, strict=False):
             if label == -1:
                 # ノイズは黒でプロット
                 mask = self.labels == label
@@ -829,7 +831,7 @@ def tune_parameters(
     Returns:
         最適パラメータと評価結果
     """
-    results = []
+    results: List[Dict] = []
 
     print("\n" + "=" * 60)
     print("パラメータチューニング開始")
@@ -842,7 +844,7 @@ def tune_parameters(
     values = param_grid.values()
 
     for i, combination in enumerate(product(*values)):
-        params = dict(zip(keys, combination))
+        params = dict(zip(keys, combination, strict=False))
 
         print(f"\n[{i + 1}] パラメータ: {params}")
 
@@ -879,40 +881,12 @@ def tune_parameters(
     return best_result
 
 
-def run_clustering_pipeline(
-    csv_path: str,
-    embedding_weight: float = 0.7,
-    time_weight: float = 0.15,
-    hierarchy_weight: float = 0.15,
-    time_bandwidth_hours: float = 168.0,
-    method: str = "kmeans_constrained",
-    min_cluster_size: int = 5,
-    min_samples: int = 3,
-    n_clusters: Optional[int] = None,
-    linkage: str = "complete",
-    size_min: int = 10,
-    size_max: int = 50,
-    n_init: int = 10,
-    max_iter: int = 300,
-) -> None:
+def run_clustering_pipeline(config: ClusteringConfig) -> None:
     """
     メッセージクラスタリングパイプライン
 
     Args:
-        csv_path: 入力CSVファイルパス
-        embedding_weight: 埋め込み重み
-        time_weight: 時間重み
-        hierarchy_weight: 階層重み
-        time_bandwidth_hours: 時間カーネル帯域幅（時間）
-        method: クラスタリング手法
-        min_cluster_size: HDBSCANの最小クラスタサイズ
-        min_samples: HDBSCANの最小サンプル数
-        n_clusters: 階層的/k-meansのクラスタ数
-        linkage: 階層的クラスタリングの結合法
-        size_min: k-means-constrainedの最小クラスタサイズ
-        size_max: k-means-constrainedの最大クラスタサイズ
-        n_init: k-meansの初期化回数
-        max_iter: k-meansの最大反復回数
+        config: クラスタリング設定（ClusteringConfig dataclass）
     """
     print("=" * 60)
     print("メッセージクラスタリングシステム")
@@ -921,26 +895,9 @@ def run_clustering_pipeline(
     # 埋め込みパスは自動生成
     embedding_path = None
 
-    # クラスタリング設定
-    config = ClusteringConfig(
-        embedding_weight=embedding_weight,
-        time_weight=time_weight,
-        hierarchy_weight=hierarchy_weight,
-        time_bandwidth_hours=time_bandwidth_hours,
-        method=method,
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples,
-        n_clusters=n_clusters,
-        linkage=linkage,
-        size_min=size_min,
-        size_max=size_max,
-        n_init=n_init,
-        max_iter=max_iter,
-    )
-
     # クラスタリング実行
     data, labels, metrics = run_clustering_with_config(
-        csv_path, embedding_path, config, generate_embeddings=True
+        config.csv_path, embedding_path, config, generate_embeddings=True
     )
 
     # 可視化
