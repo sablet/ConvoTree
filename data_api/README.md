@@ -286,6 +286,59 @@ uv run python scripts/goal_network_builder.py --mode ultra --save-prompts
 **出力先**:
 - `output/goal_network/ultra_intent_goal_network.json` - ゴールネットワーク全体
 - `output/goal_network/ultra_prompts_responses/` - プロンプト/レスポンス（`--save-prompts`時）
+  - `intent_relations_ultra_{X}_prompt.md` - Ultra Intent X用のプロンプト
+  - `intent_relations_ultra_{X}_raw_response.md` - LLMの生レスポンス
+  - `intent_relations_ultra_{X}_parsed.json` - パース済みのリレーション情報
+
+**ゴールネットワーク構造**:
+```json
+{
+  "nodes": [
+    {
+      "id": "ultra_0",
+      "type": "ultra_intent",
+      "intent": "最上位意図のテキスト",
+      "description": "...",
+      "aggregate_status": "idea"
+    },
+    {
+      "id": "msg_00496",
+      "type": "individual_intent",
+      "intent": "個別意図のテキスト",
+      "status": "todo",
+      "cluster_id": 6,
+      "source_message_ids": ["msg_00496"],
+      "context": "..."
+    },
+    {
+      "id": "generated_001",
+      "type": "generated",
+      "intent": "LLMが生成した中間ゴール",
+      "description": "..."
+    }
+  ],
+  "relations": [
+    {
+      "source": "ultra_0",
+      "target": "generated_001",
+      "type": "means"
+    },
+    {
+      "source": "generated_001",
+      "target": "msg_00496",
+      "type": "means"
+    }
+  ]
+}
+```
+
+**ノードタイプ**:
+- `ultra_intent`: 最上位意図（ルートノード）
+- `individual_intent`: 個別意図（メッセージから抽出）
+- `generated`: LLMが生成した中間ゴール
+
+**リレーションタイプ**:
+- `means`: 目的→手段の関係（source を達成するために target が必要）
 
 ---
 
@@ -314,14 +367,20 @@ data_api/
 │   ├── intent_extraction/
 │   │   ├── processed/                            # Level 0: 個別意図
 │   │   │   └── cluster_XX_processed.json
+│   │   ├── raw_responses/                        # 生レスポンス（--save-raw時）
+│   │   │   └── cluster_XX_raw_response.txt
 │   │   ├── aggregated/                           # Level 1: クラスタ別上位意図
 │   │   │   └── cluster_XX_aggregated.json
-│   │   └── cross_cluster/                        # Level 2: 最上位意図
-│   │       ├── super_intents.json                # 最上位意図
-│   │       └── ultra_intents_enriched.json       # エンリッチ済み最上位意図
+│   │   ├── cross_cluster/                        # Level 2: 最上位意図
+│   │   │   ├── super_intents.json                # 最上位意図
+│   │   │   └── ultra_intents_enriched.json       # エンリッチ済み最上位意図
+│   │   └── intent_review.html                    # レビュー用HTML
 │   └── goal_network/
 │       ├── ultra_intent_goal_network.json        # Ultra モード出力
 │       └── ultra_prompts_responses/              # Ultra モードプロンプト/レスポンス
+│           ├── intent_relations_ultra_X_prompt.md        # プロンプト
+│           ├── intent_relations_ultra_X_raw_response.md  # 生レスポンス
+│           └── intent_relations_ultra_X_parsed.json      # パース済みJSON
 ├── lib/
 │   └── gemini_client.py                          # Gemini APIクライアント
 ├── app/

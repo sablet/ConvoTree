@@ -14,23 +14,22 @@
 
 import json
 import hashlib
+import time
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 from dataclasses import dataclass
 import warnings
 from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
+from joblib import Memory
 
 # クラスタリング関連
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 from sklearn.cluster import AgglomerativeClustering
 import hdbscan
 from k_means_constrained import KMeansConstrained
-
-# キャッシュ
-from app.cache import get_cache
 
 # 可視化
 import matplotlib.pyplot as plt
@@ -50,6 +49,51 @@ load_dotenv()
 # 出力ディレクトリ
 OUTPUT_DIR = Path("output/message_clustering")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# キャッシュ設定（joblib.Memory使用）
+CACHE_DIR = Path("output/cache/message_clustering_embeddings_ruri")
+memory = Memory(location=str(CACHE_DIR), verbose=0)
+
+# モデルインスタンス（遅延ロード）
+_model_instance = None
+
+
+def _get_model() -> SentenceTransformer:
+    """
+    SentenceTransformerモデルを取得（初回のみロード）
+
+    Returns:
+        SentenceTransformerモデルインスタンス
+    """
+    global _model_instance
+    if _model_instance is None:
+        print("  ruri-large-v2 モデルをロード中...")
+        _model_instance = SentenceTransformer("cl-nagoya/ruri-large-v2")
+        print("  ✓ モデルロード完了")
+    return _model_instance
+
+
+@memory.cache
+def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[float]]:
+    """
+    埋め込みベクトルを計算（キャッシュ付き）
+
+    Args:
+        texts: テキストのリスト
+        cache_key: キャッシュキー（SHA256ハッシュ）
+
+    Returns:
+        埋め込みベクトルのリスト
+    """
+    print("  埋め込みを生成中...")
+    model = _get_model()
+    batch_embeddings = model.encode(
+        texts,
+        convert_to_tensor=False,
+        show_progress_bar=True,
+        batch_size=32
+    )
+    return [embedding.tolist() for embedding in batch_embeddings]
 
 
 @dataclass
@@ -179,14 +223,6 @@ class MessageData:
         """埋め込みベクトルを生成（ruri-large-v2モデル使用）"""
         print("\n埋め込みベクトルを生成中...")
 
-        # キャッシュ初期化
-        cache = get_cache("message_clustering_embeddings_ruri")
-
-        # モデルをロード
-        print("  ruri-large-v2 モデルをロード中...")
-        model = SentenceTransformer("cl-nagoya/ruri-large-v2")
-        print("  ✓ モデルロード完了")
-
         # テキストとインデックスを準備
         texts = []
         indices = []
@@ -205,33 +241,29 @@ class MessageData:
         # キャッシュキー生成（全テキストのハッシュ）
         cache_key = hashlib.sha256("\n".join(texts).encode('utf-8')).hexdigest()
 
-        # キャッシュから取得を試みる
-        cached_embeddings = cache.get(cache_key)
-        if cached_embeddings is not None:
-            print("  ✓ キャッシュから埋め込みを取得")
-            for idx, embedding in zip(indices, cached_embeddings):
-                embeddings_list[idx] = embedding
-        else:
-            # ruri-large-v2で埋め込み生成（プレフィックスなし）
-            print("  埋め込みを生成中...")
-            batch_embeddings = model.encode(
-                texts,
-                convert_to_tensor=False,
-                show_progress_bar=True,
-                batch_size=32
-            )
+        # 実行時間計測開始
+        start_time = time.time()
 
-            # 結果を対応するインデックスに格納
-            for idx, embedding in zip(indices, batch_embeddings):
-                embeddings_list[idx] = embedding.tolist()
+        # キャッシュ付き埋め込み計算を実行
+        batch_embeddings = _compute_embeddings_cached(texts, cache_key)
 
-            # キャッシュに保存
-            cache.set(cache_key, [embeddings_list[idx] for idx in indices])
+        # 実行時間計測終了
+        elapsed_time = time.time() - start_time
+
+        # 結果を対応するインデックスに格納
+        for idx, embedding in zip(indices, batch_embeddings):
+            embeddings_list[idx] = embedding
 
         self.embeddings = np.array(embeddings_list)
         self.embedding_dim = self.embeddings.shape[1]
 
-        print(f"✓ 埋め込みを生成しました: {self.embeddings.shape}")
+        # キャッシュヒット/ミスの判定（高速ならキャッシュヒット）
+        if elapsed_time < 1.0:
+            print(f"  ✓ キャッシュから埋め込みを取得（実行時間: {elapsed_time:.3f}秒）")
+        else:
+            print(f"  ✓ 埋め込みを生成しました（実行時間: {elapsed_time:.2f}秒）")
+
+        print(f"✓ 埋め込み完了: {self.embeddings.shape}")
 
         # オプション: JSON形式で保存
         self._save_embeddings()
