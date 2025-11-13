@@ -116,25 +116,25 @@ def main():
     ]
     subprocess.run(cmd_stats)
 
-    # 階層の散らばり分析
-    print("\n" + "=" * 60)
-    print("階層の散らばり分析")
-    print("=" * 60)
+    # 階層の散らばり分析（スクリプト削除済み）
+    # print("\n" + "=" * 60)
+    # print("階層の散らばり分析")
+    # print("=" * 60)
+    #
+    # cmd_hierarchy = [
+    #     'uv', 'run', 'python', 'analyze_clustering_quality.py'
+    # ]
+    # subprocess.run(cmd_hierarchy, capture_output=False)
 
-    cmd_hierarchy = [
-        'uv', 'run', 'python', 'analyze_clustering_quality.py'
-    ]
-    subprocess.run(cmd_hierarchy, capture_output=False)
-
-    # HTMLレポート生成
-    print("\n" + "=" * 60)
-    print("HTMLレポート生成")
-    print("=" * 60)
-
-    cmd_html = [
-        'uv', 'run', 'python', 'visualize_message_clusters.py'
-    ]
-    subprocess.run(cmd_html, capture_output=False)
+    # HTMLレポート生成（スクリプト削除済み）
+    # print("\n" + "=" * 60)
+    # print("HTMLレポート生成")
+    # print("=" * 60)
+    #
+    # cmd_html = [
+    #     'uv', 'run', 'python', 'visualize_message_clusters.py'
+    # ]
+    # subprocess.run(cmd_html, capture_output=False)
 
     # HTMLレポートを開く
     if not args.no_open:

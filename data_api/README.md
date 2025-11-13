@@ -21,6 +21,21 @@
    ultra_intents_enriched.json → ultra_intent_goal_network.json
 ```
 
+### 全パイプラインの一括実行
+
+**main.py** で全ステップを順次実行できます：
+
+```bash
+# 基本実行（全パイプライン）
+uv run python main.py
+
+# HTMLレポートを自動で開かない
+uv run python main.py --no-open
+
+# ゴールネットワークのプロンプト/レスポンスも保存
+uv run python main.py --save-prompts
+```
+
 ---
 
 ### 1. 入力データ
@@ -278,6 +293,7 @@ uv run python scripts/goal_network_builder.py --mode ultra --save-prompts
 
 ```
 data_api/
+├── main.py                                       # 全パイプライン実行スクリプト
 ├── templates/
 │   ├── common/
 │   │   └── intent_object_common.md               # 意図定義の共通部分
