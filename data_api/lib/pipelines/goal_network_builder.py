@@ -9,7 +9,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 import pandas as pd
 
 # プロジェクトルートをパスに追加
@@ -1079,84 +1079,34 @@ class GoalNetworkBuilder:
             }
 
 
-def main():
-    """メイン処理"""
-    import argparse
+def build_ultra_goal_network(
+    input_path: str = "output/intent_extraction/cross_cluster/ultra_intents_enriched.json",
+    ultra_id: Optional[int] = None,
+    save_prompts: bool = False,
+) -> None:
+    """
+    Ultra Intentsベースのゴールネットワーク構築パイプライン
 
-    parser = argparse.ArgumentParser(description="ゴールネットワーク構築")
-    parser.add_argument(
-        "--mode",
-        type=str,
-        choices=["cluster", "ultra"],
-        default="cluster",
-        help="構築モード: cluster=クラスタベース（従来）, ultra=Ultra Intentsベース",
-    )
-    parser.add_argument(
-        "--input",
-        type=str,
-        help="入力ファイルパス（mode=clusterの場合: CSV, mode=ultraの場合: JSON）",
-    )
-    parser.add_argument(
-        "--cluster-id",
-        type=int,
-        action="append",
-        help="処理対象のクラスタID（複数指定可能、未指定の場合は全クラスタ）※cluster modeのみ",
-    )
-    parser.add_argument(
-        "--ultra-id",
-        type=int,
-        help="処理対象のUltra Intent ID（0-6、未指定の場合は全Ultra Intent）※ultra modeのみ",
-    )
-    parser.add_argument(
-        "--save-prompts",
-        action="store_true",
-        help="プロンプトとレスポンスをMarkdown形式で保存",
-    )
-
-    args = parser.parse_args()
-
+    Args:
+        input_path: ultra_intents_enriched.jsonのパス
+        ultra_id: 処理対象のUltra Intent ID（Noneの場合は全て）
+        save_prompts: プロンプト/レスポンスを保存するか
+    """
     print("=" * 60)
-    print("ゴールネットワーク構築")
+    print("ゴールネットワーク構築（Ultra Intentsベース）")
     print("=" * 60)
+    print(f"\n入力: {input_path}")
+    if ultra_id is not None:
+        print(f"対象: Ultra Intent {ultra_id}")
+    if save_prompts:
+        print("プロンプト/レスポンス保存: 有効")
+    print()
 
-    if args.mode == "ultra":
-        # Ultra Intentsベースのゴールネットワーク構築
-        input_path = (
-            args.input
-            or "output/intent_extraction/cross_cluster/ultra_intents_enriched.json"
-        )
-        print("\nモード: Ultra Intentsベース")
-        print(f"入力: {input_path}")
-        if args.ultra_id is not None:
-            print(f"対象: Ultra Intent {args.ultra_id}")
-        if args.save_prompts:
-            print("プロンプト/レスポンス保存: 有効")
-        print()
-
-        builder = UltraIntentGoalNetworkBuilder(
-            input_path, target_ultra_id=args.ultra_id, save_prompts=args.save_prompts
-        )
-        network = builder.build_goal_network()
-        builder.save_network(network)
-
-    else:
-        # クラスタベースのゴールネットワーク構築（従来）
-        input_path = args.input or "output/intent_clustering/clustered_intents.csv"
-        print("\nモード: クラスタベース（従来）")
-        print(f"入力: {input_path}\n")
-
-        builder = GoalNetworkBuilder(input_path)
-
-        # B: クラスタごとのリレーション抽出
-        cluster_relations = builder.build_cluster_relations(
-            target_cluster_ids=args.cluster_id
-        )
-
-        # C: ハブIntent抽出
-        hub_intents = builder.extract_hub_intents(cluster_relations)
-
-        # D: ハブIntent間リレーション構築
-        _ = builder.build_hub_relations(hub_intents)
+    builder = UltraIntentGoalNetworkBuilder(
+        input_path, target_ultra_id=ultra_id, save_prompts=save_prompts
+    )
+    network = builder.build_goal_network()
+    builder.save_network(network)
 
     print("\n" + "=" * 60)
     print("✅ 完了！")
@@ -1164,5 +1114,34 @@ def main():
     print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
 
 
-if __name__ == "__main__":
-    main()
+def build_cluster_goal_network(
+    input_path: str = "output/intent_clustering/clustered_intents.csv",
+    cluster_ids: Optional[List[int]] = None,
+) -> None:
+    """
+    クラスタベースのゴールネットワーク構築パイプライン
+
+    Args:
+        input_path: クラスタリング結果CSVのパス
+        cluster_ids: 処理対象のクラスタIDリスト（Noneの場合は全クラスタ）
+    """
+    print("=" * 60)
+    print("ゴールネットワーク構築（クラスタベース）")
+    print("=" * 60)
+    print(f"\n入力: {input_path}\n")
+
+    builder = GoalNetworkBuilder(input_path)
+
+    # クラスタごとのリレーション抽出
+    cluster_relations = builder.build_cluster_relations(target_cluster_ids=cluster_ids)
+
+    # ハブIntent抽出
+    hub_intents = builder.extract_hub_intents(cluster_relations)
+
+    # ハブIntent間リレーション構築
+    _ = builder.build_hub_relations(hub_intents)
+
+    print("\n" + "=" * 60)
+    print("✅ 完了！")
+    print("=" * 60)
+    print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")

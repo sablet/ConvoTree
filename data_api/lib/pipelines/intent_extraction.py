@@ -1732,76 +1732,57 @@ def aggregate_super_intents_recursively(
     return ultra_intents
 
 
-def main():
-    """メイン処理"""
-    # コマンドライン引数をパース
-    parser = argparse.ArgumentParser(
-        description="クラスタごとの意図抽出プロンプトを生成し、オプションでGemini APIによる意図抽出を実行"
-    )
-    parser.add_argument(
-        "--gemini",
-        action="store_true",
-        help="Gemini APIで意図抽出を実行してレビュー用HTMLを生成",
-    )
-    parser.add_argument(
-        "--cluster",
-        type=int,
-        help="特定のクラスタIDのみ処理（指定しない場合は全クラスタ）",
-    )
-    parser.add_argument(
-        "--save-raw",
-        action="store_true",
-        help="Gemini APIの生レスポンスをファイルに保存（デバッグ用）",
-    )
-    parser.add_argument(
-        "--aggregate",
-        action="store_true",
-        help="抽出した意図から上位意図を生成（--gemini オプションと併用）",
-    )
-    parser.add_argument(
-        "--aggregate-all",
-        action="store_true",
-        help="全クラスタの上位意図からさらに上位の意図を生成（--gemini --aggregate と併用、--cluster指定時は無効）",
-    )
-    parser.add_argument(
-        "--max-workers",
-        type=int,
-        default=5,
-        help="並列実行の最大ワーカー数（デフォルト: 5）",
-    )
-    args = parser.parse_args()
+def run_intent_extraction_pipeline(
+    gemini: bool = False,
+    cluster: Optional[int] = None,
+    save_raw: bool = False,
+    aggregate: bool = False,
+    aggregate_all: bool = False,
+    max_workers: int = 5,
+) -> None:
+    """
+    意図抽出パイプライン
+
+    Args:
+        gemini: Gemini APIで意図抽出を実行
+        cluster: 特定のクラスタIDのみ処理（Noneの場合は全クラスタ）
+        save_raw: Gemini APIの生レスポンスをファイルに保存
+        aggregate: 上位意図を生成
+        aggregate_all: 最上位意図を生成
+        max_workers: 並列実行の最大ワーカー数
+    """
 
     print("=" * 60)
     print("意図抽出プロンプト生成")
-    if args.gemini:
-        print(f"+ Gemini API で意図抽出を実行（並列数: {args.max_workers}）")
-    if args.aggregate:
-        if not args.gemini:
+    if gemini:
+        print(f"+ Gemini API で意図抽出を実行（並列数: {max_workers}）")
+    if aggregate:
+        if not gemini:
             print(
                 "❌ エラー: --aggregate オプションは --gemini オプションと併用してください"
             )
             return
         print("+ 上位意図を抽出")
-    if args.aggregate_all:
-        if not args.gemini or not args.aggregate:
+    if aggregate_all:
+        if not gemini or not aggregate:
             print(
                 "❌ エラー: --aggregate-all オプションは --gemini --aggregate オプションと併用してください"
             )
             return
-        if args.cluster is not None:
+        if cluster is not None:
             print(
                 "❌ エラー: --aggregate-all オプションは --cluster オプションと併用できません（全クラスタ処理が必要）"
             )
             return
         print("+ クラスタ横断上位意図を抽出")
-    if args.cluster is not None:
-        print(f"+ クラスタ {args.cluster} のみ処理")
-    if args.save_raw:
+    if cluster is not None:
+        print(f"+ クラスタ {cluster} のみ処理")
+    if save_raw:
         print("+ 生レスポンスを保存")
     print("=" * 60)
 
     # Gemini API の初期化（--gemini オプション指定時）
-    if args.gemini:
+    if gemini:
         try:
             gemini_client.initialize()
         except SystemExit:
@@ -1818,7 +1799,7 @@ def main():
 
     # 意図グループ化テンプレート読み込み（--aggregate または --aggregate-all オプション指定時）
     grouping_template = None
-    if args.aggregate or args.aggregate_all:
+    if aggregate or aggregate_all:
         print("\n意図グループ化テンプレートを読み込み中...")
         try:
             grouping_template = load_grouping_template()
@@ -1841,18 +1822,18 @@ def main():
     cluster_ids = sorted(df["cluster"].unique())
 
     # 特定のクラスタのみ処理する場合はフィルタリング
-    if args.cluster is not None:
-        if args.cluster not in cluster_ids:
-            print(f"❌ エラー: クラスタ {args.cluster} は存在しません")
+    if cluster is not None:
+        if cluster not in cluster_ids:
+            print(f"❌ エラー: クラスタ {cluster} は存在しません")
             print(f"利用可能なクラスタID: {cluster_ids}")
             return
-        cluster_ids = [args.cluster]
+        cluster_ids = [cluster]
 
     print(f"\n{len(cluster_ids)}個のクラスタに対してプロンプトを生成します")
 
     # 既存の結果を読み込み（部分更新の場合）
     all_prompts = []
-    # if args.cluster is not None and (OUTPUT_DIR / "generation_summary.json").exists():
+    # if cluster is not None and (OUTPUT_DIR / "generation_summary.json").exists():
     #     # 既存のサマリーから他のクラスタの情報を読み込む
     #     with open(OUTPUT_DIR / "generation_summary.json", 'r', encoding='utf-8') as f:
     #         existing_summary = json.load(f)
@@ -1866,19 +1847,19 @@ def main():
         prompt_info = generate_cluster_prompt(cluster_id, cluster_df, template)
 
         # Gemini APIで意図抽出（オプション指定時）
-        if args.gemini:
+        if gemini:
             intents = call_gemini_api_with_postprocess(
                 prompt_info["prompt"],
                 cluster_id,
                 message_metadata,
-                save_raw=args.save_raw,
+                save_raw=save_raw,
             )
             prompt_info["extracted_intents"] = intents
 
             # 上位意図抽出（--aggregate オプション指定時）
-            if args.aggregate and intents and grouping_template:
+            if aggregate and intents and grouping_template:
                 meta_intents = aggregate_intents_with_gemini(
-                    intents, cluster_id, grouping_template, save_raw=args.save_raw
+                    intents, cluster_id, grouping_template, save_raw=save_raw
                 )
                 prompt_info["meta_intents"] = meta_intents
 
@@ -1890,12 +1871,12 @@ def main():
         return prompt_info
 
     # Gemini API使用時は並列実行、それ以外は逐次実行
-    if args.gemini:
+    if gemini:
         progress_desc = "Gemini API で意図抽出中"
         all_prompts = gemini_client.parallel_execute(
             cluster_ids,
             process_cluster,
-            max_workers=args.max_workers,
+            max_workers=max_workers,
             desc=progress_desc,
             unit="cluster",
         )
@@ -1929,7 +1910,7 @@ def main():
     print(f"\n✓ サマリー情報を保存: {summary_file}")
 
     # クラスタ横断上位意図抽出（--aggregate-all オプション指定時）
-    if args.aggregate_all and grouping_template:
+    if aggregate_all and grouping_template:
         print("\n" + "=" * 60)
         print("クラスタ横断上位意図抽出")
         print("=" * 60)
@@ -1947,7 +1928,7 @@ def main():
                 all_meta_intents,
                 grouping_template,
                 stats["total_individual_intents"],
-                save_raw=args.save_raw,
+                save_raw=save_raw,
             )
         )
 
@@ -1965,7 +1946,7 @@ def main():
                 meta_intents,
                 total_individual_intents,
                 grouping_template,
-                save_raw=args.save_raw,
+                save_raw=save_raw,
             )
 
             if ultra_intents:
@@ -2006,18 +1987,18 @@ def main():
             print("❌ クラスタ横断上位意図の抽出に失敗しました")
 
     # レビュー用のHTMLを生成
-    if args.gemini:
+    if gemini:
         # Gemini抽出結果のレビューHTML
-        generate_intent_review_html(all_prompts, include_meta_intents=args.aggregate)
+        generate_intent_review_html(all_prompts, include_meta_intents=aggregate)
         print("\n" + "=" * 60)
         print("✅ 意図抽出完了！")
         print("=" * 60)
         print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
         print(f"📄 レビュー用HTML: {OUTPUT_DIR / 'intent_review.html'}")
         print(f"📄 後処理済みJSON: {PROCESSED_DIR}/")
-        if args.aggregate:
+        if aggregate:
             print(f"📄 上位意図JSON: {AGGREGATED_DIR}/")
-        if args.aggregate_all:
+        if aggregate_all:
             print(
                 f"📄 クラスタ横断上位意図JSON: {CROSS_CLUSTER_DIR}/super_intents.json"
             )
@@ -2036,7 +2017,7 @@ def main():
         print("\n次のステップ:")
         print(f"  1. {OUTPUT_DIR}/intent_review.html をブラウザで開く")
         print("  2. 抽出された意図を確認・レビュー")
-        if args.aggregate_all:
+        if aggregate_all:
             print("  3. クラスタ横断上位意図の階層構造を確認")
             print(f"  4. {CROSS_CLUSTER_DIR}/super_intents.json のJSONファイルを確認")
             super_enriched = CROSS_CLUSTER_DIR / "super_intents_enriched.json"
@@ -2048,7 +2029,7 @@ def main():
                 print(f"  6. {ultra_file} の最終上位意図（2段階抽象化）を確認")
             if enriched_file.exists():
                 print(f"  7. {enriched_file} の詳細展開版（個別意図詳細含む）を確認")
-        elif args.aggregate:
+        elif aggregate:
             print("  3. 上位意図と個別意図のマッピングを確認")
             print(f"  4. {AGGREGATED_DIR}/ のJSONファイルを確認")
         else:
@@ -2432,6 +2413,3 @@ def generate_review_index(all_prompts: List[Dict]):
 
     print(f"\n✓ レビュー用インデックスを生成: {index_file}")
 
-
-if __name__ == "__main__":
-    main()

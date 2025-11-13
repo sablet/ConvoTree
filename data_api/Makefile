@@ -2,7 +2,7 @@
 
 UV ?= uv
 
-CHECK_DIRS := main.py lib scripts
+CHECK_DIRS := main.py lib
 
 help: ## ヘルプを表示
 	@echo "使用可能なコマンド:"
@@ -37,5 +37,14 @@ deps: ## 依存関係チェック (deptry)
 module-lines: ## モジュール行数チェック (pylint max-module-lines=500)
 	$(UV) run pylint $(CHECK_DIRS) --rcfile=pyproject.toml
 
-run: ## 全パイプライン実行（プロンプト/レスポンス保存、HTMLレポート自動表示）
-	$(UV) run python main.py --save-prompts
+run: ## 全パイプライン実行（プロンプト/レスポンス保存）
+	$(UV) run python main.py run_all --save_prompts
+
+clustering: ## ステップ1: メッセージクラスタリング
+	$(UV) run python main.py clustering
+
+intent-extraction: ## ステップ2: 意図抽出と階層化（Gemini API使用）
+	$(UV) run python main.py intent_extraction --gemini --aggregate --aggregate_all
+
+goal-network: ## ステップ3: ゴールネットワーク構築
+	$(UV) run python main.py goal_network

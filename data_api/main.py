@@ -3,128 +3,188 @@
 メッセージ意図分析パイプライン - メイン実行スクリプト
 
 messages_with_hierarchy.csv から ultra_intent_goal_network.json までの
-全パイプラインを順次実行します。
+全パイプラインを実行します。
 
 使用例:
-  python main.py
-  python main.py --save-prompts  # ゴールネットワークのプロンプト/レスポンスを保存
+  python main.py run_all --csv_path=data/messages.csv
+  python main.py clustering --csv_path=data/messages.csv
+  python main.py intent_extraction --gemini --aggregate --aggregate_all
+  python main.py goal_network
 """
 
-import subprocess
 import sys
 from pathlib import Path
-import argparse
+import fire
+
+# lib/pipelines をインポート可能にする
+sys.path.insert(0, str(Path(__file__).parent))
+
+from lib.pipelines.message_clustering import run_clustering_pipeline
+from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
+from lib.pipelines.goal_network_builder import build_ultra_goal_network
 
 
-def run_step(step_num, step_name, command, description):
-    """パイプラインの1ステップを実行"""
-    print("\n" + "=" * 60)
-    print(f"ステップ {step_num}: {step_name}")
-    print("=" * 60)
-    print(f"実行: {description}")
-    print(f"コマンド: {' '.join(command)}\n")
+class Pipeline:
+    """メッセージ意図分析パイプライン"""
 
-    try:
-        subprocess.run(command, check=True, capture_output=False, text=True)
-        print(f"\n✓ ステップ {step_num} 完了")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"\n❌ エラー: ステップ {step_num} が失敗しました")
-        print(f"   終了コード: {e.returncode}")
-        return False
-    except FileNotFoundError:
-        print(f"\n❌ エラー: コマンドが見つかりません: {command[0]}")
-        print("   'uv' がインストールされていることを確認してください")
-        return False
-
-
-def verify_output(output_file, description):
-    """出力ファイルの存在を確認"""
-    if output_file.exists():
-        print(f"✓ {description}: {output_file}")
-        return True
-    else:
-        print(f"⚠️  警告: {description}が見つかりません: {output_file}")
-        return False
-
-
-def main():
-    parser = argparse.ArgumentParser(description="メッセージ意図分析パイプライン全実行")
-    parser.add_argument(
-        "--save-prompts",
-        action="store_true",
-        help="ゴールネットワークのプロンプト/レスポンスを保存",
-    )
-    args = parser.parse_args()
-
-    print("=" * 60)
-    print("メッセージ意図分析パイプライン")
-    print("=" * 60)
-    print("messages_with_hierarchy.csv → ultra_intent_goal_network.json\n")
-
-    # ステップ1: メッセージクラスタリング
-    cmd1 = ["uv", "run", "python", "scripts/run_clustering_with_report.py"]
-
-    if not run_step(
-        1, "メッセージクラスタリング", cmd1, "意味的に類似したメッセージをグループ化"
+    def clustering(
+        self,
+        csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
+        embedding_weight: float = 0.7,
+        time_weight: float = 0.15,
+        hierarchy_weight: float = 0.15,
+        time_bandwidth_hours: float = 168.0,
+        method: str = "kmeans_constrained",
+        size_min: int = 10,
+        size_max: int = 50,
     ):
-        sys.exit(1)
+        """
+        ステップ1: メッセージクラスタリング
 
-    verify_output(
-        Path("output/message_clustering/clustered_messages.csv"), "クラスタリング結果"
-    )
+        Args:
+            csv_path: 入力CSVファイルパス
+            embedding_weight: 埋め込み重み
+            time_weight: 時間重み
+            hierarchy_weight: 階層重み
+            time_bandwidth_hours: 時間カーネル帯域幅
+            method: クラスタリング手法
+            size_min: 最小クラスタサイズ
+            size_max: 最大クラスタサイズ
+        """
+        run_clustering_pipeline(
+            csv_path=csv_path,
+            embedding_weight=embedding_weight,
+            time_weight=time_weight,
+            hierarchy_weight=hierarchy_weight,
+            time_bandwidth_hours=time_bandwidth_hours,
+            method=method,
+            size_min=size_min,
+            size_max=size_max,
+        )
 
-    # ステップ2: 意図抽出と階層化
-    cmd2 = [
-        "uv",
-        "run",
-        "python",
-        "scripts/generate_intent_extraction_prompts.py",
-        "--gemini",
-        "--aggregate",
-        "--aggregate-all",
-    ]
-
-    if not run_step(
-        2,
-        "意図抽出と階層化",
-        cmd2,
-        "個別意図 → 上位意図 → 最上位意図（Ultra Intents）を抽出",
+    def intent_extraction(
+        self,
+        gemini: bool = False,
+        cluster: int = None,
+        save_raw: bool = False,
+        aggregate: bool = False,
+        aggregate_all: bool = False,
+        max_workers: int = 5,
     ):
-        sys.exit(1)
+        """
+        ステップ2: 意図抽出と階層化
 
-    verify_output(
-        Path("output/intent_extraction/cross_cluster/ultra_intents_enriched.json"),
-        "エンリッチ済み最上位意図",
-    )
+        Args:
+            gemini: Gemini APIで意図抽出を実行
+            cluster: 特定のクラスタIDのみ処理
+            save_raw: 生レスポンスを保存
+            aggregate: 上位意図を生成
+            aggregate_all: 最上位意図を生成
+            max_workers: 並列実行の最大ワーカー数
+        """
+        run_intent_extraction_pipeline(
+            gemini=gemini,
+            cluster=cluster,
+            save_raw=save_raw,
+            aggregate=aggregate,
+            aggregate_all=aggregate_all,
+            max_workers=max_workers,
+        )
 
-    # ステップ3: ゴールネットワーク構築
-    cmd3 = ["uv", "run", "python", "scripts/goal_network_builder.py", "--mode", "ultra"]
-    if args.save_prompts:
-        cmd3.append("--save-prompts")
-
-    if not run_step(
-        3, "ゴールネットワーク構築", cmd3, "意図間の目的→手段リレーションを抽出"
+    def goal_network(
+        self,
+        input_path: str = "output/intent_extraction/cross_cluster/ultra_intents_enriched.json",
+        ultra_id: int = None,
+        save_prompts: bool = False,
     ):
-        sys.exit(1)
+        """
+        ステップ3: ゴールネットワーク構築
 
-    verify_output(
-        Path("output/goal_network/ultra_intent_goal_network.json"), "ゴールネットワーク"
-    )
+        Args:
+            input_path: ultra_intents_enriched.jsonのパス
+            ultra_id: 処理対象のUltra Intent ID
+            save_prompts: プロンプト/レスポンスを保存
+        """
+        build_ultra_goal_network(
+            input_path=input_path,
+            ultra_id=ultra_id,
+            save_prompts=save_prompts,
+        )
 
-    # 完了メッセージ
-    print("\n" + "=" * 60)
-    print("✅ 全パイプライン完了！")
-    print("=" * 60)
-    print("\n📁 主要な出力ファイル:")
-    print("  1. output/message_clustering/clustered_messages.csv")
-    print("  2. output/message_clustering/clustering_report.html")
-    print("  3. output/intent_extraction/cross_cluster/ultra_intents_enriched.json")
-    print("  4. output/goal_network/ultra_intent_goal_network.json")
+    def run_all(
+        self,
+        csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
+        save_prompts: bool = False,
+    ):
+        """
+        全パイプライン実行: clustering → intent_extraction → goal_network
 
-    if args.save_prompts:
-        print("  5. output/goal_network/ultra_prompts_responses/")
+        Args:
+            csv_path: 入力CSVファイルパス
+            save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
+        """
+        print("=" * 60)
+        print("メッセージ意図分析パイプライン")
+        print("=" * 60)
+        print(f"入力: {csv_path}\n")
+
+        # ステップ1: メッセージクラスタリング
+        print("\n" + "=" * 60)
+        print("ステップ 1/3: メッセージクラスタリング")
+        print("=" * 60)
+        self.clustering(csv_path=csv_path)
+
+        # 出力ファイルの確認
+        cluster_output = Path("output/message_clustering/clustered_messages.csv")
+        if not cluster_output.exists():
+            print(f"\n❌ エラー: {cluster_output} が見つかりません")
+            sys.exit(1)
+        print(f"\n✓ クラスタリング結果: {cluster_output}")
+
+        # ステップ2: 意図抽出と階層化
+        print("\n" + "=" * 60)
+        print("ステップ 2/3: 意図抽出と階層化")
+        print("=" * 60)
+        self.intent_extraction(
+            gemini=True,
+            aggregate=True,
+            aggregate_all=True,
+        )
+
+        # 出力ファイルの確認
+        ultra_intents_output = Path(
+            "output/intent_extraction/cross_cluster/ultra_intents_enriched.json"
+        )
+        if not ultra_intents_output.exists():
+            print(f"\n❌ エラー: {ultra_intents_output} が見つかりません")
+            sys.exit(1)
+        print(f"\n✓ エンリッチ済み最上位意図: {ultra_intents_output}")
+
+        # ステップ3: ゴールネットワーク構築
+        print("\n" + "=" * 60)
+        print("ステップ 3/3: ゴールネットワーク構築")
+        print("=" * 60)
+        self.goal_network(save_prompts=save_prompts)
+
+        # 出力ファイルの確認
+        goal_network_output = Path("output/goal_network/ultra_intent_goal_network.json")
+        if not goal_network_output.exists():
+            print(f"\n❌ エラー: {goal_network_output} が見つかりません")
+            sys.exit(1)
+
+        # 完了メッセージ
+        print("\n" + "=" * 60)
+        print("✅ 全パイプライン完了！")
+        print("=" * 60)
+        print("\n📁 主要な出力ファイル:")
+        print("  1. output/message_clustering/clustered_messages.csv")
+        print("  2. output/message_clustering/clustering_report.html")
+        print("  3. output/intent_extraction/cross_cluster/ultra_intents_enriched.json")
+        print("  4. output/goal_network/ultra_intent_goal_network.json")
+
+        if save_prompts:
+            print("  5. output/goal_network/ultra_prompts_responses/")
 
 
 if __name__ == "__main__":
-    main()
+    fire.Fire(Pipeline)

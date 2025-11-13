@@ -11,26 +11,74 @@
 `messages_with_hierarchy.csv` → ゴールネットワーク構築までの主要パイプライン：
 
 ```
-1. メッセージクラスタリング (run_clustering_with_report.py)
+1. メッセージクラスタリング
    messages_with_hierarchy.csv → clustered_messages.csv
 
-2. 意図抽出と階層化 (generate_intent_extraction_prompts.py)
+2. 意図抽出と階層化
    clustered_messages.csv → 個別意図 → 上位意図 → 最上位意図 → ultra_intents_enriched.json
 
-3. ゴールネットワーク構築 (goal_network_builder.py)
+3. ゴールネットワーク構築
    ultra_intents_enriched.json → ultra_intent_goal_network.json
 ```
 
 ### 全パイプラインの一括実行
 
-**main.py** で全ステップを順次実行できます：
+#### Makeコマンド（推奨）
 
 ```bash
 # 基本実行（全パイプライン）
-uv run python main.py
+make run
+
+# プロンプト/レスポンス保存あり
+make run-save-prompts
+
+# 使用可能なコマンド一覧
+make help
+```
+
+#### 直接実行
+
+```bash
+# 基本実行（全パイプライン）
+uv run python main.py run_all
 
 # ゴールネットワークのプロンプト/レスポンスも保存
-uv run python main.py --save-prompts
+uv run python main.py run_all --save_prompts
+
+# カスタムCSVパスを指定
+uv run python main.py run_all --csv_path=/path/to/messages.csv
+```
+
+### 個別ステップの実行
+
+#### Makeコマンド（推奨）
+
+```bash
+# ステップ1: クラスタリング
+make clustering
+
+# ステップ2: 意図抽出と階層化
+make intent-extraction
+
+# ステップ3: ゴールネットワーク構築
+make goal-network
+```
+
+#### 直接実行
+
+```bash
+# ステップ1: クラスタリング
+uv run python main.py clustering --csv_path=/path/to/messages.csv
+
+# ステップ2: 意図抽出（Gemini API使用）
+uv run python main.py intent_extraction --gemini --aggregate --aggregate_all
+
+# ステップ3: ゴールネットワーク構築
+uv run python main.py goal_network --save_prompts
+
+# ヘルプ表示
+uv run python main.py -- --help
+uv run python main.py clustering -- --help
 ```
 
 ---
@@ -60,17 +108,17 @@ Inbox -> タスク -> 開発,2025-11-09 15:30:00,2025-11-09 15:30:00,開発タ�
 
 **実行方法**:
 ```bash
-# レポート付きで実行（推奨）
-uv run python scripts/run_clustering_with_report.py
+# Makeコマンド（推奨）
+make clustering
 
-# クラスタリング手法を指定
-uv run python scripts/run_clustering_with_report.py --method kmeans_constrained --size-min 10 --size-max 50
-
-# 重み調整
-uv run python scripts/run_clustering_with_report.py --embedding-weight 0.7 --time-weight 0.15 --hierarchy-weight 0.15
-
-# 直接実行（詳細オプション指定時）
-uv run python scripts/message_clustering.py --method hdbscan --min-cluster-size 5
+# 詳細オプション指定（直接実行）
+uv run python main.py clustering \
+  --method=kmeans_constrained \
+  --size_min=10 \
+  --size_max=50 \
+  --embedding_weight=0.7 \
+  --time_weight=0.15 \
+  --hierarchy_weight=0.15
 ```
 
 **出力先**:
@@ -115,13 +163,13 @@ Level 2: 最上位意図 (super intents)        ← 上位意図をさらにグ�
 **実行方法**:
 ```bash
 # 全クラスタを処理
-uv run python scripts/generate_intent_extraction_prompts.py --gemini
+uv run python main.py intent_extraction --gemini
 
 # 特定クラスタのみ処理
-uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
+uv run python main.py intent_extraction --gemini --cluster=6
 
 # 生レスポンスも保存（デバッグ用）
-uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6 --save-raw
+uv run python main.py intent_extraction --gemini --cluster=6 --save_raw
 ```
 
 **出力先**:
@@ -157,10 +205,10 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
 **実行方法**:
 ```bash
 # 全クラスタで意図抽出+上位意図抽出
-uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
+uv run python main.py intent_extraction --gemini --aggregate
 
 # 特定クラスタのみ
-uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate --cluster 2
+uv run python main.py intent_extraction --gemini --aggregate --cluster=2
 ```
 
 **出力先**:
@@ -193,8 +241,11 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
 
 **実行方法**:
 ```bash
-# 全クラスタで3階層の意図抽出
-uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate --aggregate-all
+# Makeコマンド（推奨）
+make intent-extraction
+
+# 直接実行
+uv run python main.py intent_extraction --gemini --aggregate --aggregate_all
 ```
 
 **出力先**:
@@ -265,14 +316,18 @@ templates/
 
 **実行方法**:
 ```bash
+# Makeコマンド（推奨）
+make goal-network
+
+# 詳細オプション指定（直接実行）
 # 全Ultra Intentsを処理
-uv run python scripts/goal_network_builder.py --mode ultra
+uv run python main.py goal_network
 
 # 特定のUltra Intent（ID: 0-6）のみ処理
-uv run python scripts/goal_network_builder.py --mode ultra --ultra-id 0
+uv run python main.py goal_network --ultra_id=0
 
 # プロンプト/レスポンスも保存
-uv run python scripts/goal_network_builder.py --mode ultra --save-prompts
+uv run python main.py goal_network --save_prompts
 ```
 
 **処理内容**:

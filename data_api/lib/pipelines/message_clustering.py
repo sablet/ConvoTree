@@ -879,104 +879,63 @@ def tune_parameters(
     return best_result
 
 
-def main():
-    """メイン処理"""
-    import argparse
+def run_clustering_pipeline(
+    csv_path: str,
+    embedding_weight: float = 0.7,
+    time_weight: float = 0.15,
+    hierarchy_weight: float = 0.15,
+    time_bandwidth_hours: float = 168.0,
+    method: str = "kmeans_constrained",
+    min_cluster_size: int = 5,
+    min_samples: int = 3,
+    n_clusters: Optional[int] = None,
+    linkage: str = "complete",
+    size_min: int = 10,
+    size_max: int = 50,
+    n_init: int = 10,
+    max_iter: int = 300,
+) -> None:
+    """
+    メッセージクラスタリングパイプライン
 
-    parser = argparse.ArgumentParser(description="メッセージクラスタリングシステム")
-    parser.add_argument(
-        "--embedding-weight",
-        type=float,
-        default=0.5,
-        help="埋め込み重み (default: 0.5)",
-    )
-    parser.add_argument(
-        "--time-weight", type=float, default=0.2, help="時間重み (default: 0.2)"
-    )
-    parser.add_argument(
-        "--hierarchy-weight", type=float, default=0.3, help="階層重み (default: 0.3)"
-    )
-    parser.add_argument(
-        "--time-bandwidth-hours",
-        type=float,
-        default=168.0,
-        help="時間カーネル帯域幅（時間） (default: 168.0)",
-    )
-    parser.add_argument(
-        "--method",
-        type=str,
-        default="hdbscan",
-        choices=["hdbscan", "hierarchical", "kmeans_constrained"],
-        help="クラスタリング手法 (default: hdbscan)",
-    )
-    parser.add_argument(
-        "--min-cluster-size",
-        type=int,
-        default=5,
-        help="HDBSCANの最小クラスタサイズ (default: 5)",
-    )
-    parser.add_argument(
-        "--min-samples",
-        type=int,
-        default=3,
-        help="HDBSCANの最小サンプル数 (default: 3)",
-    )
-    parser.add_argument(
-        "--n-clusters",
-        type=int,
-        default=None,
-        help="階層的/k-meansのクラスタ数 (default: sqrt(n))",
-    )
-    parser.add_argument(
-        "--linkage",
-        type=str,
-        default="average",
-        choices=["average", "complete", "single", "ward"],
-        help="階層的クラスタリングの結合法 (default: average)",
-    )
-    parser.add_argument(
-        "--size-min",
-        type=int,
-        default=10,
-        help="k-means-constrainedの最小クラスタサイズ (default: 10)",
-    )
-    parser.add_argument(
-        "--size-max",
-        type=int,
-        default=50,
-        help="k-means-constrainedの最大クラスタサイズ (default: 50)",
-    )
-    parser.add_argument(
-        "--n-init", type=int, default=10, help="k-meansの初期化回数 (default: 10)"
-    )
-    parser.add_argument(
-        "--max-iter", type=int, default=300, help="k-meansの最大反復回数 (default: 300)"
-    )
-    args = parser.parse_args()
-
+    Args:
+        csv_path: 入力CSVファイルパス
+        embedding_weight: 埋め込み重み
+        time_weight: 時間重み
+        hierarchy_weight: 階層重み
+        time_bandwidth_hours: 時間カーネル帯域幅（時間）
+        method: クラスタリング手法
+        min_cluster_size: HDBSCANの最小クラスタサイズ
+        min_samples: HDBSCANの最小サンプル数
+        n_clusters: 階層的/k-meansのクラスタ数
+        linkage: 階層的クラスタリングの結合法
+        size_min: k-means-constrainedの最小クラスタサイズ
+        size_max: k-means-constrainedの最大クラスタサイズ
+        n_init: k-meansの初期化回数
+        max_iter: k-meansの最大反復回数
+    """
     print("=" * 60)
     print("メッセージクラスタリングシステム")
     print("=" * 60)
 
-    # 入力ファイル
-    csv_path = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv"
-    embedding_path = None  # Noneの場合は自動生成
+    # 埋め込みパスは自動生成
+    embedding_path = None
 
     # クラスタリング設定
     config = ClusteringConfig(
-        embedding_weight=args.embedding_weight,
-        time_weight=args.time_weight,
-        hierarchy_weight=args.hierarchy_weight,
-        time_bandwidth_hours=args.time_bandwidth_hours,
-        method=args.method,
-        min_cluster_size=args.min_cluster_size,
-        min_samples=args.min_samples,
-        n_clusters=args.n_clusters,
-        linkage=args.linkage,
-        size_min=args.size_min,
-        size_max=args.size_max,
-        n_init=args.n_init,
-        max_iter=args.max_iter,
+        embedding_weight=embedding_weight,
+        time_weight=time_weight,
+        hierarchy_weight=hierarchy_weight,
+        time_bandwidth_hours=time_bandwidth_hours,
+        method=method,
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        n_clusters=n_clusters,
+        linkage=linkage,
+        size_min=size_min,
+        size_max=size_max,
+        n_init=n_init,
+        max_iter=max_iter,
     )
 
     # クラスタリング実行
@@ -1021,7 +980,3 @@ def main():
     print("✅ クラスタリング完了！")
     print("=" * 60)
     print(f"📁 出力ディレクトリ: {OUTPUT_DIR}")
-
-
-if __name__ == "__main__":
-    main()
