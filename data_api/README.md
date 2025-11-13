@@ -8,6 +8,40 @@
 
 ## 処理フロー
 
+`messages_with_hierarchy.csv` → ゴールネットワーク構築までの主要パイプライン：
+
+```
+1. メッセージクラスタリング (run_clustering_with_report.py)
+   messages_with_hierarchy.csv → clustered_messages.csv
+
+2. 意図抽出と階層化 (generate_intent_extraction_prompts.py)
+   clustered_messages.csv → 個別意図 → 上位意図 → 最上位意図 → ultra_intents_enriched.json
+
+3. ゴールネットワーク構築 (goal_network_builder.py)
+   ultra_intents_enriched.json → ultra_intent_goal_network.json
+```
+
+---
+
+### 1. 入力データ
+
+**データソース**: chat-lineアプリからエクスポートされた `messages_with_hierarchy.csv`
+
+**CSV構造**:
+```csv
+full_path,start_time,end_time,combined_content
+Inbox,2025-11-10 10:58:00,2025-11-10 10:58:00,メッセージ内容
+Inbox -> タスク -> 開発,2025-11-09 15:30:00,2025-11-09 15:30:00,開発タスクの内容
+```
+
+**カラム説明**:
+- `full_path`: チャネル階層パス（` -> ` 区切り）
+- `start_time`: メッセージ開始時刻
+- `end_time`: メッセージ終了時刻
+- `combined_content`: メッセージ本文
+
+---
+
 ### 2. メッセージクラスタリング
 
 **目的**: 意味的に類似したメッセージをクラスタにグループ化
@@ -53,32 +87,7 @@ Inbox,2025-11-10 10:58:00,2025-11-10 10:58:00,メッセージ内容,msg_00000,In
 
 ---
 
-### 3. 意図抽出プロンプト生成
-
-**目的**: クラスタごとに意図抽出用のプロンプトを生成
-
-**実行方法**:
-```bash
-# プロンプトのみ生成
-uv run python scripts/generate_intent_extraction_prompts.py
-
-# レビュー用HTMLインデックス
-open output/intent_extraction/index.html
-```
-
-**出力先**:
-- `output/intent_extraction/cluster_XX_prompt.md` - 各クラスタのプロンプト
-- `output/intent_extraction/index.html` - レビュー用インデックス
-- `output/intent_extraction/generation_summary.json` - サマリー情報
-
-**プロンプト構造**:
-- テンプレート: `templates/intent_extraction_prompt.md`
-- クラスタ内の全メッセージを時系列順に配置
-- Gemini APIに投げて意図オブジェクトを抽出
-
----
-
-### 4. 意図抽出と階層化
+### 3. 意図抽出と階層化
 
 意図の抽出は3つのレベルで実行されます：
 
@@ -90,7 +99,7 @@ Level 1: クラスタ別上位意図 (meta intents)  ← 個別意図をグル�
 Level 2: 最上位意図 (super intents)        ← 上位意図をさらにグループ化
 ```
 
-#### 4-1. 個別意図の抽出
+#### 3-1. 個別意図の抽出
 
 **目的**: 各クラスタのメッセージから個別の意図を抽出
 
@@ -132,7 +141,7 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --cluster 6
 
 ---
 
-#### 4-2. クラスタ別上位意図の抽出
+#### 3-2. クラスタ別上位意図の抽出
 
 **目的**: 各クラスタ内の個別意図をグループ化し、上位の意図を生成
 
@@ -169,7 +178,7 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
 
 ---
 
-#### 4-3. 最上位意図の抽出（クラスタ横断）
+#### 3-3. 最上位意図の抽出（クラスタ横断）
 
 **目的**: 全クラスタの上位意図をさらにグループ化し、最上位の意図を生成
 
@@ -181,6 +190,7 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
 
 **出力先**:
 - `output/intent_extraction/cross_cluster/super_intents.json` - Level 2: 最上位意図
+- `output/intent_extraction/cross_cluster/ultra_intents_enriched.json` - エンリッチ済み最上位意図
 
 **最上位意図オブジェクト構造**:
 ```json
@@ -198,12 +208,13 @@ uv run python scripts/generate_intent_extraction_prompts.py --gemini --aggregate
 2. Pythonが上位意図のテキストのみを抽出（`meta_intent`フィールド）
 3. LLMが上位意図の内容を理解し、共通テーマでグループ化
 4. Pythonが最上位意図オブジェクトを構築（網羅性・重複チェック、status決定）
+5. **自動的にエンリッチを実行**: 各最上位意図に個別意図の詳細情報を付加し、`ultra_intents_enriched.json`を生成
 
 **注意**: `--aggregate-all`は全クラスタ処理が必要なため、`--cluster`オプションとは併用できません。
 
 ---
 
-#### 4-4. 意図定義の共通化
+#### 3-4. 意図定義の共通化
 
 全てのレベルの意図（individual, meta, super）は同じ定義に従います：
 
@@ -236,11 +247,30 @@ templates/
 
 ---
 
-### 5. 次のステップ（予定）
+### 4. ゴールネットワーク構築
 
-- [ ] 意図間の時系列・意味的関連性分析
-- [ ] 因果関係の推定
-- [ ] 最上位意図の可視化（ネットワークグラフ）
+**目的**: 意図間の目的→手段リレーションを抽出し、階層的なゴールネットワークを構築
+
+**実行方法**:
+```bash
+# 全Ultra Intentsを処理
+uv run python scripts/goal_network_builder.py --mode ultra
+
+# 特定のUltra Intent（ID: 0-6）のみ処理
+uv run python scripts/goal_network_builder.py --mode ultra --ultra-id 0
+
+# プロンプト/レスポンスも保存
+uv run python scripts/goal_network_builder.py --mode ultra --save-prompts
+```
+
+**処理内容**:
+- 各Ultra Intent配下の個別intentをLLMで階層化
+- 目的→手段のゴール-手段リレーションを抽出
+- テンプレート: `templates/ultra_sub_intent_relations_prompt.md`
+
+**出力先**:
+- `output/goal_network/ultra_intent_goal_network.json` - ゴールネットワーク全体
+- `output/goal_network/ultra_prompts_responses/` - プロンプト/レスポンス（`--save-prompts`時）
 
 ---
 
@@ -250,33 +280,40 @@ templates/
 data_api/
 ├── templates/
 │   ├── common/
-│   │   └── intent_object_common.md           # 意図定義の共通部分
-│   ├── intent_extraction_prompt.md           # メッセージ → 個別意図
-│   └── intent_grouping_prompt.md             # 意図のグループ化（統一）
+│   │   └── intent_object_common.md               # 意図定義の共通部分
+│   ├── intent_extraction_prompt.md               # メッセージ → 個別意図
+│   ├── intent_grouping_prompt.md                 # 意図のグループ化（統一）
+│   └── ultra_sub_intent_relations_prompt.md      # Ultra配下の階層構造抽出
 ├── scripts/
-│   └── generate_intent_extraction_prompts.py # 意図抽出・階層化メインスクリプト
+│   ├── generate_intent_extraction_prompts.py     # 意図抽出・階層化
+│   ├── run_clustering_with_report.py             # メッセージクラスタリング実行
+│   └── goal_network_builder.py                   # ゴールネットワーク構築
 ├── output/
 │   ├── .cache/
-│   │   └── intent_extraction/                # Gemini APIレスポンスキャッシュ
+│   │   └── intent_extraction/                    # Gemini APIレスポンスキャッシュ
 │   ├── message_clustering/
-│   │   ├── clustered_messages.csv            # クラスタリング結果
-│   │   └── clustering_report.html            # クラスタレポート
-│   └── intent_extraction/
-│       ├── cluster_XX_prompt.md              # 各クラスタのプロンプト
-│       ├── index.html                        # プロンプト一覧
-│       ├── intent_review.html                # 意図抽出結果レビュー
-│       ├── generation_summary.json           # サマリー情報
-│       ├── processed/                        # Level 0: 個別意図
-│       │   └── cluster_XX_processed.json
-│       ├── aggregated/                       # Level 1: クラスタ別上位意図
-│       │   └── cluster_XX_aggregated.json
-│       ├── cross_cluster/                    # Level 2: 最上位意図
-│       │   └── super_intents.json
-│       └── raw_responses/                    # （オプション）生レスポンス
-│           └── cluster_XX_raw_response.txt
-└── data/
-    └── messages_export.json                  # エクスポートされたメッセージ
+│   │   ├── clustered_messages.csv                # クラスタリング結果
+│   │   ├── clustering_report.html                # クラスタレポート
+│   │   └── *.png                                 # 可視化画像
+│   ├── intent_extraction/
+│   │   ├── processed/                            # Level 0: 個別意図
+│   │   │   └── cluster_XX_processed.json
+│   │   ├── aggregated/                           # Level 1: クラスタ別上位意図
+│   │   │   └── cluster_XX_aggregated.json
+│   │   └── cross_cluster/                        # Level 2: 最上位意図
+│   │       ├── super_intents.json                # 最上位意図
+│   │       └── ultra_intents_enriched.json       # エンリッチ済み最上位意図
+│   └── goal_network/
+│       ├── ultra_intent_goal_network.json        # Ultra モード出力
+│       └── ultra_prompts_responses/              # Ultra モードプロンプト/レスポンス
+├── lib/
+│   └── gemini_client.py                          # Gemini APIクライアント
+├── app/
+│   └── cache.py                                  # キャッシュ管理（message_clustering.pyから使用）
+└── message_clustering.py                         # メッセージクラスタリングメイン
 ```
+
+**注**: 入力ファイル `messages_with_hierarchy.csv` は chat-line アプリから別途エクスポートされます。
 
 ---
 
