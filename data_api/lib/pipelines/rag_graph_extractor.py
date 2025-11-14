@@ -10,6 +10,20 @@ from typing import Any
 
 from lib.rag_models import GoalEdge, GoalNetwork, GoalNode, UnifiedIntent
 
+# 定数: プロンプトに埋め込む兄弟/子ノードの最大件数
+MAX_SIBLING_NODES_IN_PROMPT = 10
+MAX_CHILD_NODES_IN_PROMPT = 10
+
+# 定数: ゴールネットワークのラベル（means-end network / goal hierarchy の文脈）
+# 目的-手段階層（Means-Ends Hierarchy）では：
+# - 親 = より抽象的・上位の目的（goal/end）
+# - 子 = より具体的・下位の手段（means）
+# - 兄弟 = 同じ親目的を達成するための代替手段
+LABEL_SEARCH_HIT = "検索ヒット本体"
+LABEL_PARENT_NODES = "親ノード（より抽象的な上位目的）: ルートから近い順"
+LABEL_SIBLING_NODES = "兄弟ノード（同じ上位目的を達成する代替手段）"
+LABEL_CHILD_NODES = "子ノード（より具体的な下位手段）: 直接の子のみ"
+
 
 def load_goal_network(network_path: str) -> dict[str, Any]:
     """ゴールネットワークJSONを読み込む"""
@@ -365,7 +379,15 @@ def format_subgraph_for_llm(
     # 親子マップを構築
     all_nodes_in_network, parent_map, children_map = build_graph_structure(network_data)
 
-    lines = ["### ゴールネットワーク（検索ヒット中心）"]
+    lines = [
+        "### ゴールネットワーク（検索ヒット中心）",
+        "",
+        "このネットワークは**目的-手段階層（Means-Ends Hierarchy / Goal Hierarchy）**を表現しています：",
+        "- **親ノード**: より抽象的・上位の目的（goal/end）",
+        "- **子ノード**: より具体的・下位の手段（means）",
+        "- **兄弟ノード**: 同じ上位目的を達成するための代替手段",
+        "",
+    ]
 
     # 検索ヒットがある場合、ヒットごとにセクション分けして表示
     if hit_intent_ids:
@@ -390,7 +412,7 @@ def format_subgraph_for_llm(
             lines.append("")
 
             # Self (検索ヒット本体)
-            lines.append("**[検索ヒット本体]**")
+            lines.append(f"**[{LABEL_SEARCH_HIT}]**")
             lines.append(
                 _format_node_line(hit_id, nodes_detail, intents_map, node_map, indent=0)
             )
@@ -398,7 +420,7 @@ def format_subgraph_for_llm(
             # Parents（全ての祖先、ルートから近い順）
             ancestors = get_ancestors_ordered(hit_id, parent_map)
             if ancestors:
-                lines.append(f"\n**[親ノード: ルートから近い順 ({len(ancestors)}件)]**")
+                lines.append(f"\n**[{LABEL_PARENT_NODES} ({len(ancestors)}件)]**")
                 for ancestor_id in ancestors:
                     if ancestor_id in node_map:
                         lines.append(
@@ -414,32 +436,50 @@ def format_subgraph_for_llm(
             # Siblings（同じ親を持つノード）
             siblings = get_siblings(hit_id, parent_map, children_map)
             if siblings:
-                lines.append(
-                    f"\n**[兄弟ノード: 同じ親を持つノード ({len(siblings)}件)]**"
-                )
-                for sibling_id in sorted(siblings):
-                    if sibling_id in node_map:
-                        lines.append(
-                            _format_node_line(
-                                sibling_id,
-                                nodes_detail,
-                                intents_map,
-                                node_map,
-                                indent=0,
+                sibling_count = len(siblings)
+                if sibling_count > MAX_SIBLING_NODES_IN_PROMPT:
+                    # 閾値を超える場合は件数のみ表示（詳細はスキップ）
+                    lines.append(f"\n**[{LABEL_SIBLING_NODES} ({sibling_count}件)]**")
+                    lines.append(
+                        f"（兄弟ノードが{sibling_count}件と多いため詳細は省略）"
+                    )
+                else:
+                    # 閾値以下の場合は全て表示
+                    lines.append(f"\n**[{LABEL_SIBLING_NODES} ({sibling_count}件)]**")
+                    for sibling_id in sorted(siblings):
+                        if sibling_id in node_map:
+                            lines.append(
+                                _format_node_line(
+                                    sibling_id,
+                                    nodes_detail,
+                                    intents_map,
+                                    node_map,
+                                    indent=0,
+                                )
                             )
-                        )
 
             # Children（直接の子のみ）
             children = children_map.get(hit_id, [])
             if children:
-                lines.append(f"\n**[子ノード: 直接の子のみ ({len(children)}件)]**")
-                for child_id in sorted(children):
-                    if child_id in node_map:
-                        lines.append(
-                            _format_node_line(
-                                child_id, nodes_detail, intents_map, node_map, indent=0
+                child_count = len(children)
+                if child_count > MAX_CHILD_NODES_IN_PROMPT:
+                    # 閾値を超える場合は件数のみ表示（詳細はスキップ）
+                    lines.append(f"\n**[{LABEL_CHILD_NODES} ({child_count}件)]**")
+                    lines.append(f"（子ノードが{child_count}件と多いため詳細は省略）")
+                else:
+                    # 閾値以下の場合は全て表示
+                    lines.append(f"\n**[{LABEL_CHILD_NODES} ({child_count}件)]**")
+                    for child_id in sorted(children):
+                        if child_id in node_map:
+                            lines.append(
+                                _format_node_line(
+                                    child_id,
+                                    nodes_detail,
+                                    intents_map,
+                                    node_map,
+                                    indent=0,
+                                )
                             )
-                        )
 
         return "\n".join(lines)
 
@@ -453,6 +493,7 @@ def format_subgraph_for_llm(
 
     # ルートノードから階層的に表示
     visited: set[str] = set()
+    hit_ids_set = set(hit_intent_ids) if hit_intent_ids else set()
 
     def format_node_tree(node_id: str, indent: int = 0) -> list[str]:
         """ノードを階層的にフォーマット"""

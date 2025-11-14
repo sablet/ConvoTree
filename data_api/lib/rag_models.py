@@ -33,7 +33,7 @@ class UnifiedIntent(BaseModel):
         default_factory=list, description="開始時刻のリスト（ソート済み）"
     )
     status: IntentStatus = Field(..., description="進捗ステータス")
-    cluster_id: int = Field(..., ge=0, description="クラスタID")
+    cluster_id: int = Field(..., ge=-1, description="クラスタID（generated_nodeは-1）")
     source_message_ids: list[str] = Field(
         default_factory=list, description="元メッセージID"
     )
@@ -42,7 +42,7 @@ class UnifiedIntent(BaseModel):
     )
 
     # === 階層情報 ===
-    ultra_intent_id: str = Field(..., description="最上位意図ID")
+    ultra_intent_id: str = Field(default="", description="最上位意図ID")
     ultra_intent_text: str = Field(default="", description="最上位意図テキスト")
     meta_intent_id: str = Field(default="", description="上位意図ID")
     meta_intent_text: str = Field(default="", description="上位意図テキスト")

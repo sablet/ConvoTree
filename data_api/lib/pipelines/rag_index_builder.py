@@ -140,6 +140,7 @@ def generate_unified_intents(
     cluster_intents: dict[int, list[dict[str, Any]]],
     hierarchy_map: dict[str, dict[str, str]],
     message_map: dict[str, dict[str, Any]],
+    generated_nodes: list[dict[str, Any]] | None = None,
 ) -> list[UnifiedIntent]:
     """
     統合ドキュメントを生成
@@ -148,6 +149,7 @@ def generate_unified_intents(
         cluster_intents: {cluster_id: [intent_dict, ...]}
         hierarchy_map: {intent_id: {ultra_intent_id, ...}}
         message_map: {message_id: {combined_content, ...}}
+        generated_nodes: 生成ノード（ultra_intent, meta_intent）のリスト
 
     Returns:
         UnifiedIntentのリスト
@@ -165,7 +167,7 @@ def generate_unified_intents(
             # 階層情報を取得
             hierarchy_info = hierarchy_map.get(intent_id, {})
             if not hierarchy_info:
-                # 階層情報がない場合はスキップ（generated nodeの可能性）
+                # 階層情報がない場合はスキップ
                 continue
 
             # メッセージ情報を収集
@@ -217,6 +219,53 @@ def generate_unified_intents(
                 unified_intents.append(unified_intent)
             except Exception as e:
                 print(f"⚠️  Error creating UnifiedIntent for {intent_id}: {e}")
+                continue
+
+    # generated_nodes（ultra_intent, meta_intent）を処理
+    if generated_nodes:
+        # 重複除去のためのセット
+        seen_node_ids: set[str] = set()
+
+        for node_dict in tqdm(
+            generated_nodes, desc="Processing generated nodes", unit="node"
+        ):
+            node_id = node_dict.get("intent_id", "")
+            if not node_id:
+                continue
+
+            # 重複IDをスキップ
+            if node_id in seen_node_ids:
+                continue
+            seen_node_ids.add(node_id)
+
+            # embedding_textを構築（intent + context + objective_facts）
+            intent_text = node_dict.get("intent", "")
+            context = node_dict.get("context") or ""
+            objective_facts = node_dict.get("objective_facts") or ""
+
+            embedding_text = f"{intent_text}\n{context}\n{objective_facts}".strip()
+
+            try:
+                unified_intent = UnifiedIntent(
+                    id=node_id,
+                    type="generated_node",
+                    intent=intent_text,
+                    context=context,
+                    combined_content="",  # generated nodeには元メッセージがない
+                    timestamps=[],  # generated nodeにはタイムスタンプがない
+                    status=IntentStatus(node_dict.get("status", "idea").lower()),
+                    cluster_id=-1,  # generated nodeはクラスタに属さない
+                    source_message_ids=[],
+                    source_full_paths=[],
+                    ultra_intent_id="",  # 自分自身がultra_intentの場合がある
+                    ultra_intent_text="",
+                    meta_intent_id="",
+                    meta_intent_text="",
+                    embedding_text=embedding_text,
+                )
+                unified_intents.append(unified_intent)
+            except Exception as e:
+                print(f"⚠️  Error creating UnifiedIntent for generated node {node_id}: {e}")
                 continue
 
     return unified_intents
@@ -325,6 +374,7 @@ def build_rag_index(
     csv_path: str = "output/message_clustering/clustered_messages.csv",
     cluster_dir: str = "output/intent_extraction/processed",
     enriched_path: str = "output/intent_extraction/cross_cluster/ultra_intents_enriched.json",
+    network_path: str = "output/goal_network/ultra_intent_goal_network.json",
     output_path: str = "output/rag_index/unified_intents.jsonl",
     chroma_db_path: str = "output/rag_index/chroma_db",
     build_chroma: bool = True,
@@ -336,6 +386,7 @@ def build_rag_index(
         csv_path: clustered_messages.csvのパス
         cluster_dir: cluster_XX_processed.jsonのディレクトリ
         enriched_path: ultra_intents_enriched.jsonのパス
+        network_path: ゴールネットワークJSONのパス（generated_nodes取得用）
         output_path: 統合ドキュメント出力先
         chroma_db_path: Chroma DBのパス
         build_chroma: Chromaインデックスを構築するか
@@ -360,6 +411,15 @@ def build_rag_index(
         f"  ✓ Hierarchy data: {len(hierarchy_data.get('ultra_intents', []))} ultra intents"
     )
 
+    # generated_nodesを読み込む
+    generated_nodes: list[dict[str, Any]] = []
+    network_path_obj = Path(network_path)
+    if network_path_obj.exists():
+        with open(network_path, encoding="utf-8") as f:
+            network_data = json.load(f)
+            generated_nodes = network_data.get("generated_nodes", [])
+        print(f"  ✓ Generated nodes: {len(generated_nodes)} 件")
+
     # 2. マッピング構築
     print("\n[2/5] マッピング構築中...")
     hierarchy_map = build_intent_to_hierarchy_map(hierarchy_data)
@@ -371,9 +431,9 @@ def build_rag_index(
     # 3. 統合ドキュメント生成
     print("\n[3/5] 統合ドキュメント生成中...")
     unified_intents = generate_unified_intents(
-        cluster_intents, hierarchy_map, message_map
+        cluster_intents, hierarchy_map, message_map, generated_nodes
     )
-    print(f"  ✓ Unified intents: {len(unified_intents)} 件")
+    print(f"  ✓ Unified intents: {len(unified_intents)} 件 (generated_nodes: {len(generated_nodes)} 件含む)")
 
     # 4. JSONL保存
     print("\n[4/5] JSONL保存中...")

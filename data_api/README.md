@@ -304,6 +304,11 @@ templates/
 
 **目的**: 意図間の目的→手段リレーションを抽出し、階層的なゴールネットワークを構築
 
+	•	目的―手段階層（Means–Ends Hierarchy / Means–Ends Chain）
+	•	目的階層構造（Goal Hierarchy）
+	•	目的構造図 / 目標構造図（Goal Structure / Goal Structure Diagram）
+	•	ゴールツリー（Goal Tree）
+
 **実行方法**:
 ```bash
 # Makeコマンド（推奨）

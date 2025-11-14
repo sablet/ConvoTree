@@ -40,8 +40,8 @@ def load_unified_intent_from_metadata(
     """
     # timestampはUnix時間（整数）またはISO文字列で保存されている
     timestamp_value = metadata.get("timestamp_iso") or metadata.get("timestamp", "")
-    if isinstance(timestamp_value, int):
-        # Unix時間の場合はdatetimeに変換してリストに
+    if isinstance(timestamp_value, int) and timestamp_value > 0:
+        # Unix時間の場合はdatetimeに変換してリストに（0は無効な値として扱う）
         timestamps = [datetime.fromtimestamp(timestamp_value)]
     elif timestamp_value:
         # ISO文字列の場合はリストに（Pydanticがパースする）
