@@ -5,7 +5,7 @@ Phase 3: デバッグ用検索（パラメータ直接指定のみ）
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +19,7 @@ from lib.pipelines.rag_graph_extractor import (
     get_siblings,
     load_goal_network,
 )
-from lib.rag_models import IntentStatus, SearchResult, UnifiedIntent
+from lib.rag_models import IntentStatus, QueryParams, SearchResult, UnifiedIntent
 
 
 def load_unified_intent_from_metadata(
@@ -165,6 +165,260 @@ def execute_search(
 
     # トピックも期間もない場合はエラー
     raise ValueError("topicまたは(start_date AND end_date)のいずれかを指定してください")
+
+
+def generate_answer(
+    query: str,
+    intents: list[UnifiedIntent],
+    subgraph,
+    network_path: str,
+) -> str:
+    """
+    LLMで最終回答を生成
+
+    Args:
+        query: ユーザーのクエリ文
+        intents: 検索結果の意図リスト
+        subgraph: 抽出された部分グラフ
+        network_path: ゴールネットワークJSONのパス
+
+    Returns:
+        LLM生成の回答
+    """
+    from pathlib import Path
+
+    from lib import gemini_client
+
+    # テンプレート読み込み
+    template_path = Path("templates/rag_answer_prompt.md")
+    with open(template_path, encoding="utf-8") as f:
+        prompt_template = f.read()
+
+    # 意図リストをフォーマット
+    intents_text = "\n".join(
+        [
+            f"- [{intent.status.value}] {intent.intent} "
+            f"({intent.timestamps[0].strftime('%Y-%m-%d') if intent.timestamps else 'N/A'})"
+            for intent in intents
+        ]
+    )
+
+    # グラフをフォーマット（既存の format_subgraph_for_llm を使用）
+    # JSONLから全意図を読み込む
+    jsonl_path = Path("output/rag_index/unified_intents.jsonl")
+    intents_map: dict[str, UnifiedIntent] = {}
+    if jsonl_path.exists():
+        with open(jsonl_path, encoding="utf-8") as f:
+            for line in f:
+                intent_dict = json.loads(line)
+                intent_obj = UnifiedIntent(**intent_dict)
+                intents_map[intent_obj.id] = intent_obj
+    else:
+        # JSONLがない場合はヒットした意図のみ使用
+        intents_map = {intent.id: intent for intent in intents}
+
+    hit_intent_ids = [intent.id for intent in intents]
+    graph_text = format_subgraph_for_llm(
+        subgraph, intents_map, network_path, hit_intent_ids=hit_intent_ids
+    )
+
+    # プロンプト構築
+    prompt = prompt_template.replace("{{QUERY}}", query)
+    prompt = prompt.replace("{{INTENTS}}", intents_text)
+    prompt = prompt.replace("{{GRAPH}}", graph_text)
+
+    # Gemini API呼び出し
+    model = gemini_client.GenerativeModel()
+    response = model.generate_content(prompt)
+
+    return response.text
+
+
+def extract_query_params(query: str) -> "QueryParams":
+    """
+    自然言語クエリからパラメータを抽出
+
+    Args:
+        query: 自然言語クエリ（例: 「ここ1週間、開発ツールについて何をやっていたか」）
+
+    Returns:
+        QueryParams
+    """
+    from pathlib import Path
+
+    from lib import gemini_client
+
+    # テンプレート読み込み
+    template_path = Path("templates/rag_query_parser_prompt.md")
+    with open(template_path, encoding="utf-8") as f:
+        prompt_template = f.read()
+
+    # プロンプト構築
+    prompt = prompt_template.replace("{{QUERY}}", query)
+
+    # Gemini API呼び出し
+    model = gemini_client.GenerativeModel()
+    response = model.generate_content(prompt)
+
+    # JSONパース（```json ... ``` のような囲みがある場合は除去）
+    response_clean = response.text.strip()
+    if response_clean.startswith("```json"):
+        response_clean = response_clean[7:]  # "```json\n" を除去
+    if response_clean.startswith("```"):
+        response_clean = response_clean[3:]  # "```" を除去
+    if response_clean.endswith("```"):
+        response_clean = response_clean[:-3]  # "```" を除去
+    response_clean = response_clean.strip()
+
+    # JSONパース
+    params_dict = json.loads(response_clean)
+
+    # Pydantic検証
+    return QueryParams(**params_dict)
+
+
+def execute_rag_query(
+    query: str,
+    answer_with_llm: bool = True,
+    save_output: bool = False,
+    chroma_db_path: str = "output/rag_index/chroma_db",
+    network_path: str = "output/goal_network/ultra_intent_goal_network.json",
+) -> SearchResult:
+    """
+    RAGクエリ実行（自然言語入力）
+
+    Args:
+        query: 自然言語クエリ（例: 「ここ1週間、開発ツールについて何をやっていたか」）
+        answer_with_llm: LLMで最終回答を生成するか
+        save_output: 検索結果を保存するか
+        chroma_db_path: Chroma DBのパス
+        network_path: ゴールネットワークJSONのパス
+
+    Returns:
+        SearchResult
+    """
+    print("=" * 60)
+    print("RAGクエリ実行（自然言語モード）")
+    print("=" * 60)
+    print(f"\nクエリ: {query}")
+
+    # 1. クエリパラメータ抽出
+    print("\n[1/4] クエリパラメータ抽出中...")
+    params = extract_query_params(query)
+    print(f"  ✓ 抽出パラメータ:")
+    print(f"    - period_days: {params.period_days}")
+    print(f"    - topic: {params.topic}")
+    print(f"    - status_filter: {[s.value for s in params.status_filter]}")
+
+    # 2. 検索実行
+    print("\n[2/4] 検索実行中...")
+
+    # パラメータから検索条件を構築
+    topic = params.topic
+    start_date = None
+    end_date = None
+    if params.period_days:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=params.period_days)
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+    else:
+        start_date_str = None
+        end_date_str = None
+
+    status_str = ",".join([s.value for s in params.status_filter])
+
+    intents = execute_search(
+        topic=topic,
+        start_date=start_date_str,
+        end_date=end_date_str,
+        status=status_str,
+        top_k=15,
+        chroma_db_path=chroma_db_path,
+    )
+    print(f"  ✓ 検索結果: {len(intents)} 件")
+
+    # 結果を表示
+    if intents:
+        print("\n  検索結果:")
+        for i, intent in enumerate(intents[:5], 1):  # 最初の5件のみ表示
+            print(f"    {i}. [{intent.status.value}] {intent.intent}")
+        if len(intents) > 5:
+            print(f"    ... 他 {len(intents) - 5} 件")
+
+    # 3. 部分グラフ抽出
+    print("\n[3/4] 部分グラフ抽出中...")
+    subgraph = extract_subgraph(
+        intents,
+        network_path=network_path,
+        strategy="balanced",
+    )
+    print(f"  ✓ 部分グラフ: {len(subgraph.nodes)} ノード, {len(subgraph.edges)} エッジ")
+
+    # 4. LLM回答生成
+    answer = None
+    if answer_with_llm:
+        print("\n[4/4] LLM回答生成中...")
+        answer = generate_answer(
+            query=query,
+            intents=intents,
+            subgraph=subgraph,
+            network_path=network_path,
+        )
+        print(f"\n{'=' * 60}")
+        print("【LLM生成の回答】")
+        print(f"{'=' * 60}")
+        print(answer)
+        print(f"{'=' * 60}")
+    else:
+        print("\n[4/4] LLM回答生成をスキップしました")
+
+    # 5. 結果保存
+    result = SearchResult(
+        query=query,
+        params=params,
+        intents=intents,
+        subgraph=subgraph,
+        answer=answer,
+        metadata={
+            "top_k": len(intents),
+            "timestamp": datetime.now().isoformat(),
+        },
+    )
+
+    if save_output:
+        from pathlib import Path
+
+        output_dir = Path("output/rag_queries")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = output_dir / f"query_{timestamp_str}.json"
+
+        # SearchResultをJSONに変換
+        result_dict = result.model_dump()
+        # datetimeをISO形式に変換
+        for intent in result_dict["intents"]:
+            intent["timestamps"] = [
+                ts.isoformat() if isinstance(ts, datetime) else ts
+                for ts in intent["timestamps"]
+            ]
+            intent["status"] = (
+                intent["status"].value
+                if hasattr(intent["status"], "value")
+                else intent["status"]
+            )
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result_dict, f, ensure_ascii=False, indent=2, default=str)
+
+        print(f"\n  ✓ 検索結果を保存しました: {output_path}")
+
+    print("\n" + "=" * 60)
+    print("✅ クエリ実行完了！")
+    print("=" * 60)
+
+    return result
 
 
 def _print_node_details(
@@ -381,18 +635,25 @@ def execute_rag_query_debug(
     print("=" * 60)
     _print_subgraph_details(intents, subgraph, network_path)
 
-    # 3. LLM回答生成（Phase 4で実装）
+    # 3. LLM回答生成
     answer = None
     if answer_with_llm:
         print("\n[3/3] LLM回答生成中...")
-        print("  ⚠️  LLM回答生成機能はPhase 4で実装予定です")
-        answer = "（Phase 4で実装予定）"
+        answer = generate_answer(
+            query=f"topic={topic}, period={start_date}~{end_date}",
+            intents=intents,
+            subgraph=subgraph,
+            network_path=network_path,
+        )
+        print(f"\n{'=' * 60}")
+        print("【LLM生成の回答】")
+        print(f"{'=' * 60}")
+        print(answer)
+        print(f"{'=' * 60}")
     else:
         print("\n[3/3] LLM回答生成をスキップしました")
 
     # 4. 結果保存
-    from lib.rag_models import QueryParams
-
     # QueryParamsを構築
     # statusがtupleの場合はそのまま使用、文字列の場合は分割
     if isinstance(status, tuple):
@@ -411,7 +672,6 @@ def execute_rag_query_debug(
         period_days=period_days,
         topic=topic,
         status_filter=status_list,
-        intent_type="past_activity" if has_period else "next_action",
     )
 
     result = SearchResult(

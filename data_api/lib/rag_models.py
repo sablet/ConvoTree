@@ -126,10 +126,6 @@ class QueryParams(BaseModel):
         default_factory=lambda: [IntentStatus.TODO, IntentStatus.IDEA],
         description="ステータスフィルタ",
     )
-    intent_type: str = Field(
-        default="past_activity",
-        description="質問タイプ（past_activity: 過去の活動, next_action: 次の行動）",
-    )
 
     @field_validator("status_filter", mode="before")
     @classmethod
