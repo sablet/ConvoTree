@@ -439,6 +439,12 @@ make rag-query QUERY="Claude Codeについて次にやるべきことは"
 4. **LLM回答生成**
    - 検索結果 + 部分グラフ → 最終回答
 
+**出力先**:
+- `output/rag_queries/prompts/parser_prompt_*.md` - クエリパラメータ抽出プロンプト
+- `output/rag_queries/prompts/parser_response_*.json` - パラメータ抽出結果（JSON）
+- `output/rag_queries/prompts/answer_prompt_*.md` - 回答生成プロンプト（検索結果+グラフ埋め込み済み）
+- `output/rag_queries/prompts/answer_response_*.md` - LLMからの最終回答
+
 **出力例**:
 ```
 抽出パラメータ: QueryParams(period_days=7, topic="開発ツール", status_filter=["doing", "done"], ...)
@@ -538,8 +544,13 @@ data_api/
 │   ├── rag_index/                                # RAGインデックス
 │   │   ├── unified_intents.jsonl                 # 統合ドキュメント
 │   │   └── chroma_db/                            # Vector DBデータ
-│   └── rag_queries/                              # RAGクエリ結果（--save_output時）
-│       └── query_YYYYMMDD_HHMMSS.json
+│   └── rag_queries/                              # RAGクエリ結果
+│       ├── prompts/                              # LLMプロンプト・レスポンス（自動保存）
+│       │   ├── parser_prompt_*.md                # クエリパラメータ抽出プロンプト
+│       │   ├── parser_response_*.json            # パラメータ抽出結果
+│       │   ├── answer_prompt_*.md                # 回答生成プロンプト（検索結果+グラフ埋め込み）
+│       │   └── answer_response_*.md              # LLMからの最終回答
+│       └── query_YYYYMMDD_HHMMSS.json            # クエリ実行結果（--save_output時）
 └── lib/
     ├── rag_models.py                             # RAG用データモデル（Pydantic）
     ├── pipelines/

@@ -172,6 +172,7 @@ def generate_answer(
     intents: list[UnifiedIntent],
     subgraph,
     network_path: str,
+    save_prompt: bool = True,
 ) -> str:
     """
     LLMで最終回答を生成
@@ -181,6 +182,7 @@ def generate_answer(
         intents: 検索結果の意図リスト
         subgraph: 抽出された部分グラフ
         network_path: ゴールネットワークJSONのパス
+        save_prompt: プロンプトを保存するか
 
     Returns:
         LLM生成の回答
@@ -227,19 +229,51 @@ def generate_answer(
     prompt = prompt.replace("{{INTENTS}}", intents_text)
     prompt = prompt.replace("{{GRAPH}}", graph_text)
 
+    # プロンプト保存
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if save_prompt:
+        output_dir = Path("output/rag_queries/prompts")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        prompt_path = output_dir / f"answer_prompt_{timestamp_str}.md"
+
+        with open(prompt_path, "w", encoding="utf-8") as f:
+            f.write(f"# RAG Answer Prompt\n\n")
+            f.write(f"**Query**: {query}\n\n")
+            f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
+            f.write("---\n\n")
+            f.write(prompt)
+
+        print(f"  ✓ プロンプトを保存しました: {prompt_path}")
+
     # Gemini API呼び出し
     model = gemini_client.GenerativeModel()
     response = model.generate_content(prompt)
 
+    # レスポンス保存
+    if save_prompt:
+        output_dir = Path("output/rag_queries/prompts")
+        response_path = output_dir / f"answer_response_{timestamp_str}.md"
+
+        with open(response_path, "w", encoding="utf-8") as f:
+            f.write(f"# RAG Answer Response\n\n")
+            f.write(f"**Query**: {query}\n\n")
+            f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
+            f.write("---\n\n")
+            f.write(response.text)
+
+        print(f"  ✓ レスポンスを保存しました: {response_path}")
+
     return response.text
 
 
-def extract_query_params(query: str) -> "QueryParams":
+def extract_query_params(query: str, save_prompt: bool = True) -> "QueryParams":
     """
     自然言語クエリからパラメータを抽出
 
     Args:
         query: 自然言語クエリ（例: 「ここ1週間、開発ツールについて何をやっていたか」）
+        save_prompt: プロンプトを保存するか
 
     Returns:
         QueryParams
@@ -256,9 +290,36 @@ def extract_query_params(query: str) -> "QueryParams":
     # プロンプト構築
     prompt = prompt_template.replace("{{QUERY}}", query)
 
+    # プロンプト保存
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    if save_prompt:
+        output_dir = Path("output/rag_queries/prompts")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        prompt_path = output_dir / f"parser_prompt_{timestamp_str}.md"
+
+        with open(prompt_path, "w", encoding="utf-8") as f:
+            f.write(f"# RAG Query Parser Prompt\n\n")
+            f.write(f"**Query**: {query}\n\n")
+            f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
+            f.write("---\n\n")
+            f.write(prompt)
+
+        print(f"  ✓ パーサープロンプトを保存しました: {prompt_path}")
+
     # Gemini API呼び出し
     model = gemini_client.GenerativeModel()
     response = model.generate_content(prompt)
+
+    # レスポンス保存
+    if save_prompt:
+        output_dir = Path("output/rag_queries/prompts")
+        response_path = output_dir / f"parser_response_{timestamp_str}.json"
+
+        with open(response_path, "w", encoding="utf-8") as f:
+            f.write(response.text)
+
+        print(f"  ✓ パーサーレスポンスを保存しました: {response_path}")
 
     # JSONパース（```json ... ``` のような囲みがある場合は除去）
     response_clean = response.text.strip()
