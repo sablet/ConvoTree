@@ -217,6 +217,36 @@ def get_siblings(
     return siblings
 
 
+def get_root_node(node_id: str, parent_map: dict[str, list[str]]) -> str:
+    """
+    指定ノードのルートノード（最上位ノード）を取得
+
+    Args:
+        node_id: 起点ノードID
+        parent_map: {child_id: [parent_id1, ...]}
+
+    Returns:
+        ルートノードID
+    """
+    visited = set()
+    current = node_id
+
+    while True:
+        if current in visited:
+            # 循環参照対策
+            return current
+
+        visited.add(current)
+        parents = parent_map.get(current, [])
+
+        if not parents:
+            # 親がない = ルートノード
+            return current
+
+        # 最初の親を辿る（複数親がある場合は最初のものを選択）
+        current = parents[0]
+
+
 def extract_subgraph(
     intents: list[UnifiedIntent],
     network_path: str = "output/goal_network/ultra_intent_goal_network.json",
@@ -355,7 +385,7 @@ def format_subgraph_for_llm(
     """
     部分グラフをLLMプロンプト用にフォーマット（構造化形式）
 
-    検索ヒットごとにセクション分けして表示
+    全ての検索ヒットが同じ最上位ノードを持つ場合、インデント構造の単一ツリーで表示
 
     Args:
         subgraph: 部分グラフ
@@ -389,97 +419,149 @@ def format_subgraph_for_llm(
         "",
     ]
 
-    # 検索ヒットがある場合、ヒットごとにセクション分けして表示
+    # 検索ヒットがある場合、ルートノードごとにツリーを構築
     if hit_intent_ids:
-        for hit_idx, hit_id in enumerate(hit_intent_ids, 1):
+        from collections import defaultdict
+
+        # 検索ヒットをルートノードでグループ化
+        root_groups: dict[str, list[str]] = defaultdict(list)
+        hit_ids_not_in_network = []
+
+        for hit_id in hit_intent_ids:
             if hit_id not in node_map:
-                # ヒットしたがGoal Networkに存在しないノード
-                lines.append(
-                    f"\n#### 検索ヒット {hit_idx}: {hit_id} (Goal Networkに未登録)"
-                )
-                if intents_map and hit_id in intents_map:
-                    intent = intents_map[hit_id]
-                    timestamp_str = (
-                        intent.timestamps[0].isoformat() if intent.timestamps else ""
-                    )
-                    lines.append(
-                        f'- **{intent.intent}** {{timestamp="{timestamp_str}" status={intent.status.value}}}'
-                    )
+                hit_ids_not_in_network.append(hit_id)
                 continue
 
-            hit_node = node_map[hit_id]
-            lines.append(f"\n#### 検索ヒット {hit_idx}: {hit_node.intent}")
+            # このヒットのルートノードを取得
+            root_id = get_root_node(hit_id, parent_map)
+            root_groups[root_id].append(hit_id)
+
+        # Goal Networkに存在しないヒットを先に表示
+        for hit_id in hit_ids_not_in_network:
+            hit_idx = hit_intent_ids.index(hit_id) + 1
+            lines.append(f"\n#### 検索ヒット {hit_idx}: {hit_id} (Goal Networkに未登録)")
+            if intents_map and hit_id in intents_map:
+                intent = intents_map[hit_id]
+                timestamp_str = (
+                    intent.timestamps[0].isoformat() if intent.timestamps else ""
+                )
+                lines.append(
+                    f'- **{intent.intent}** {{timestamp="{timestamp_str}" status={intent.status.value}}}'
+                )
+
+        # 検索ヒットIDのセット（マーキング用）
+        hit_ids_set = set(hit_intent_ids)
+
+        # ツリー構築の再帰関数
+        def build_tree_recursive(
+            node_id: str, indent: int, visited: set[str]
+        ) -> list[str]:
+            """
+            ノードから再帰的にツリーを構築
+
+            Args:
+                node_id: 現在のノードID
+                indent: インデントレベル
+                visited: 訪問済みノードセット（循環参照対策）
+
+            Returns:
+                フォーマット済みの行リスト
+            """
+            if node_id in visited or node_id not in node_map:
+                return []
+
+            visited.add(node_id)
+
+            # ノード情報をフォーマット
+            node = node_map[node_id]
+            node_detail = nodes_detail.get(node_id, {})
+            objective_facts = node_detail.get("objective_facts") or ""
+            context = node_detail.get("context") or ""
+
+            # timestampを取得
+            timestamp = ""
+            if intents_map and node_id in intents_map:
+                intent = intents_map[node_id]
+                timestamp = intent.timestamps[0].isoformat() if intent.timestamps else ""
+
+            # プロパティ構築
+            props = []
+            if objective_facts:
+                props.append(f'objective_facts="{objective_facts}"')
+            if context:
+                props.append(f'context="{context}"')
+            if timestamp:
+                props.append(f'timestamp="{timestamp}"')
+            props.append(f"status={node.status.value}")
+
+            props_str = " ".join(props)
+            prefix = "  " * indent
+
+            # 検索ヒットの場合はマーカーを追加
+            hit_marker = ""
+            if node_id in hit_ids_set:
+                hit_idx = hit_intent_ids.index(node_id) + 1
+                hit_marker = f"**[HIT {hit_idx}]** "
+
+            result = [f"{prefix}- {hit_marker}{node.intent} {{{props_str}}}"]
+
+            # 子ノードを取得（部分グラフに含まれるもののみ）
+            all_children = [
+                child_id
+                for child_id in children_map.get(node_id, [])
+                if child_id in node_map
+            ]
+
+            # 子ノードが11件以上の場合、検索ヒット以外を省略
+            if len(all_children) > MAX_CHILD_NODES_IN_PROMPT:
+                # 検索ヒットの子ノードのみを表示
+                hit_children = [
+                    child_id for child_id in all_children if child_id in hit_ids_set
+                ]
+                non_hit_count = len(all_children) - len(hit_children)
+
+                # 検索ヒットの子ノードを再帰的に追加
+                for child_id in sorted(hit_children):
+                    result.extend(build_tree_recursive(child_id, indent + 1, visited))
+
+                # 省略メッセージを追加
+                if non_hit_count > 0:
+                    omit_prefix = "  " * (indent + 1)
+                    result.append(
+                        f"{omit_prefix}（他{non_hit_count}件の子ノードは省略）"
+                    )
+            else:
+                # 全ての子ノードを再帰的に追加
+                for child_id in sorted(all_children):
+                    result.extend(build_tree_recursive(child_id, indent + 1, visited))
+
+            return result
+
+        # 各ルートノードごとにツリーを構築
+        for tree_idx, (root_id, hit_ids_in_root) in enumerate(
+            sorted(root_groups.items()), 1
+        ):
+            if root_id not in node_map:
+                continue
+
+            # ヒット番号を取得
+            hit_indices = [hit_intent_ids.index(hit_id) + 1 for hit_id in hit_ids_in_root]
+            hit_indices_str = ", ".join(str(idx) for idx in sorted(hit_indices))
+
+            # ツリーのタイトル
+            root_node = node_map[root_id]
+            if len(root_groups) == 1:
+                lines.append(f"\n#### ゴールツリー (検索ヒット {hit_indices_str})")
+            else:
+                lines.append(
+                    f"\n#### ゴールツリー {tree_idx} (検索ヒット {hit_indices_str})"
+                )
             lines.append("")
 
-            # Self (検索ヒット本体)
-            lines.append(f"**[{LABEL_SEARCH_HIT}]**")
-            lines.append(
-                _format_node_line(hit_id, nodes_detail, intents_map, node_map, indent=0)
-            )
-
-            # Parents（全ての祖先、ルートから近い順）
-            ancestors = get_ancestors_ordered(hit_id, parent_map)
-            if ancestors:
-                lines.append(f"\n**[{LABEL_PARENT_NODES} ({len(ancestors)}件)]**")
-                for ancestor_id in ancestors:
-                    if ancestor_id in node_map:
-                        lines.append(
-                            _format_node_line(
-                                ancestor_id,
-                                nodes_detail,
-                                intents_map,
-                                node_map,
-                                indent=0,
-                            )
-                        )
-
-            # Siblings（同じ親を持つノード）
-            siblings = get_siblings(hit_id, parent_map, children_map)
-            if siblings:
-                sibling_count = len(siblings)
-                if sibling_count > MAX_SIBLING_NODES_IN_PROMPT:
-                    # 閾値を超える場合は件数のみ表示（詳細はスキップ）
-                    lines.append(f"\n**[{LABEL_SIBLING_NODES} ({sibling_count}件)]**")
-                    lines.append(
-                        f"（兄弟ノードが{sibling_count}件と多いため詳細は省略）"
-                    )
-                else:
-                    # 閾値以下の場合は全て表示
-                    lines.append(f"\n**[{LABEL_SIBLING_NODES} ({sibling_count}件)]**")
-                    for sibling_id in sorted(siblings):
-                        if sibling_id in node_map:
-                            lines.append(
-                                _format_node_line(
-                                    sibling_id,
-                                    nodes_detail,
-                                    intents_map,
-                                    node_map,
-                                    indent=0,
-                                )
-                            )
-
-            # Children（直接の子のみ）
-            children = children_map.get(hit_id, [])
-            if children:
-                child_count = len(children)
-                if child_count > MAX_CHILD_NODES_IN_PROMPT:
-                    # 閾値を超える場合は件数のみ表示（詳細はスキップ）
-                    lines.append(f"\n**[{LABEL_CHILD_NODES} ({child_count}件)]**")
-                    lines.append(f"（子ノードが{child_count}件と多いため詳細は省略）")
-                else:
-                    # 閾値以下の場合は全て表示
-                    lines.append(f"\n**[{LABEL_CHILD_NODES} ({child_count}件)]**")
-                    for child_id in sorted(children):
-                        if child_id in node_map:
-                            lines.append(
-                                _format_node_line(
-                                    child_id,
-                                    nodes_detail,
-                                    intents_map,
-                                    node_map,
-                                    indent=0,
-                                )
-                            )
+            # ルートから再帰的にツリーを構築
+            visited: set[str] = set()
+            tree_lines = build_tree_recursive(root_id, 0, visited)
+            lines.extend(tree_lines)
 
         return "\n".join(lines)
 
