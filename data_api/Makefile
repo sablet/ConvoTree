@@ -38,8 +38,11 @@ deps: ## 依存関係チェック (deptry)
 module-lines: ## モジュール行数チェック (pylint max-module-lines=500)
 	$(UV) run pylint $(CHECK_DIRS) --rcfile=pyproject.toml
 
-run: ## 全パイプライン実行（プロンプト/レスポンス保存）
+run: ## 全パイプライン実行（クラスタリング→意図抽出→ゴールネットワーク）
 	$(UV) run python main.py run_all --save_prompts
+
+run-with-rag: ## 全パイプライン + RAGインデックス構築
+	$(UV) run python main.py run_all_with_rag --save_prompts
 
 clustering: ## ステップ1: メッセージクラスタリング
 	$(UV) run python main.py clustering
@@ -49,3 +52,22 @@ intent-extraction: ## ステップ2: 意図抽出と階層化（Gemini API使用
 
 goal-network: ## ステップ3: ゴールネットワーク構築
 	$(UV) run python main.py goal_network
+
+rag-build: ## RAGインデックス構築
+	$(UV) run python main.py rag_build
+
+rag-query: ## RAG検索（自然言語クエリ）
+	@if [ -z "$(QUERY)" ]; then \
+		echo "Error: QUERY is required. Usage: make rag-query QUERY=\"your question\""; \
+		exit 1; \
+	fi
+	$(UV) run python main.py rag_query --query="$(QUERY)" --answer_with_llm
+
+rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
+	$(UV) run python main.py rag_query_debug \
+		$(if $(TOPIC),--topic="$(TOPIC)") \
+		$(if $(START),--start_date=$(START)) \
+		$(if $(END),--end_date=$(END)) \
+		$(if $(STATUS),--status=$(STATUS)) \
+		$(if $(TOP_K),--top_k=$(TOP_K)) \
+		$(if $(SUBGRAPH),--subgraph_strategy=$(SUBGRAPH))

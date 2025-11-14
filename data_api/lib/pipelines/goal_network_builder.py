@@ -681,9 +681,15 @@ class UltraIntentGoalNetworkBuilder:
         return prompt.replace("{intents_text}", intents_text)
 
     def _parse_response_and_extract_relations(
-        self, response_text: str
+        self, response_text: str, ultra_idx: int
     ) -> tuple[list, list]:
-        """レスポンスをパースしてリレーションとノードを抽出"""
+        """
+        レスポンスをパースしてリレーションとノードを抽出
+
+        Args:
+            response_text: LLMレスポンステキスト
+            ultra_idx: Ultra IntentのインデックスID（generated nodeのID衝突を防ぐ）
+        """
         generated_nodes = []
         lines_with_level: List[Dict[str, int | str | None]] = []
 
@@ -700,6 +706,12 @@ class UltraIntentGoalNetworkBuilder:
                     intent_id.startswith("generated_") or intent_id.startswith("ultra_")
                 )
             ):
+                # Generated nodeのIDにultra_プレフィックスを追加（ID衝突を防ぐ）
+                if intent_id.startswith("generated_"):
+                    prefixed_id = f"ultra_{ultra_idx}_{intent_id}"
+                    parsed["intent_id"] = prefixed_id
+                    intent_id = prefixed_id
+
                 node_info = self._extract_node_info(parsed["text"], intent_id)  # type: ignore[arg-type]
                 generated_nodes.append(node_info)
 
@@ -743,7 +755,7 @@ class UltraIntentGoalNetworkBuilder:
             response = model.generate_content(prompt)
             response_text = self._clean_markdown_response(response.text.strip())
             relations, generated_nodes = self._parse_response_and_extract_relations(
-                response_text
+                response_text, ultra_idx
             )
 
             return {

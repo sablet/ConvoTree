@@ -11,10 +11,42 @@
 * ここ[一週間|数日|１ヶ月]、何をやっていたか
 * [トピック]について 次にやるべきことは何か
 
+## クイックスタート
+
+### 環境設定
+
+```bash
+# 1. 依存パッケージインストール
+uv sync
+
+# 3. 環境変数設定（.envファイル作成）
+echo "GEMINI_API_KEY=your_api_key_here" > .env
+```
+
+**注**: 入力ファイル `messages_with_hierarchy.csv` は chat-line アプリから別途エクスポートされます。
+
+### 実行例
+
+```bash
+# 基本パイプライン実行（クラスタリング→意図抽出→ゴールネットワーク）
+make run
+
+# RAGまで含む完全パイプライン実行
+make run-with-rag
+
+# RAG検索（run-with-rag実行後）
+make rag-query QUERY="ここ1週間、何をやっていたか"
+make rag-query QUERY="開発ツールについて次にやるべきことは何か"
+
+# 使用可能なコマンド一覧
+make help
+```
+
+**所要時間**: 初回実行で約10〜20分（メッセージ数に依存）
 
 ## 処理フロー
 
-`messages_with_hierarchy.csv` → ゴールネットワーク構築までの主要パイプライン：
+`messages_with_hierarchy.csv` → RAGシステムまでの主要パイプライン：
 
 ```
 1. メッセージクラスタリング
@@ -25,69 +57,21 @@
 
 3. ゴールネットワーク構築
    ultra_intents_enriched.json → ultra_intent_goal_network.json
+
+4. RAGインデックス構築（オプション）
+   既存ファイル群 → unified_intents.jsonl → Vector DB (Chroma)
+
+5. RAG質問応答（オプション）
+   自然言語クエリ → 検索 → 部分グラフ抽出 → LLM回答生成
 ```
 
-### 全パイプラインの一括実行
-
-#### Makeコマンド（推奨）
-
-```bash
-# 基本実行（全パイプライン）
-make run
-
-# プロンプト/レスポンス保存あり
-make run-save-prompts
-
-# 使用可能なコマンド一覧
-make help
-```
-
-#### 直接実行
-
-```bash
-# 基本実行（全パイプライン）
-uv run python main.py run_all
-
-# ゴールネットワークのプロンプト/レスポンスも保存
-uv run python main.py run_all --save_prompts
-
-# カスタムCSVパスを指定
-uv run python main.py run_all --csv_path=/path/to/messages.csv
-```
-
-### 個別ステップの実行
-
-#### Makeコマンド（推奨）
-
-```bash
-# ステップ1: クラスタリング
-make clustering
-
-# ステップ2: 意図抽出と階層化
-make intent-extraction
-
-# ステップ3: ゴールネットワーク構築
-make goal-network
-```
-
-#### 直接実行
-
-```bash
-# ステップ1: クラスタリング
-uv run python main.py clustering --csv_path=/path/to/messages.csv
-
-# ステップ2: 意図抽出（Gemini API使用）
-uv run python main.py intent_extraction --gemini --aggregate --aggregate_all
-
-# ステップ3: ゴールネットワーク構築
-uv run python main.py goal_network --save_prompts
-
-# ヘルプ表示
-uv run python main.py -- --help
-uv run python main.py clustering -- --help
-```
+**パイプライン構成**:
+- `make run`: ステップ1〜3（クラスタリング、意図抽出、ゴールネットワーク構築）
+- `make run-with-rag`: ステップ1〜4（上記 + RAGインデックス構築）
 
 ---
+
+## 詳細実行手順
 
 ### 1. 入力データ
 
@@ -191,7 +175,7 @@ uv run python main.py intent_extraction --gemini --cluster=6 --save_raw
   "cluster_id": 6,
   "source_message_ids": ["msg_00496"],
   "source_full_paths": ["Inbox -> タスク開発アプリ -> 欲しい機能"],
-  "min_start_timestamp": "2025-09-24T00:33:00",
+  "start_timestamps": ["2025-09-24T00:33:00"],
   "context": "今後コマンドが増えていっても自動で対応されるようにしたい。"
 }
 ```
@@ -400,6 +384,113 @@ uv run python main.py goal_network --save_prompts
 
 ---
 
+### 5. RAGシステム（質問応答）
+
+**目的**: 既存の意図データとゴールネットワークを活用し、自然言語で質問に回答するシステム
+
+**機能概要**:
+- 自然言語クエリから期間・トピック・ステータスを自動抽出
+- Vector DB（Chroma）による意味的検索
+- ゴールネットワークからの部分グラフ抽出（Balanced Strategy）
+- LLMによる最終回答生成
+
+#### 5-1. RAGインデックス構築
+
+**前提**: ステップ1〜3の実行が完了していること
+
+**実行方法**: `make run-with-rag`（推奨、全自動）または `make rag-build`（個別実行）
+
+**処理内容**:
+1. 既存ファイルから統合ドキュメントを生成
+   - メッセージ本文・意図・階層情報を統合
+2. ruri-large-v2でEmbeddingを生成
+3. Chromaにインデックスを作成
+
+**出力先**:
+- `output/rag_index/unified_intents.jsonl` - 統合ドキュメント
+- `output/rag_index/chroma_db/` - Vector DBデータ
+
+#### 5-2. RAG質問応答（自然言語クエリ）
+
+**実行方法**:
+```bash
+# 過去の活動を確認
+make rag-query QUERY="ここ1週間、開発ツールについて何をやっていたか"
+
+# 次のアクションを確認
+make rag-query QUERY="アルゴトレードについて次にやるべきことは何か"
+
+# 期間のみ
+make rag-query QUERY="ここ数日、何をやっていたか"
+
+# トピックのみ
+make rag-query QUERY="Claude Codeについて次にやるべきことは"
+```
+
+**処理フロー**:
+1. **クエリパラメータ抽出**（LLM使用）
+   - 期間: 「ここ1週間」→ 7日
+   - トピック: 「開発ツール」
+   - ステータス: 「何をやっていたか」→ `["doing", "done"]`
+2. **Vector DB検索**
+   - 期間フィルタ + トピックのsemantic search
+3. **部分グラフ抽出**
+   - 検索結果のintentに関連するゴールネットワークを抽出
+4. **LLM回答生成**
+   - 検索結果 + 部分グラフ → 最終回答
+
+**出力例**:
+```
+抽出パラメータ: QueryParams(period_days=7, topic="開発ツール", status_filter=["doing", "done"], ...)
+検索結果: 12 件
+部分グラフ: 25 ノード, 18 エッジ
+
+回答:
+ここ1週間、開発ツール関連で以下の活動を行っていました：
+1. Claude Codeのワークフロー改善（doing）
+2. スラッシュコマンドの自動補完機能の検討（done）
+3. ...
+```
+
+#### 5-3. RAG検索（デバッグ用・パラメータ直接指定）
+
+**実行方法**:
+```bash
+# トピックのみ指定
+make rag-query-debug TOPIC="開発ツール" STATUS="doing,done"
+
+# 期間のみ指定
+make rag-query-debug START=2025-11-07 END=2025-11-14 STATUS="todo,idea"
+
+# ハイブリッド検索（期間 + トピック）
+make rag-query-debug TOPIC="開発ツール" START=2025-11-07 END=2025-11-14 STATUS="doing,done"
+
+# 全パラメータ指定
+make rag-query-debug \
+  TOPIC="RAG" \
+  START=2025-11-07 \
+  END=2025-11-14 \
+  STATUS="doing,done" \
+  TOP_K=20 \
+  SUBGRAPH=balanced
+```
+
+**パラメータ**:
+- `TOPIC`: トピック（semantic search）
+- `START`: 開始日（YYYY-MM-DD形式）
+- `END`: 終了日（YYYY-MM-DD形式）
+- `STATUS`: ステータスフィルタ（カンマ区切り、デフォルト: `todo,idea`）
+- `TOP_K`: 取得件数（デフォルト: 15）
+- `SUBGRAPH`: グラフ抽出戦略（minimal/balanced/max、デフォルト: balanced）
+
+**検証ルール**:
+- `TOPIC` または `(START AND END)` のいずれかが必須
+- 両方なしの場合はエラー
+
+**詳細仕様**: `output/doc/rag_implementation_spec.md` を参照
+
+---
+
 ## ディレクトリ構造
 
 ```
@@ -412,7 +503,9 @@ data_api/
 │   ├── intent_grouping_prompt.md                 # 意図のグループ化（統一）
 │   ├── intent_reassignment_prompt.md             # 意図の再割り当て
 │   ├── goal_network_extraction_prompt.md         # ゴールネットワーク抽出
-│   └── ultra_sub_intent_relations_prompt.md      # Ultra配下の階層構造抽出
+│   ├── ultra_sub_intent_relations_prompt.md      # Ultra配下の階層構造抽出
+│   ├── rag_query_parser_prompt.md                # RAG: クエリパラメータ抽出
+│   └── rag_answer_prompt.md                      # RAG: 回答生成
 ├── scripts/
 │   ├── generate_intent_extraction_prompts.py     # 意図抽出・階層化
 │   ├── run_clustering_with_report.py             # メッセージクラスタリング実行
@@ -436,31 +529,24 @@ data_api/
 │   │   │   ├── super_intents.json                # 最上位意図
 │   │   │   └── ultra_intents_enriched.json       # エンリッチ済み最上位意図
 │   │   └── intent_review.html                    # レビュー用HTML
-│   └── goal_network/
-│       ├── ultra_intent_goal_network.json        # Ultra モード出力
-│       └── ultra_prompts_responses/              # Ultra モードプロンプト/レスポンス
-│           ├── intent_relations_ultra_X_prompt.md        # プロンプト
-│           ├── intent_relations_ultra_X_raw_response.md  # 生レスポンス
-│           └── intent_relations_ultra_X_parsed.json      # パース済みJSON
+│   ├── goal_network/
+│   │   ├── ultra_intent_goal_network.json        # Ultra モード出力
+│   │   └── ultra_prompts_responses/              # Ultra モードプロンプト/レスポンス
+│   │       ├── intent_relations_ultra_X_prompt.md        # プロンプト
+│   │       ├── intent_relations_ultra_X_raw_response.md  # 生レスポンス
+│   │       └── intent_relations_ultra_X_parsed.json      # パース済みJSON
+│   ├── rag_index/                                # RAGインデックス
+│   │   ├── unified_intents.jsonl                 # 統合ドキュメント
+│   │   └── chroma_db/                            # Vector DBデータ
+│   └── rag_queries/                              # RAGクエリ結果（--save_output時）
+│       └── query_YYYYMMDD_HHMMSS.json
 └── lib/
+    ├── rag_models.py                             # RAG用データモデル（Pydantic）
+    ├── pipelines/
+    │   ├── rag_index_builder.py                  # RAG: 統合ドキュメント生成 + インデックス化
+    │   ├── rag_query_executor.py                 # RAG: クエリ実行（パラメータ抽出→検索→回答）
+    │   └── rag_graph_extractor.py                # RAG: グラフトラバーサル（部分グラフ抽出）
     └── gemini_client.py                          # Gemini APIクライアント
 ```
 
 **注**: 入力ファイル `messages_with_hierarchy.csv` は chat-line アプリから別途エクスポートされます。
-
----
-
-## 環境設定
-
-### 必要な環境変数
-
-`.env`ファイルに以下を設定:
-```bash
-GEMINI_API_KEY=your_api_key_here
-```
-
-### インストール
-
-```bash
-uv sync
-```

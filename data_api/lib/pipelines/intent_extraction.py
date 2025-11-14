@@ -113,7 +113,9 @@ def build_deterministic_prompt(
         parts = [f"{i}."]
 
         # 意図本文（meta_intent または super_intent）
-        intent_text = intent.get("meta_intent") or intent.get("super_intent") or "（未定義）"
+        intent_text = (
+            intent.get("meta_intent") or intent.get("super_intent") or "（未定義）"
+        )
         parts.append(f"【意図】{intent_text}")
 
         # objective_facts
@@ -140,9 +142,7 @@ def build_deterministic_prompt(
     max_index = len(intents) - 1
 
     return template.format(
-        intent_list=intent_list,
-        max_index=max_index,
-        **format_kwargs
+        intent_list=intent_list, max_index=max_index, **format_kwargs
     )
 
 
@@ -176,7 +176,7 @@ def build_message_metadata(df: pd.DataFrame) -> Dict[str, Dict]:
         df: クラスタリング済みメッセージのDataFrame
 
     Returns:
-        msg_id -> {full_path, min_start_timestamp} のマッピング
+        msg_id -> {full_path, start_timestamps} のマッピング
     """
     metadata = {}
     for row in df.itertuples():
@@ -184,13 +184,11 @@ def build_message_metadata(df: pd.DataFrame) -> Dict[str, Dict]:
         if msg_id not in metadata:
             metadata[msg_id] = {
                 "full_path": row.full_path,
-                "min_start_timestamp": row.start_time.isoformat(),
+                "start_timestamps": [row.start_time.isoformat()],
             }
         else:
-            # 同じmsg_idで複数行ある場合、最小のタイムスタンプを保持
-            current_ts = pd.to_datetime(metadata[msg_id]["min_start_timestamp"])
-            if row.start_time < current_ts:
-                metadata[msg_id]["min_start_timestamp"] = row.start_time.isoformat()
+            # 同じmsg_idで複数行ある場合、全てのタイムスタンプを保持
+            metadata[msg_id]["start_timestamps"].append(row.start_time.isoformat())
     return metadata
 
 
@@ -318,25 +316,25 @@ def postprocess_enrich_and_save_intents(
         if not source_ids:
             continue
 
-        # source_message_idsに対応するfull_pathとmin_start_timestampを集約
+        # source_message_idsに対応するfull_pathとstart_timestampsを集約
         full_paths = []
         timestamps = []
 
         for msg_id in source_ids:
             metadata = message_metadata.get(msg_id, {})
             full_path = metadata.get("full_path")
-            timestamp = metadata.get("min_start_timestamp")
+            timestamp_list = metadata.get("start_timestamps", [])
 
             if full_path:
                 full_paths.append(full_path)
-            if timestamp:
-                timestamps.append(timestamp)
+            if timestamp_list:
+                timestamps.extend(timestamp_list)
 
         # ユニークなfull_pathのリスト
         intent["source_full_paths"] = list(set(full_paths)) if full_paths else []
 
-        # 最小のタイムスタンプ
-        intent["min_start_timestamp"] = min(timestamps) if timestamps else None
+        # 全てのタイムスタンプをソート済みリストで保持
+        intent["start_timestamps"] = sorted(list(set(timestamps))) if timestamps else []
 
     # 処理後のJSONを保存
     output_file = PROCESSED_DIR / f"cluster_{cluster_id:02d}_processed.json"
@@ -935,14 +933,14 @@ def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
                 aggregated_full_paths.extend(paths)
         aggregated_full_paths = sorted(set(aggregated_full_paths))
 
-        # min_start_timestamp を集約（全個別意図から最小値を取得）
+        # start_timestamps を集約（全個別意図から全タイムスタンプを収集）
         timestamps = []
         for idx in member_indices:
             if idx < len(intents):
-                ts = intents[idx].get("min_start_timestamp")
-                if ts:
-                    timestamps.append(ts)
-        aggregated_min_timestamp = min(timestamps) if timestamps else None
+                ts_list = intents[idx].get("start_timestamps", [])
+                if ts_list:
+                    timestamps.extend(ts_list)
+        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
 
         meta_intent = {
             "meta_intent": group.get("group_name", "（未定義）"),
@@ -950,7 +948,7 @@ def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
             "context": group.get("context", ""),
             "covered_intent_ids": covered_intent_ids,
             "source_full_paths": aggregated_full_paths,
-            "min_start_timestamp": aggregated_min_timestamp,
+            "start_timestamps": aggregated_timestamps,
             "aggregate_status": aggregate_status,
         }
         meta_intents.append(meta_intent)
@@ -1229,14 +1227,14 @@ def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
                 aggregated_full_paths.extend(paths)
         aggregated_full_paths = sorted(set(aggregated_full_paths))
 
-        # min_start_timestamp を集約（全meta_intentから最小値を取得）
+        # start_timestamps を集約（全meta_intentから全タイムスタンプを収集）
         timestamps = []
         for meta_idx in member_indices:
             if meta_idx < len(meta_intents):
-                ts = meta_intents[meta_idx].get("min_start_timestamp")
-                if ts:
-                    timestamps.append(ts)
-        aggregated_min_timestamp = min(timestamps) if timestamps else None
+                ts_list = meta_intents[meta_idx].get("start_timestamps", [])
+                if ts_list:
+                    timestamps.extend(ts_list)
+        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
 
         super_intent = {
             "super_intent": group.get("group_name", "（未定義）"),
@@ -1245,7 +1243,7 @@ def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
             "covered_meta_intent_indices": member_indices,
             "covered_intent_ids_flat": covered_intent_ids_flat,
             "source_full_paths": aggregated_full_paths,
-            "min_start_timestamp": aggregated_min_timestamp,
+            "start_timestamps": aggregated_timestamps,
             "aggregate_status": aggregate_status,
         }
         super_intents.append(super_intent)
@@ -1697,14 +1695,14 @@ def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR091
                 aggregated_full_paths.extend(paths)
         aggregated_full_paths = sorted(set(aggregated_full_paths))
 
-        # min_start_timestamp を集約（全super_intentから最小値を取得）
+        # start_timestamps を集約（全super_intentから全タイムスタンプを収集）
         timestamps = []
         for super_idx in member_indices:
             if super_idx < len(super_intents):
-                ts = super_intents[super_idx].get("min_start_timestamp")
-                if ts:
-                    timestamps.append(ts)
-        aggregated_min_timestamp = min(timestamps) if timestamps else None
+                ts_list = super_intents[super_idx].get("start_timestamps", [])
+                if ts_list:
+                    timestamps.extend(ts_list)
+        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
 
         ultra_intent = {
             "ultra_intent": group.get("group_name", "（未定義）"),
@@ -1713,7 +1711,7 @@ def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR091
             "covered_super_intent_indices": member_indices,
             "covered_intent_ids_flat": covered_intent_ids_flat,
             "source_full_paths": aggregated_full_paths,
-            "min_start_timestamp": aggregated_min_timestamp,
+            "start_timestamps": aggregated_timestamps,
             "aggregate_status": aggregate_status,
         }
         ultra_intents.append(ultra_intent)

@@ -4,18 +4,23 @@ version = "0.1.0"
 description = "Message Intent Analysis - Gemini API integration"
 requires-python = ">=3.12"
 dependencies = [
+    "chromadb",
     "fire>=0.7.1",
+    "fugashi>=1.5.2",
     "hdbscan>=0.8.40",
+    "ipadic>=1.0.0",
     "joblib>=1.4.2",
     "k-means-constrained>=0.7.6",
     "litellm>=1.79.3",
     "matplotlib>=3.10.7",
     "numpy>=1.26.0",
     "pandas>=2.3.3",
+    "pydantic>=2.12.3",
     "python-dotenv>=1.2.1",
     "scikit-learn>=1.7.2",
     "sentence-transformers>=5.1.2",
     "tqdm>=4.67.1",
+    "unidic-lite>=1.0.8",
 ]
 
 [project.scripts]
