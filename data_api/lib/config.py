@@ -6,9 +6,11 @@ config.yaml が存在すればそれで上書きします。
 """
 
 from pathlib import Path
-from typing import Any
+from typing import TypeVar, overload
 
 import yaml
+
+T = TypeVar("T")
 
 
 class Config:
@@ -26,7 +28,7 @@ class Config:
             config_path: 設定ファイルのパス（デフォルト: config.yaml）
             example_path: サンプル設定ファイルのパス（デフォルト: config.yaml.example）
         """
-        self._config: dict[str, Any] = {}
+        self._config: dict[str, str | int | float | bool | dict | list] = {}
         self._load_config(config_path, example_path)
 
     def _load_config(self, config_path: str, example_path: str) -> None:
@@ -63,7 +65,9 @@ class Config:
                 f"   {example_path} のデフォルト値を使用します。"
             )
 
-    def _merge_config(self, user_config: dict[str, Any]) -> None:
+    def _merge_config(
+        self, user_config: dict[str, str | int | float | bool | dict | list]
+    ) -> None:
         """
         ユーザー設定をデフォルト設定にマージ（深い階層まで対応）
 
@@ -71,7 +75,10 @@ class Config:
             user_config: ユーザー設定の辞書
         """
 
-        def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> None:
+        def deep_merge(
+            base: dict[str, str | int | float | bool | dict | list],
+            override: dict[str, str | int | float | bool | dict | list],
+        ) -> None:
             """再帰的に辞書をマージ"""
             for key, value in override.items():
                 if (
@@ -79,13 +86,24 @@ class Config:
                     and isinstance(base[key], dict)
                     and isinstance(value, dict)
                 ):
-                    deep_merge(base[key], value)
+                    assert isinstance(base[key], dict)
+                    deep_merge(base[key], value)  # type: ignore[arg-type]
                 else:
                     base[key] = value
 
         deep_merge(self._config, user_config)
 
-    def get(self, key_path: str, default: Any = None) -> Any:  # noqa: ANN401
+    @overload
+    def get(self, key_path: str) -> str | int | float | bool | dict | list | None: ...
+
+    @overload
+    def get(
+        self, key_path: str, default: T
+    ) -> str | int | float | bool | dict | list | T: ...
+
+    def get(
+        self, key_path: str, default: T | None = None
+    ) -> str | int | float | bool | dict | list | T | None:
         """
         ネストされたキーを取得（ドット記法対応）
 
@@ -97,7 +115,7 @@ class Config:
             設定値またはデフォルト値
         """
         keys = key_path.split(".")
-        value = self._config
+        value: str | int | float | bool | dict | list = self._config
 
         for key in keys:
             if isinstance(value, dict) and key in value:
@@ -111,132 +129,184 @@ class Config:
     @property
     def csv_path(self) -> str:
         """入力CSVファイルのパス"""
-        return self.get("input.csv_path")
+        value = self.get("input.csv_path")
+        assert isinstance(value, str)
+        return value
 
     # === 出力パス ===
     @property
     def output_base_dir(self) -> str:
         """出力ベースディレクトリ"""
-        return self.get("output.base_dir")
+        value = self.get("output.base_dir")
+        assert isinstance(value, str)
+        return value
 
     @property
     def clustering_dir(self) -> str:
         """クラスタリング結果ディレクトリ"""
-        return self.get("output.clustering_dir")
+        value = self.get("output.clustering_dir")
+        assert isinstance(value, str)
+        return value
 
     @property
     def intent_extraction_dir(self) -> str:
         """意図抽出結果ディレクトリ"""
-        return self.get("output.intent_extraction_dir")
+        value = self.get("output.intent_extraction_dir")
+        assert isinstance(value, str)
+        return value
 
     @property
     def goal_network_dir(self) -> str:
         """ゴールネットワークディレクトリ"""
-        return self.get("output.goal_network_dir")
+        value = self.get("output.goal_network_dir")
+        assert isinstance(value, str)
+        return value
 
     @property
     def rag_index_dir(self) -> str:
         """RAGインデックスディレクトリ"""
-        return self.get("output.rag_index_dir")
+        value = self.get("output.rag_index_dir")
+        assert isinstance(value, str)
+        return value
 
     # === クラスタリングパラメータ ===
     @property
     def clustering_embedding_weight(self) -> float:
         """埋め込みベクトルの重み"""
-        return self.get("clustering.embedding_weight")
+        value = self.get("clustering.embedding_weight")
+        assert isinstance(value, (int, float))
+        return float(value)
 
     @property
     def clustering_time_weight(self) -> float:
         """時間の重み"""
-        return self.get("clustering.time_weight")
+        value = self.get("clustering.time_weight")
+        assert isinstance(value, (int, float))
+        return float(value)
 
     @property
     def clustering_hierarchy_weight(self) -> float:
         """階層の重み"""
-        return self.get("clustering.hierarchy_weight")
+        value = self.get("clustering.hierarchy_weight")
+        assert isinstance(value, (int, float))
+        return float(value)
 
     @property
     def clustering_time_bandwidth_hours(self) -> float:
         """時間カーネル帯域幅（時間）"""
-        return self.get("clustering.time_bandwidth_hours")
+        value = self.get("clustering.time_bandwidth_hours")
+        assert isinstance(value, (int, float))
+        return float(value)
 
     @property
     def clustering_method(self) -> str:
         """クラスタリング手法"""
-        return self.get("clustering.method")
+        value = self.get("clustering.method")
+        assert isinstance(value, str)
+        return value
 
     @property
     def clustering_size_min(self) -> int:
         """最小クラスタサイズ"""
-        return self.get("clustering.size_min")
+        value = self.get("clustering.size_min")
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_size_max(self) -> int:
         """最大クラスタサイズ"""
-        return self.get("clustering.size_max")
+        value = self.get("clustering.size_max")
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_n_clusters(self) -> int | None:
         """K-meansのクラスタ数"""
-        return self.get("clustering.n_clusters")
+        value = self.get("clustering.n_clusters")
+        if value is None:
+            return None
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_min_cluster_size(self) -> int:
         """HDBSCANの最小クラスタサイズ"""
-        return self.get("clustering.min_cluster_size")
+        value = self.get("clustering.min_cluster_size")
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_min_samples(self) -> int:
         """HDBSCANの最小サンプル数"""
-        return self.get("clustering.min_samples")
+        value = self.get("clustering.min_samples")
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_linkage(self) -> str:
         """Agglomerativeのリンケージ方法"""
-        return self.get("clustering.linkage")
+        value = self.get("clustering.linkage")
+        assert isinstance(value, str)
+        return value
 
     @property
     def clustering_n_init(self) -> int:
         """K-meansの初期化回数"""
-        return self.get("clustering.n_init")
+        value = self.get("clustering.n_init")
+        assert isinstance(value, int)
+        return value
 
     @property
     def clustering_max_iter(self) -> int:
         """K-meansの最大反復回数"""
-        return self.get("clustering.max_iter")
+        value = self.get("clustering.max_iter")
+        assert isinstance(value, int)
+        return value
 
     # === 意図抽出パラメータ ===
     @property
     def intent_extraction_max_workers(self) -> int:
         """並列処理の最大ワーカー数"""
-        return self.get("intent_extraction.max_workers")
+        value = self.get("intent_extraction.max_workers")
+        assert isinstance(value, int)
+        return value
 
     # === ゴールネットワークパラメータ ===
     @property
     def goal_network_input_path(self) -> str:
         """ultra_intents_enriched.jsonのパス"""
-        return self.get("goal_network.input_path")
+        value = self.get("goal_network.input_path")
+        assert isinstance(value, str)
+        return value
 
     # === RAGパラメータ ===
     @property
     def rag_unified_intents_path(self) -> str:
         """統合ドキュメント出力先"""
-        return self.get("rag.unified_intents_path")
+        value = self.get("rag.unified_intents_path")
+        assert isinstance(value, str)
+        return value
 
     @property
     def rag_chroma_db_path(self) -> str:
         """Chroma DBパス"""
-        return self.get("rag.chroma_db_path")
+        value = self.get("rag.chroma_db_path")
+        assert isinstance(value, str)
+        return value
 
     @property
     def rag_top_k(self) -> int:
         """検索時の取得件数"""
-        return self.get("rag.top_k")
+        value = self.get("rag.top_k")
+        assert isinstance(value, int)
+        return value
 
     @property
     def rag_subgraph_strategy(self) -> str:
         """グラフ抽出戦略"""
-        return self.get("rag.subgraph_strategy")
+        value = self.get("rag.subgraph_strategy")
+        assert isinstance(value, str)
+        return value
 
 
 # グローバル設定インスタンス

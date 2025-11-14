@@ -7,7 +7,7 @@ Phase 3: デバッグ用検索（パラメータ直接指定のみ）
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import chromadb
 
@@ -19,7 +19,21 @@ from lib.pipelines.rag_graph_extractor import (
     get_siblings,
     load_goal_network,
 )
-from lib.rag_models import IntentStatus, QueryParams, SearchResult, UnifiedIntent
+from lib.rag_models import (
+    IntentStatus,
+    QueryDebugParams,
+    QueryParams,
+    SearchResult,
+    UnifiedIntent,
+)
+
+if TYPE_CHECKING:
+    from lib.rag_models import GoalNetwork
+
+# Display constants for print functions
+MAX_INTENTS_TO_DISPLAY = 5
+MAX_CONTEXT_LENGTH = 100
+MAX_ULTRA_INTENT_LENGTH = 80
 
 
 def load_unified_intent_from_metadata(
@@ -138,7 +152,9 @@ def execute_search(
         intents = []
         if results["ids"] and results["ids"][0]:
             for idx, intent_id in enumerate(results["ids"][0]):
-                metadata = results["metadatas"][0][idx] if results["metadatas"] else {}
+                metadata = (
+                    dict(results["metadatas"][0][idx]) if results["metadatas"] else {}
+                )
                 document = results["documents"][0][idx] if results["documents"] else ""
                 intents.append(
                     load_unified_intent_from_metadata(intent_id, metadata, document)
@@ -147,17 +163,23 @@ def execute_search(
 
     # 期間のみの場合はメタデータフィルタのみ
     if start_date and end_date:
-        results = collection.get(
+        get_results = collection.get(
             where=where_filter,
             limit=top_k,
         )
 
         # UnifiedIntentに変換
         intents = []
-        if results["ids"]:
-            for idx, intent_id in enumerate(results["ids"]):
-                metadata = results["metadatas"][idx] if results["metadatas"] else {}
-                document = results["documents"][idx] if results["documents"] else ""
+        if get_results["ids"]:
+            for idx, intent_id in enumerate(get_results["ids"]):
+                metadata = (
+                    dict(get_results["metadatas"][idx])
+                    if get_results["metadatas"]
+                    else {}
+                )
+                document = (
+                    get_results["documents"][idx] if get_results["documents"] else ""
+                )
                 intents.append(
                     load_unified_intent_from_metadata(intent_id, metadata, document)
                 )
@@ -167,10 +189,77 @@ def execute_search(
     raise ValueError("topicまたは(start_date AND end_date)のいずれかを指定してください")
 
 
+def _load_intents_map(
+    jsonl_path: Path, fallback_intents: list[UnifiedIntent]
+) -> dict[str, UnifiedIntent]:
+    """
+    JSONLファイルから意図マップを読み込む
+
+    Args:
+        jsonl_path: unified_intents.jsonlのパス
+        fallback_intents: JSONLが存在しない場合のフォールバック意図リスト
+
+    Returns:
+        {intent_id: UnifiedIntent}のマッピング
+    """
+    if jsonl_path.exists():
+        intents_map: dict[str, UnifiedIntent] = {}
+        with open(jsonl_path, encoding="utf-8") as f:
+            for line in f:
+                intent_dict = json.loads(line)
+                intent_obj = UnifiedIntent(**intent_dict)
+                intents_map[intent_obj.id] = intent_obj
+        return intents_map
+    return {intent.id: intent for intent in fallback_intents}
+
+
+def _format_intents_text(intents: list[UnifiedIntent]) -> str:
+    """
+    意図リストをテキスト形式にフォーマット
+
+    Args:
+        intents: 意図リスト
+
+    Returns:
+        フォーマット済みテキスト
+    """
+    return "\n".join(
+        [
+            f"- [{intent.status.value}] {intent.intent} "
+            f"({intent.timestamps[0].strftime('%Y-%m-%d') if intent.timestamps else 'N/A'})"
+            for intent in intents
+        ]
+    )
+
+
+def _save_prompt_file(
+    output_dir: Path, filename: str, query: str, content: str
+) -> None:
+    """
+    プロンプトまたはレスポンスをファイルに保存
+
+    Args:
+        output_dir: 出力ディレクトリ
+        filename: ファイル名
+        query: クエリ文字列
+        content: 保存する内容
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = output_dir / filename
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(f"**Query**: {query}\n\n")
+        f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
+        f.write("---\n\n")
+        f.write(content)
+
+    print(f"  ✓ 保存しました: {file_path}")
+
+
 def generate_answer(
     query: str,
     intents: list[UnifiedIntent],
-    subgraph,
+    subgraph: "GoalNetwork",
     network_path: str,
     save_prompt: bool = True,
 ) -> str:
@@ -180,15 +269,13 @@ def generate_answer(
     Args:
         query: ユーザーのクエリ文
         intents: 検索結果の意図リスト
-        subgraph: 抽出された部分グラフ
+        subgraph: 抽出された部分グラフ (GoalNetwork)
         network_path: ゴールネットワークJSONのパス
         save_prompt: プロンプトを保存するか
 
     Returns:
         LLM生成の回答
     """
-    from pathlib import Path
-
     from lib import gemini_client
 
     # テンプレート読み込み
@@ -197,28 +284,13 @@ def generate_answer(
         prompt_template = f.read()
 
     # 意図リストをフォーマット
-    intents_text = "\n".join(
-        [
-            f"- [{intent.status.value}] {intent.intent} "
-            f"({intent.timestamps[0].strftime('%Y-%m-%d') if intent.timestamps else 'N/A'})"
-            for intent in intents
-        ]
-    )
+    intents_text = _format_intents_text(intents)
 
-    # グラフをフォーマット（既存の format_subgraph_for_llm を使用）
     # JSONLから全意図を読み込む
     jsonl_path = Path("output/rag_index/unified_intents.jsonl")
-    intents_map: dict[str, UnifiedIntent] = {}
-    if jsonl_path.exists():
-        with open(jsonl_path, encoding="utf-8") as f:
-            for line in f:
-                intent_dict = json.loads(line)
-                intent_obj = UnifiedIntent(**intent_dict)
-                intents_map[intent_obj.id] = intent_obj
-    else:
-        # JSONLがない場合はヒットした意図のみ使用
-        intents_map = {intent.id: intent for intent in intents}
+    intents_map = _load_intents_map(jsonl_path, intents)
 
+    # グラフをフォーマット
     hit_intent_ids = [intent.id for intent in intents]
     graph_text = format_subgraph_for_llm(
         subgraph, intents_map, network_path, hit_intent_ids=hit_intent_ids
@@ -233,18 +305,9 @@ def generate_answer(
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     if save_prompt:
         output_dir = Path("output/rag_queries/prompts")
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        prompt_path = output_dir / f"answer_prompt_{timestamp_str}.md"
-
-        with open(prompt_path, "w", encoding="utf-8") as f:
-            f.write(f"# RAG Answer Prompt\n\n")
-            f.write(f"**Query**: {query}\n\n")
-            f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
-            f.write("---\n\n")
-            f.write(prompt)
-
-        print(f"  ✓ プロンプトを保存しました: {prompt_path}")
+        _save_prompt_file(
+            output_dir, f"answer_prompt_{timestamp_str}.md", query, prompt
+        )
 
     # Gemini API呼び出し
     model = gemini_client.GenerativeModel()
@@ -253,16 +316,9 @@ def generate_answer(
     # レスポンス保存
     if save_prompt:
         output_dir = Path("output/rag_queries/prompts")
-        response_path = output_dir / f"answer_response_{timestamp_str}.md"
-
-        with open(response_path, "w", encoding="utf-8") as f:
-            f.write(f"# RAG Answer Response\n\n")
-            f.write(f"**Query**: {query}\n\n")
-            f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
-            f.write("---\n\n")
-            f.write(response.text)
-
-        print(f"  ✓ レスポンスを保存しました: {response_path}")
+        _save_prompt_file(
+            output_dir, f"answer_response_{timestamp_str}.md", query, response.text
+        )
 
     return response.text
 
@@ -299,7 +355,7 @@ def extract_query_params(query: str, save_prompt: bool = True) -> "QueryParams":
         prompt_path = output_dir / f"parser_prompt_{timestamp_str}.md"
 
         with open(prompt_path, "w", encoding="utf-8") as f:
-            f.write(f"# RAG Query Parser Prompt\n\n")
+            f.write("# RAG Query Parser Prompt\n\n")
             f.write(f"**Query**: {query}\n\n")
             f.write(f"**Timestamp**: {datetime.now().isoformat()}\n\n")
             f.write("---\n\n")
@@ -366,7 +422,7 @@ def execute_rag_query(
     # 1. クエリパラメータ抽出
     print("\n[1/4] クエリパラメータ抽出中...")
     params = extract_query_params(query)
-    print(f"  ✓ 抽出パラメータ:")
+    print("  ✓ 抽出パラメータ:")
     print(f"    - period_days: {params.period_days}")
     print(f"    - topic: {params.topic}")
     print(f"    - status_filter: {[s.value for s in params.status_filter]}")
@@ -400,12 +456,7 @@ def execute_rag_query(
     print(f"  ✓ 検索結果: {len(intents)} 件")
 
     # 結果を表示
-    if intents:
-        print("\n  検索結果:")
-        for i, intent in enumerate(intents[:5], 1):  # 最初の5件のみ表示
-            print(f"    {i}. [{intent.status.value}] {intent.intent}")
-        if len(intents) > 5:
-            print(f"    ... 他 {len(intents) - 5} 件")
+    _print_search_results(intents)
 
     # 3. 部分グラフ抽出
     print("\n[3/4] 部分グラフ抽出中...")
@@ -435,6 +486,48 @@ def execute_rag_query(
         print("\n[4/4] LLM回答生成をスキップしました")
 
     # 5. 結果保存
+    return _finalize_and_save_result(
+        query, params, intents, subgraph, answer, save_output
+    )
+
+
+def _print_search_results(intents: list[UnifiedIntent]) -> None:
+    """
+    検索結果を表示
+
+    Args:
+        intents: 検索結果の意図リスト
+    """
+    if intents:
+        print("\n  検索結果:")
+        for i, intent in enumerate(intents[:MAX_INTENTS_TO_DISPLAY], 1):
+            print(f"    {i}. [{intent.status.value}] {intent.intent}")
+        if len(intents) > MAX_INTENTS_TO_DISPLAY:
+            print(f"    ... 他 {len(intents) - MAX_INTENTS_TO_DISPLAY} 件")
+
+
+def _finalize_and_save_result(
+    query: str,
+    params: QueryParams,
+    intents: list[UnifiedIntent],
+    subgraph: "GoalNetwork",
+    answer: str | None,
+    save_output: bool,
+) -> SearchResult:
+    """
+    検索結果を構築して保存
+
+    Args:
+        query: クエリ文字列
+        params: クエリパラメータ
+        intents: 検索結果の意図リスト
+        subgraph: 抽出された部分グラフ
+        answer: LLM生成の回答
+        save_output: 検索結果を保存するか
+
+    Returns:
+        SearchResult
+    """
     result = SearchResult(
         query=query,
         params=params,
@@ -448,38 +541,47 @@ def execute_rag_query(
     )
 
     if save_output:
-        from pathlib import Path
-
         output_dir = Path("output/rag_queries")
         output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = output_dir / f"query_{timestamp_str}.json"
 
-        # SearchResultをJSONに変換
-        result_dict = result.model_dump()
-        # datetimeをISO形式に変換
-        for intent in result_dict["intents"]:
-            intent["timestamps"] = [
-                ts.isoformat() if isinstance(ts, datetime) else ts
-                for ts in intent["timestamps"]
-            ]
-            intent["status"] = (
-                intent["status"].value
-                if hasattr(intent["status"], "value")
-                else intent["status"]
-            )
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result_dict, f, ensure_ascii=False, indent=2, default=str)
-
-        print(f"\n  ✓ 検索結果を保存しました: {output_path}")
+        _save_search_result_to_json(result, output_path)
 
     print("\n" + "=" * 60)
     print("✅ クエリ実行完了！")
     print("=" * 60)
 
     return result
+
+
+def _save_search_result_to_json(result: SearchResult, output_path: Path) -> None:
+    """
+    検索結果をJSONファイルに保存
+
+    Args:
+        result: 検索結果
+        output_path: 出力先パス
+    """
+    # SearchResultをJSONに変換
+    result_dict = result.model_dump()
+    # datetimeをISO形式に変換
+    for intent in result_dict["intents"]:
+        intent["timestamps"] = [
+            ts.isoformat() if isinstance(ts, datetime) else ts
+            for ts in intent["timestamps"]
+        ]
+        intent["status"] = (
+            intent["status"].value
+            if hasattr(intent["status"], "value")
+            else intent["status"]
+        )
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(result_dict, f, ensure_ascii=False, indent=2, default=str)
+
+    print(f"\n  ✓ 検索結果を保存しました: {output_path}")
 
 
 def _print_node_details(
@@ -508,24 +610,50 @@ def _print_node_details(
 
     if intent:
         print(
-            f"      context: {intent.context[:100]}..."
-            if len(intent.context) > 100
+            f"      context: {intent.context[:MAX_CONTEXT_LENGTH]}..."
+            if len(intent.context) > MAX_CONTEXT_LENGTH
             else f"      context: {intent.context}"
         )
         print(f"      timestamps: {[ts.isoformat() for ts in intent.timestamps]}")
         print(f"      cluster_id: {intent.cluster_id}")
         print(f"      ultra_intent_id: {intent.ultra_intent_id}")
         print(
-            f"      ultra_intent_text: {intent.ultra_intent_text[:80]}..."
-            if len(intent.ultra_intent_text) > 80
+            f"      ultra_intent_text: {intent.ultra_intent_text[:MAX_ULTRA_INTENT_LENGTH]}..."
+            if len(intent.ultra_intent_text) > MAX_ULTRA_INTENT_LENGTH
             else f"      ultra_intent_text: {intent.ultra_intent_text}"
         )
     print()
 
 
+def _print_node_category(
+    category_name: str,
+    node_ids: list[str],
+    all_nodes: dict,
+    intents_map: dict,
+    label: str,
+) -> None:
+    """
+    ノードカテゴリを出力
+
+    Args:
+        category_name: カテゴリ名（例: "Parents", "Siblings"）
+        node_ids: ノードIDリスト
+        all_nodes: {node_id: GoalNode}
+        intents_map: {intent_id: UnifiedIntent}
+        label: ラベル（例: "PARENT", "SIBLING"）
+    """
+    if node_ids:
+        print(f"■ {category_name}（{len(node_ids)}件）")
+        for node_id in node_ids:
+            _print_node_details(node_id, all_nodes, intents_map, label)
+    else:
+        print(f"■ {category_name}: なし")
+        print()
+
+
 def _print_subgraph_details(
     hit_intents: list[UnifiedIntent],
-    subgraph,
+    subgraph: "GoalNetwork",
     network_path: str,
 ) -> None:
     """
@@ -533,7 +661,7 @@ def _print_subgraph_details(
 
     Args:
         hit_intents: 検索でヒットした意図リスト
-        subgraph: 抽出された部分グラフ
+        subgraph: 抽出された部分グラフ (GoalNetwork)
         network_path: ゴールネットワークJSONのパス
     """
     # ゴールネットワークを読み込んでグラフ構造を構築
@@ -542,16 +670,7 @@ def _print_subgraph_details(
 
     # 全てのUnifiedIntentをJSONLから読み込む
     jsonl_path = Path("output/rag_index/unified_intents.jsonl")
-    intents_map: dict[str, UnifiedIntent] = {}
-    if jsonl_path.exists():
-        with open(jsonl_path, encoding="utf-8") as f:
-            for line in f:
-                intent_dict = json.loads(line)
-                intent = UnifiedIntent(**intent_dict)
-                intents_map[intent.id] = intent
-    else:
-        # JSONLがない場合はヒットした意図のみ使用
-        intents_map = {intent.id: intent for intent in hit_intents}
+    intents_map = _load_intents_map(jsonl_path, hit_intents)
 
     # 検索でヒットした各ノードについて関連ノードを出力
     for i, hit_intent in enumerate(hit_intents, 1):
@@ -566,33 +685,21 @@ def _print_subgraph_details(
 
         # Parents（ルートから近い順）
         ancestors = get_ancestors_ordered(node_id, parent_map)
-        if ancestors:
-            print(f"■ Parents（ルートから近い順: {len(ancestors)}件）")
-            for ancestor_id in ancestors:
-                _print_node_details(ancestor_id, all_nodes, intents_map, "PARENT")
-        else:
-            print("■ Parents: なし")
-            print()
+        _print_node_category(
+            "Parents（ルートから近い順", ancestors, all_nodes, intents_map, "PARENT"
+        )
 
         # Siblings（同じ親を持つノード）
-        siblings = get_siblings(node_id, parent_map, children_map)
-        if siblings:
-            print(f"■ Siblings（同じ親を持つノード: {len(siblings)}件）")
-            for sibling_id in sorted(siblings):
-                _print_node_details(sibling_id, all_nodes, intents_map, "SIBLING")
-        else:
-            print("■ Siblings: なし")
-            print()
+        siblings = sorted(get_siblings(node_id, parent_map, children_map))
+        _print_node_category(
+            "Siblings（同じ親を持つノード", siblings, all_nodes, intents_map, "SIBLING"
+        )
 
         # Children（直接の子のみ）
-        children = children_map.get(node_id, [])
-        if children:
-            print(f"■ Children（直接の子のみ: {len(children)}件）")
-            for child_id in sorted(children):
-                _print_node_details(child_id, all_nodes, intents_map, "CHILD")
-        else:
-            print("■ Children: なし")
-            print()
+        children = sorted(children_map.get(node_id, []))
+        _print_node_category(
+            "Children（直接の子のみ", children, all_nodes, intents_map, "CHILD"
+        )
 
     print("=" * 60)
 
@@ -608,32 +715,53 @@ def _print_subgraph_details(
     print("=" * 60)
 
 
-def execute_rag_query_debug(
-    topic: str | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
-    status: str = "todo,idea",
-    top_k: int = 15,
-    subgraph_strategy: str = "balanced",
-    answer_with_llm: bool = False,
-    save_output: bool = False,
-    chroma_db_path: str = "output/rag_index/chroma_db",
-    network_path: str = "output/goal_network/ultra_intent_goal_network.json",
-) -> SearchResult:
+def _convert_status_to_list(status: str | tuple | list) -> list[IntentStatus]:
+    """
+    ステータス文字列をIntentStatusリストに変換
+
+    Args:
+        status: ステータス（文字列、タプル、リスト）
+
+    Returns:
+        IntentStatusのリスト
+    """
+    if isinstance(status, tuple):
+        return [IntentStatus(s.strip()) for s in status]
+    if isinstance(status, str):
+        return [IntentStatus(s.strip()) for s in status.split(",")]
+    return [IntentStatus(s.strip()) for s in status]
+
+
+def _build_query_params_from_debug(params: QueryDebugParams) -> QueryParams:
+    """
+    QueryDebugParamsからQueryParamsを構築
+
+    Args:
+        params: デバッグ用パラメータ
+
+    Returns:
+        QueryParams
+    """
+    status_list = _convert_status_to_list(params.status)
+    period_days = None
+    if params.start_date and params.end_date:
+        start_dt = datetime.fromisoformat(params.start_date)
+        end_dt = datetime.fromisoformat(params.end_date)
+        period_days = (end_dt - start_dt).days
+
+    return QueryParams(
+        period_days=period_days,
+        topic=params.topic,
+        status_filter=status_list,
+    )
+
+
+def execute_rag_query_debug(params: QueryDebugParams) -> SearchResult:
     """
     RAGクエリ実行（デバッグ用・パラメータ直接指定）
 
     Args:
-        topic: トピック（semantic search）
-        start_date: 開始日（YYYY-MM-DD）
-        end_date: 終了日（YYYY-MM-DD）
-        status: ステータスフィルタ（カンマ区切り、例: "todo,idea"）
-        top_k: 取得件数
-        subgraph_strategy: グラフ抽出戦略（balanced）
-        answer_with_llm: LLMで最終回答を生成するか（Phase 4で実装）
-        save_output: 検索結果を保存するか
-        chroma_db_path: Chroma DBのパス
-        network_path: ゴールネットワークJSONのパス
+        params: QueryDebugParams（トピック、期間、ステータスなどのパラメータ）
 
     Returns:
         SearchResult
@@ -643,8 +771,8 @@ def execute_rag_query_debug(
     print("=" * 60)
 
     # 検証
-    has_period = bool(start_date and end_date)
-    has_topic = bool(topic)
+    has_period = bool(params.start_date and params.end_date)
+    has_topic = bool(params.topic)
 
     if not has_period and not has_topic:
         raise ValueError(
@@ -653,40 +781,35 @@ def execute_rag_query_debug(
 
     # パラメータ表示
     print("\n検索パラメータ:")
-    if topic:
-        print(f"  Topic: {topic}")
-    if start_date and end_date:
-        print(f"  Period: {start_date} ~ {end_date}")
-    print(f"  Status: {status}")
-    print(f"  Top-k: {top_k}")
-    print(f"  Subgraph strategy: {subgraph_strategy}")
+    if params.topic:
+        print(f"  Topic: {params.topic}")
+    if params.start_date and params.end_date:
+        print(f"  Period: {params.start_date} ~ {params.end_date}")
+    print(f"  Status: {params.status}")
+    print(f"  Top-k: {params.top_k}")
+    print(f"  Subgraph strategy: {params.subgraph_strategy}")
 
     # 1. 検索実行
     print("\n[1/3] 検索実行中...")
     intents = execute_search(
-        topic=topic,
-        start_date=start_date,
-        end_date=end_date,
-        status=status,
-        top_k=top_k,
-        chroma_db_path=chroma_db_path,
+        topic=params.topic,
+        start_date=params.start_date,
+        end_date=params.end_date,
+        status=params.status,
+        top_k=params.top_k,
+        chroma_db_path=params.chroma_db_path,
     )
     print(f"  ✓ 検索結果: {len(intents)} 件")
 
     # 結果を表示
-    if intents:
-        print("\n  検索結果:")
-        for i, intent in enumerate(intents[:5], 1):  # 最初の5件のみ表示
-            print(f"    {i}. [{intent.status.value}] {intent.intent}")
-        if len(intents) > 5:
-            print(f"    ... 他 {len(intents) - 5} 件")
+    _print_search_results(intents)
 
     # 2. 部分グラフ抽出
     print("\n[2/3] 部分グラフ抽出中...")
     subgraph = extract_subgraph(
         intents,
-        network_path=network_path,
-        strategy=subgraph_strategy,
+        network_path=params.network_path,
+        strategy=params.subgraph_strategy,
     )
     print(f"  ✓ 部分グラフ: {len(subgraph.nodes)} ノード, {len(subgraph.edges)} エッジ")
 
@@ -694,17 +817,17 @@ def execute_rag_query_debug(
     print("\n" + "=" * 60)
     print("部分グラフ詳細検証")
     print("=" * 60)
-    _print_subgraph_details(intents, subgraph, network_path)
+    _print_subgraph_details(intents, subgraph, params.network_path)
 
     # 3. LLM回答生成
     answer = None
-    if answer_with_llm:
+    if params.answer_with_llm:
         print("\n[3/3] LLM回答生成中...")
         answer = generate_answer(
-            query=f"topic={topic}, period={start_date}~{end_date}",
+            query=f"topic={params.topic}, period={params.start_date}~{params.end_date}",
             intents=intents,
             subgraph=subgraph,
-            network_path=network_path,
+            network_path=params.network_path,
         )
         print(f"\n{'=' * 60}")
         print("【LLM生成の回答】")
@@ -715,86 +838,30 @@ def execute_rag_query_debug(
         print("\n[3/3] LLM回答生成をスキップしました")
 
     # 4. 結果保存
-    # QueryParamsを構築
-    # statusがtupleの場合はそのまま使用、文字列の場合は分割
-    if isinstance(status, tuple):
-        status_list = [IntentStatus(s.strip()) for s in status]
-    elif isinstance(status, str):
-        status_list = [IntentStatus(s.strip()) for s in status.split(",")]
-    else:
-        status_list = [IntentStatus(s.strip()) for s in status]
-    period_days = None
-    if start_date and end_date:
-        start_dt = datetime.fromisoformat(start_date)
-        end_dt = datetime.fromisoformat(end_date)
-        period_days = (end_dt - start_dt).days
-
-    params = QueryParams(
-        period_days=period_days,
-        topic=topic,
-        status_filter=status_list,
+    query_params = _build_query_params_from_debug(params)
+    query_str = f"topic={params.topic}, period={params.start_date}~{params.end_date}"
+    return _finalize_and_save_result(
+        query_str, query_params, intents, subgraph, answer, params.save_output
     )
-
-    result = SearchResult(
-        query=f"topic={topic}, period={start_date}~{end_date}",
-        params=params,
-        intents=intents,
-        subgraph=subgraph,
-        answer=answer,
-        metadata={
-            "top_k": len(intents),
-            "timestamp": datetime.now().isoformat(),
-        },
-    )
-
-    if save_output:
-        output_dir = Path("output/rag_queries")
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = output_dir / f"query_{timestamp_str}.json"
-
-        # SearchResultをJSONに変換
-        result_dict = result.model_dump()
-        # datetimeをISO形式に変換
-        for intent in result_dict["intents"]:
-            intent["timestamps"] = [
-                ts.isoformat() if isinstance(ts, datetime) else ts
-                for ts in intent["timestamps"]
-            ]
-            intent["status"] = (
-                intent["status"].value
-                if hasattr(intent["status"], "value")
-                else intent["status"]
-            )
-
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(result_dict, f, ensure_ascii=False, indent=2, default=str)
-
-        print(f"\n  ✓ 検索結果を保存しました: {output_path}")
-
-    print("\n" + "=" * 60)
-    print("✅ クエリ実行完了！")
-    print("=" * 60)
-
-    return result
 
 
 # テスト用コード
 if __name__ == "__main__":
     # テストケース1: トピックベース
     print("\n### テストケース1: トピックベース ###")
-    result1 = execute_rag_query_debug(
+    params1 = QueryDebugParams(
         topic="開発ツール",
         status="todo,idea,doing,done",
         top_k=10,
     )
+    result1 = execute_rag_query_debug(params1)
 
     # テストケース2: 期間ベース
     print("\n\n### テストケース2: 期間ベース ###")
-    result2 = execute_rag_query_debug(
+    params2 = QueryDebugParams(
         start_date="2025-11-07",
         end_date="2025-11-14",
         status="doing,done",
         top_k=10,
     )
+    result2 = execute_rag_query_debug(params2)

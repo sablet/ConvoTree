@@ -16,7 +16,7 @@ import json
 import pandas as pd  # type: ignore[import-untyped]
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 from datetime import datetime
 import sys
 from tqdm import tqdm  # type: ignore[import-untyped]
@@ -91,7 +91,9 @@ def load_grouping_template() -> str:
 
 
 def build_deterministic_prompt(
-    intents: List[Dict], template: str, **format_kwargs
+    intents: List[Dict],
+    template: str,
+    **format_kwargs: str | int | float,
 ) -> str:
     """
     決定的なプロンプトを生成（引数+template→具体プロンプト）
@@ -178,17 +180,27 @@ def build_message_metadata(df: pd.DataFrame) -> Dict[str, Dict]:
     Returns:
         msg_id -> {full_path, start_timestamps} のマッピング
     """
-    metadata = {}
+    metadata: Dict[str, Dict] = {}
     for row in df.itertuples():
-        msg_id = row.message_id
+        msg_id = str(row.message_id)
+        start_time = row.start_time
+
+        # start_timeがdatetime型であることを確認
+        if hasattr(start_time, "isoformat"):
+            timestamp_str = start_time.isoformat()  # type: ignore[union-attr]
+        else:
+            timestamp_str = str(start_time)
+
         if msg_id not in metadata:
             metadata[msg_id] = {
-                "full_path": row.full_path,
-                "start_timestamps": [row.start_time.isoformat()],
+                "full_path": str(row.full_path),
+                "start_timestamps": [timestamp_str],
             }
         else:
             # 同じmsg_idで複数行ある場合、全てのタイムスタンプを保持
-            metadata[msg_id]["start_timestamps"].append(row.start_time.isoformat())
+            timestamps_list = metadata[msg_id]["start_timestamps"]
+            assert isinstance(timestamps_list, list)
+            timestamps_list.append(timestamp_str)
     return metadata
 
 
@@ -214,11 +226,19 @@ def generate_cluster_prompt(
     message_parts = []
 
     for i, row in enumerate(cluster_df.itertuples(), 1):
+        start_time = row.start_time
+
+        # start_timeがdatetime型であることを確認
+        if hasattr(start_time, "strftime"):
+            time_str = start_time.strftime("%Y-%m-%d %H:%M")  # type: ignore[union-attr]
+        else:
+            time_str = str(start_time)
+
         msg = {
-            "message_id": row.message_id,
-            "channel": row.full_path,
-            "time": row.start_time.strftime("%Y-%m-%d %H:%M"),
-            "content": row.combined_content,
+            "message_id": str(row.message_id),
+            "channel": str(row.full_path),
+            "time": time_str,
+            "content": str(row.combined_content),
         }
         messages.append(msg)
 
@@ -237,12 +257,27 @@ def generate_cluster_prompt(
             ]
         )
 
+    # 期間の最小値・最大値を取得
+    min_time = cluster_df["start_time"].min()
+    max_time = cluster_df["start_time"].max()
+
+    # 日付文字列に変換
+    if hasattr(min_time, "strftime"):
+        period_start = min_time.strftime("%Y-%m-%d")  # type: ignore[union-attr]
+    else:
+        period_start = str(min_time)
+
+    if hasattr(max_time, "strftime"):
+        period_end = max_time.strftime("%Y-%m-%d")  # type: ignore[union-attr]
+    else:
+        period_end = str(max_time)
+
     # テンプレートに値を埋め込み
     prompt_text = template.format(
         cluster_id=cluster_id,
         message_count=len(messages),
-        period_start=cluster_df["start_time"].min().strftime("%Y-%m-%d"),
-        period_end=cluster_df["start_time"].max().strftime("%Y-%m-%d"),
+        period_start=period_start,
+        period_end=period_end,
         messages="\n".join(message_parts),
     )
 
@@ -747,7 +782,437 @@ def _format_intent_as_text(intent: Dict, index: int, excluded_keys: set) -> str:
     return " ".join(parts)
 
 
-def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
+def _call_llm_for_grouping(
+    intents: List[Dict],
+    cluster_id: int,
+    grouping_template: str,
+    save_raw: bool,
+) -> Optional[List[Dict]]:
+    """LLMを呼び出してグループ化を実行"""
+    excluded_keys = {"source_message_ids", "cluster_id"}
+    intent_texts = [
+        _format_intent_as_text(intent, i, excluded_keys)
+        for i, intent in enumerate(intents)
+    ]
+
+    intent_list = "\n\n".join(intent_texts)
+    max_index = len(intents) - 1
+    prompt_text = grouping_template.format(intent_list=intent_list, max_index=max_index)
+
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
+    except Exception as e:
+        print(
+            f"\n❌ クラスタ {cluster_id} の上位意図抽出でエラー発生: {type(e).__name__}: {e}"
+        )
+        return None
+
+    if save_raw:
+        raw_output_dir = OUTPUT_DIR / "raw_aggregation_responses"
+        raw_output_dir.mkdir(exist_ok=True)
+        raw_file = raw_output_dir / f"cluster_{cluster_id:02d}_aggregation_raw.txt"
+        with open(raw_file, "w", encoding="utf-8") as f:
+            f.write(response_text)
+
+    groups = preprocess_extract_json_from_response(response_text)
+    if groups is None:
+        print(f"\n⚠️ クラスタ {cluster_id} の意図グループ化でJSONパース失敗")
+    return groups
+
+
+def _handle_uncovered_indices(
+    groups: List[Dict],
+    intents: List[Dict],
+    cluster_id: int,
+    save_raw: bool,
+) -> List[Dict]:
+    """未カバーの意図を再割り振り"""
+    covered_indices = set()
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+        covered_indices.update(member_indices)
+
+    all_indices = set(range(len(intents)))
+    uncovered = all_indices - covered_indices
+
+    if not uncovered:
+        return groups
+
+    print(f"\n⚠️ クラスタ {cluster_id} のグループ化が全ての個別意図をカバーしていません")
+    print(f"   カバーされていないインデックス: {sorted(uncovered)}")
+    print(
+        f"   Total: {len(intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
+    )
+
+    try:
+        reassignment_template = load_reassignment_template()
+        context = ReassignmentContext(
+            original_items=intents,
+            reassignment_template=reassignment_template,
+            cluster_id=cluster_id,
+            save_raw=save_raw,
+            level_name="meta",
+        )
+
+        groups = reassign_uncovered_items(
+            existing_groups=groups,
+            uncovered_indices=uncovered,
+            context=context,
+            max_retries=3,
+        )
+
+        covered_indices = set()
+        for group in groups:
+            member_indices = group.get("member_indices", [])
+            covered_indices.update(member_indices)
+
+        if not (all_indices - covered_indices):
+            print(
+                f"✓ クラスタ {cluster_id} の全ての個別意図が再割り振りでカバーされました"
+            )
+
+    except Exception as e:
+        print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
+    return groups
+
+
+def _handle_duplicate_indices(
+    groups: List[Dict],
+    intents: List[Dict],
+    cluster_id: int,
+    save_raw: bool,
+) -> List[Dict]:
+    """重複するインデックスを処理"""
+    duplicate_check = []
+    for group in groups:
+        duplicate_check.extend(group.get("member_indices", []))
+
+    if len(duplicate_check) == len(set(duplicate_check)):
+        return groups
+
+    duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
+    duplicate_set = set(duplicates)
+    print(
+        f"\n⚠️ クラスタ {cluster_id} で重複するインデックスが検出されました: {duplicate_set}"
+    )
+
+    for group in groups:
+        original_indices = group.get("member_indices", [])
+        group["member_indices"] = [
+            idx for idx in original_indices if idx not in duplicate_set
+        ]
+
+    try:
+        reassignment_template = load_reassignment_template()
+        context = ReassignmentContext(
+            original_items=intents,
+            reassignment_template=reassignment_template,
+            cluster_id=cluster_id,
+            save_raw=save_raw,
+            level_name="meta_duplicate",
+        )
+
+        groups = reassign_uncovered_items(
+            existing_groups=groups,
+            uncovered_indices=duplicate_set,
+            context=context,
+            max_retries=3,
+        )
+        print("✓ 重複項目を再割り振りしました")
+
+    except Exception as e:
+        print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
+    return groups
+
+
+def _determine_aggregate_status(
+    member_indices: List[int], items: List[Dict], status_key: str = "status"
+) -> str:
+    """最も進んでいないステータスを決定"""
+    statuses = [
+        items[idx].get(status_key, "idea") for idx in member_indices if idx < len(items)
+    ]
+    status_priority = {"idea": 0, "todo": 1, "doing": 2, "done": 3}
+    return (
+        min(statuses, key=lambda s: status_priority.get(s, 0)) if statuses else "idea"
+    )
+
+
+def _aggregate_paths(member_indices: List[int], items: List[Dict]) -> List[str]:
+    """source_full_pathsを集約"""
+    aggregated_paths = []
+    for idx in member_indices:
+        if idx < len(items):
+            paths = items[idx].get("source_full_paths", [])
+            aggregated_paths.extend(paths)
+    return sorted(set(aggregated_paths))
+
+
+def _aggregate_timestamps(member_indices: List[int], items: List[Dict]) -> List[str]:
+    """start_timestampsを集約"""
+    timestamps = []
+    for idx in member_indices:
+        if idx < len(items):
+            ts_list = items[idx].get("start_timestamps", [])
+            if ts_list:
+                timestamps.extend(ts_list)
+    return sorted(list(set(timestamps))) if timestamps else []
+
+
+def _flatten_covered_intent_ids(
+    member_indices: List[int], parent_intents: List[Dict]
+) -> List[Dict]:
+    """親意図から個別意図IDをflattenして重複除去"""
+    covered_intent_ids_flat = []
+    for parent_idx in member_indices:
+        if parent_idx < len(parent_intents):
+            parent_intent = parent_intents[parent_idx]
+            covered_intent_ids_flat.extend(
+                parent_intent.get("covered_intent_ids_flat", [])
+            )
+
+    unique_ids = []
+    seen = set()
+    for intent_id in covered_intent_ids_flat:
+        key = (intent_id["cluster_id"], intent_id["intent_index"])
+        if key not in seen:
+            seen.add(key)
+            unique_ids.append(intent_id)
+
+    return sorted(unique_ids, key=lambda x: (x["cluster_id"], x["intent_index"]))
+
+
+def _check_coverage_and_reassign(
+    groups: List[Dict],
+    items: List[Dict],
+    context_params: Dict,
+    item_type: str,
+) -> List[Dict]:
+    """網羅性チェックと再割り振り"""
+    covered_indices = set()
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+        covered_indices.update(member_indices)
+
+    all_indices = set(range(len(items)))
+    uncovered = all_indices - covered_indices
+
+    if uncovered:
+        print(f"\n⚠️ {item_type}グループ化が全てのitemをカバーしていません")
+        print(f"   カバーされていないインデックス: {sorted(uncovered)}")
+        print(
+            f"   Total: {len(items)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
+        )
+
+        try:
+            reassignment_template = load_reassignment_template()
+            context = ReassignmentContext(
+                original_items=items,
+                reassignment_template=reassignment_template,
+                cluster_id=context_params.get("cluster_id"),
+                save_raw=context_params.get("save_raw", False),
+                level_name=context_params.get("level_name", "super"),
+            )
+
+            groups = reassign_uncovered_items(
+                existing_groups=groups,
+                uncovered_indices=uncovered,
+                context=context,
+                max_retries=3,
+            )
+
+            covered_indices = set()
+            for group in groups:
+                member_indices = group.get("member_indices", [])
+                covered_indices.update(member_indices)
+
+            if not (all_indices - covered_indices):
+                print("✓ 全てのitemが再割り振りでカバーされました")
+
+        except Exception as e:
+            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
+    return groups
+
+
+def _check_duplicates_and_reassign(
+    groups: List[Dict],
+    items: List[Dict],
+    context_params: Dict,
+    item_type: str,
+) -> List[Dict]:
+    """重複チェックと再割り振り"""
+    duplicate_check = []
+    for group in groups:
+        duplicate_check.extend(group.get("member_indices", []))
+
+    if len(duplicate_check) == len(set(duplicate_check)):
+        return groups
+
+    duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
+    duplicate_set = set(duplicates)
+    print(
+        f"\n⚠️ {item_type}グループ化で重複するインデックスが検出されました: {duplicate_set}"
+    )
+
+    for group in groups:
+        original_indices = group.get("member_indices", [])
+        group["member_indices"] = [
+            idx for idx in original_indices if idx not in duplicate_set
+        ]
+
+    try:
+        reassignment_template = load_reassignment_template()
+        context = ReassignmentContext(
+            original_items=items,
+            reassignment_template=reassignment_template,
+            cluster_id=context_params.get("cluster_id"),
+            save_raw=context_params.get("save_raw", False),
+            level_name=context_params.get("level_name_duplicate", "super_duplicate"),
+        )
+
+        groups = reassign_uncovered_items(
+            existing_groups=groups,
+            uncovered_indices=duplicate_set,
+            context=context,
+            max_retries=3,
+        )
+
+        print("✓ 重複項目を再割り振りしました")
+
+    except Exception as e:
+        print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
+
+    return groups
+
+
+def _calculate_validation_stats(
+    groups: List[Dict], intents: List[Dict], parent_intents: List[Dict]
+) -> Dict:
+    """検証統計情報を計算"""
+    covered_indices = set()
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+        covered_indices.update(member_indices)
+
+    all_indices = set(range(len(parent_intents)))
+    uncovered = all_indices - covered_indices
+
+    duplicate_check = []
+    for group in groups:
+        duplicate_check.extend(group.get("member_indices", []))
+
+    covered_flat_ids = set()
+    for intent in intents:
+        for intent_id in intent["covered_intent_ids_flat"]:
+            covered_flat_ids.add((intent_id["cluster_id"], intent_id["intent_index"]))
+
+    all_individual_intent_ids = set()
+    for parent_intent in parent_intents:
+        for intent_id in parent_intent.get("covered_intent_ids_flat", []):
+            all_individual_intent_ids.add(
+                (intent_id["cluster_id"], intent_id["intent_index"])
+            )
+
+    uncovered_flat = all_individual_intent_ids - covered_flat_ids
+
+    duplicate_flat_ids = []
+    for intent in intents:
+        for intent_id in intent["covered_intent_ids_flat"]:
+            duplicate_flat_ids.append(
+                (intent_id["cluster_id"], intent_id["intent_index"])
+            )
+
+    return {
+        "covered_indices": covered_indices,
+        "uncovered": uncovered,
+        "duplicate_check": duplicate_check,
+        "covered_flat_ids": covered_flat_ids,
+        "all_individual_intent_ids": all_individual_intent_ids,
+        "uncovered_flat": uncovered_flat,
+        "duplicate_flat_ids": duplicate_flat_ids,
+    }
+
+
+def _validate_flat_coverage(
+    intents: List[Dict], all_parent_intents: List[Dict], intent_type: str
+) -> None:
+    """flatten された個別意図IDの網羅性チェック"""
+    covered_flat_ids = set()
+    for intent in intents:
+        for intent_id in intent["covered_intent_ids_flat"]:
+            covered_flat_ids.add((intent_id["cluster_id"], intent_id["intent_index"]))
+
+    all_individual_intent_ids = set()
+    for parent_intent in all_parent_intents:
+        for intent_id in parent_intent.get("covered_intent_ids_flat", []):
+            all_individual_intent_ids.add(
+                (intent_id["cluster_id"], intent_id["intent_index"])
+            )
+
+    uncovered_flat = all_individual_intent_ids - covered_flat_ids
+
+    if uncovered_flat:
+        print(
+            f"\n⚠️ {intent_type}グループ化（flatten）が全ての個別意図をカバーしていません"
+        )
+        print(f"   カバーされていない個別意図ID: {sorted(uncovered_flat)}")
+        print(
+            f"   Total: {len(all_individual_intent_ids)}, Covered: {len(covered_flat_ids)}, Uncovered: {len(uncovered_flat)}"
+        )
+
+    duplicate_flat_ids = []
+    for intent in intents:
+        for intent_id in intent["covered_intent_ids_flat"]:
+            duplicate_flat_ids.append(
+                (intent_id["cluster_id"], intent_id["intent_index"])
+            )
+
+    if len(duplicate_flat_ids) != len(set(duplicate_flat_ids)):
+        dup_set = [x for x in duplicate_flat_ids if duplicate_flat_ids.count(x) > 1]
+        print(
+            f"\n⚠️ {intent_type}グループ化（flatten）で重複する個別意図IDが検出されました: {set(dup_set)}"
+        )
+
+
+def _build_meta_intents(
+    groups: List[Dict], intents: List[Dict], cluster_id: int
+) -> List[Dict]:
+    """グループからmeta_intentオブジェクトを構築"""
+    meta_intents = []
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+
+        aggregate_status = _determine_aggregate_status(member_indices, intents)
+
+        covered_intent_ids = [
+            {"cluster_id": int(cluster_id), "intent_index": idx}
+            for idx in member_indices
+            if idx < len(intents)
+        ]
+
+        aggregated_full_paths = _aggregate_paths(member_indices, intents)
+        aggregated_timestamps = _aggregate_timestamps(member_indices, intents)
+
+        meta_intent = {
+            "meta_intent": group.get("group_name", "（未定義）"),
+            "objective_facts": group.get("objective_facts", ""),
+            "context": group.get("context", ""),
+            "covered_intent_ids": covered_intent_ids,
+            "source_full_paths": aggregated_full_paths,
+            "start_timestamps": aggregated_timestamps,
+            "aggregate_status": aggregate_status,
+        }
+        meta_intents.append(meta_intent)
+
+    return meta_intents
+
+
+def aggregate_intents_with_gemini(
     intents: List[Dict], cluster_id: int, grouping_template: str, save_raw: bool = False
 ) -> Optional[List[Dict]]:
     """
@@ -765,46 +1230,19 @@ def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
     if not intents:
         return None
 
-    # LLMには意図の全プロパティ（ID系以外）を渡す
-    excluded_keys = {"source_message_ids", "cluster_id"}
-    intent_texts = [
-        _format_intent_as_text(intent, i, excluded_keys)
-        for i, intent in enumerate(intents)
-    ]
-
-    intent_list = "\n\n".join(intent_texts)
-    max_index = len(intents) - 1
-
-    # テンプレートに値を埋め込み
-    prompt_text = grouping_template.format(intent_list=intent_list, max_index=max_index)
-
-    # API呼び出し（litellm側でキャッシュされる）
-    try:
-        model = gemini_client.GenerativeModel()
-        response = model.generate_content(prompt_text)
-        response_text = response.text
-
-    except Exception as e:
-        print(
-            f"\n❌ クラスタ {cluster_id} の上位意図抽出でエラー発生: {type(e).__name__}: {e}"
-        )
-        return None
-
-    # 生のレスポンスを保存（オプション）
-    if save_raw:
-        raw_output_dir = OUTPUT_DIR / "raw_aggregation_responses"
-        raw_output_dir.mkdir(exist_ok=True)
-        raw_file = raw_output_dir / f"cluster_{cluster_id:02d}_aggregation_raw.txt"
-        with open(raw_file, "w", encoding="utf-8") as f:
-            f.write(response_text)
-
-    # JSONをパース（LLMからのグループ情報）
-    groups = preprocess_extract_json_from_response(response_text)
+    # LLM呼び出し
+    groups = _call_llm_for_grouping(intents, cluster_id, grouping_template, save_raw)
     if groups is None:
-        print(f"\n⚠️ クラスタ {cluster_id} の意図グループ化でJSONパース失敗")
         return None
 
-    # Pythonで網羅性と重複をチェック
+    # 未カバー・重複のチェックと修正
+    groups = _handle_uncovered_indices(groups, intents, cluster_id, save_raw)
+    groups = _handle_duplicate_indices(groups, intents, cluster_id, save_raw)
+
+    # meta_intentオブジェクトを構築
+    meta_intents = _build_meta_intents(groups, intents, cluster_id)
+
+    # 検証情報を計算
     covered_indices = set()
     for group in groups:
         member_indices = group.get("member_indices", [])
@@ -813,145 +1251,11 @@ def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
     all_indices = set(range(len(intents)))
     uncovered = all_indices - covered_indices
 
-    if uncovered:
-        print(
-            f"\n⚠️ クラスタ {cluster_id} のグループ化が全ての個別意図をカバーしていません"
-        )
-        print(f"   カバーされていないインデックス: {sorted(uncovered)}")
-        print(
-            f"   Total: {len(intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
-        )
-
-        # 再割り振りテンプレートを読み込み
-        try:
-            reassignment_template = load_reassignment_template()
-            context = ReassignmentContext(
-                original_items=intents,
-                reassignment_template=reassignment_template,
-                cluster_id=cluster_id,
-                save_raw=save_raw,
-                level_name="meta",
-            )
-
-            # 未カバーの意図を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
-                context=context,
-                max_retries=3,
-            )
-
-            # 再割り振り後、covered_indicesを再計算
-            covered_indices = set()
-            for group in groups:
-                member_indices = group.get("member_indices", [])
-                covered_indices.update(member_indices)
-
-            uncovered = all_indices - covered_indices
-            if not uncovered:
-                print(
-                    f"✓ クラスタ {cluster_id} の全ての個別意図が再割り振りでカバーされました"
-                )
-
-        except Exception as e:
-            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # 重複チェック
     duplicate_check = []
     for group in groups:
         duplicate_check.extend(group.get("member_indices", []))
 
-    if len(duplicate_check) != len(set(duplicate_check)):
-        duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
-        duplicate_set = set(duplicates)
-        print(
-            f"\n⚠️ クラスタ {cluster_id} で重複するインデックスが検出されました: {duplicate_set}"
-        )
-
-        # 重複項目をすべてのグループから削除
-        for group in groups:
-            original_indices = group.get("member_indices", [])
-            group["member_indices"] = [
-                idx for idx in original_indices if idx not in duplicate_set
-            ]
-
-        # 再割り振りテンプレートを読み込んで再判定
-        try:
-            reassignment_template = load_reassignment_template()
-
-            context = ReassignmentContext(
-                original_items=intents,
-                reassignment_template=reassignment_template,
-                cluster_id=cluster_id,
-                save_raw=save_raw,
-                level_name="meta_duplicate",
-            )
-
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
-                context=context,
-                max_retries=3,
-            )
-
-            print("✓ 重複項目を再割り振りしました")
-
-        except Exception as e:
-            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # Pythonでmeta_intentオブジェクトを構築
-    meta_intents = []
-    for group in groups:
-        member_indices = group.get("member_indices", [])
-
-        # statusを決定（最も進んでいないステータス）
-        statuses = [
-            intents[idx].get("status", "idea")
-            for idx in member_indices
-            if idx < len(intents)
-        ]
-        status_priority = {"idea": 0, "todo": 1, "doing": 2, "done": 3}
-        aggregate_status = (
-            min(statuses, key=lambda s: status_priority.get(s, 0))
-            if statuses
-            else "idea"
-        )
-
-        # グローバル一意な個別意図IDリストを構築
-        covered_intent_ids = [
-            {"cluster_id": int(cluster_id), "intent_index": idx}
-            for idx in member_indices
-            if idx < len(intents)
-        ]
-
-        # source_full_paths を集約（全個別意図から収集してユニーク化）
-        aggregated_full_paths = []
-        for idx in member_indices:
-            if idx < len(intents):
-                paths = intents[idx].get("source_full_paths", [])
-                aggregated_full_paths.extend(paths)
-        aggregated_full_paths = sorted(set(aggregated_full_paths))
-
-        # start_timestamps を集約（全個別意図から全タイムスタンプを収集）
-        timestamps = []
-        for idx in member_indices:
-            if idx < len(intents):
-                ts_list = intents[idx].get("start_timestamps", [])
-                if ts_list:
-                    timestamps.extend(ts_list)
-        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
-
-        meta_intent = {
-            "meta_intent": group.get("group_name", "（未定義）"),
-            "objective_facts": group.get("objective_facts", ""),
-            "context": group.get("context", ""),
-            "covered_intent_ids": covered_intent_ids,
-            "source_full_paths": aggregated_full_paths,
-            "start_timestamps": aggregated_timestamps,
-            "aggregate_status": aggregate_status,
-        }
-        meta_intents.append(meta_intent)
+    has_duplicates = len(duplicate_check) != len(set(duplicate_check))
 
     # 上位意図を保存
     output_file = AGGREGATED_DIR / f"cluster_{cluster_id:02d}_aggregated.json"
@@ -965,7 +1269,7 @@ def aggregate_intents_with_gemini(  # noqa: C901, PLR0912, PLR0915, PLR0914
             "covered_intents": len(covered_indices),
             "uncovered_intents": len(uncovered),
             "uncovered_indices": sorted(uncovered) if uncovered else [],
-            "has_duplicates": len(duplicate_check) != len(set(duplicate_check)),
+            "has_duplicates": has_duplicates,
         },
     }
 
@@ -1034,7 +1338,103 @@ def collect_all_meta_intents(cluster_ids: List[int]) -> tuple[List[Dict], Dict]:
     return all_meta_intents, stats
 
 
-def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
+def _build_super_intents(groups: List[Dict], meta_intents: List[Dict]) -> List[Dict]:
+    """グループからsuper_intentオブジェクトを構築"""
+    super_intents = []
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+
+        aggregate_status = _determine_aggregate_status(
+            member_indices, meta_intents, status_key="aggregate_status"
+        )
+
+        covered_intent_ids_flat = _flatten_covered_intent_ids(
+            member_indices, meta_intents
+        )
+
+        aggregated_full_paths = _aggregate_paths(member_indices, meta_intents)
+        aggregated_timestamps = _aggregate_timestamps(member_indices, meta_intents)
+
+        super_intent = {
+            "super_intent": group.get("group_name", "（未定義）"),
+            "objective_facts": group.get("objective_facts", ""),
+            "context": group.get("context", ""),
+            "covered_meta_intent_indices": member_indices,
+            "covered_intent_ids_flat": covered_intent_ids_flat,
+            "source_full_paths": aggregated_full_paths,
+            "start_timestamps": aggregated_timestamps,
+            "aggregate_status": aggregate_status,
+        }
+        super_intents.append(super_intent)
+
+    return super_intents
+
+
+def _build_ultra_intents(groups: List[Dict], super_intents: List[Dict]) -> List[Dict]:
+    """グループからultra_intentオブジェクトを構築"""
+    ultra_intents = []
+    for group in groups:
+        member_indices = group.get("member_indices", [])
+
+        aggregate_status = _determine_aggregate_status(
+            member_indices, super_intents, status_key="aggregate_status"
+        )
+
+        covered_intent_ids_flat = _flatten_covered_intent_ids(
+            member_indices, super_intents
+        )
+
+        aggregated_full_paths = _aggregate_paths(member_indices, super_intents)
+        aggregated_timestamps = _aggregate_timestamps(member_indices, super_intents)
+
+        ultra_intent = {
+            "ultra_intent": group.get("group_name", "（未定義）"),
+            "objective_facts": group.get("objective_facts", ""),
+            "context": group.get("context", ""),
+            "covered_super_intent_indices": member_indices,
+            "covered_intent_ids_flat": covered_intent_ids_flat,
+            "source_full_paths": aggregated_full_paths,
+            "start_timestamps": aggregated_timestamps,
+            "aggregate_status": aggregate_status,
+        }
+        ultra_intents.append(ultra_intent)
+
+    return ultra_intents
+
+
+def _call_llm_for_cross_cluster_grouping(
+    meta_intents: List[Dict],
+    grouping_template: str,
+    prompt_file_path: Path,
+    save_raw: bool,
+    raw_file_path: Optional[Path],
+) -> Optional[List[Dict]]:
+    """クラスタ横断LLM呼び出し"""
+    prompt_text = build_deterministic_prompt(meta_intents, grouping_template)
+
+    with open(prompt_file_path, "w", encoding="utf-8") as f:
+        f.write(prompt_text)
+
+    try:
+        model = gemini_client.GenerativeModel()
+        response = model.generate_content(prompt_text)
+        response_text = response.text
+    except Exception as e:
+        print(f"\n❌ クラスタ横断上位意図抽出でエラー発生: {type(e).__name__}: {e}")
+        return None
+
+    if save_raw and raw_file_path:
+        raw_file_path.parent.mkdir(exist_ok=True)
+        with open(raw_file_path, "w", encoding="utf-8") as f:
+            f.write(response_text)
+
+    groups = preprocess_extract_json_from_response(response_text)
+    if groups is None:
+        print("\n⚠️ クラスタ横断意図グループ化でJSONパース失敗")
+    return groups
+
+
+def aggregate_cross_cluster_intents(
     meta_intents: List[Dict],
     grouping_template: str,
     total_individual_intents: int,
@@ -1055,239 +1455,37 @@ def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
     if not meta_intents:
         return None
 
-    # 決定的なプロンプトを生成
-    prompt_text = build_deterministic_prompt(meta_intents, grouping_template)
+    prompt_file = CROSS_CLUSTER_DIR / "cross_cluster_prompt.md"
+    raw_file = (
+        OUTPUT_DIR / "raw_cross_cluster_responses" / "cross_cluster_aggregation_raw.txt"
+    )
 
-    # プロンプトを保存
-    prompt_output_file = CROSS_CLUSTER_DIR / "cross_cluster_prompt.md"
-    with open(prompt_output_file, "w", encoding="utf-8") as f:
-        f.write(prompt_text)
-
-    # API呼び出し（litellm側でキャッシュされる）
-    try:
-        model = gemini_client.GenerativeModel()
-        response = model.generate_content(prompt_text)
-        response_text = response.text
-
-    except Exception as e:
-        print(f"\n❌ クラスタ横断上位意図抽出でエラー発生: {type(e).__name__}: {e}")
-        return None
-
-    # 生のレスポンスを保存（オプション）
-    if save_raw:
-        raw_output_dir = OUTPUT_DIR / "raw_cross_cluster_responses"
-        raw_output_dir.mkdir(exist_ok=True)
-        raw_file = raw_output_dir / "cross_cluster_aggregation_raw.txt"
-        with open(raw_file, "w", encoding="utf-8") as f:
-            f.write(response_text)
-
-    # JSONをパース（LLMからのグループ情報）
-    groups = preprocess_extract_json_from_response(response_text)
+    groups = _call_llm_for_cross_cluster_grouping(
+        meta_intents, grouping_template, prompt_file, save_raw, raw_file
+    )
     if groups is None:
-        print("\n⚠️ クラスタ横断意図グループ化でJSONパース失敗")
         return None
 
-    # Pythonで網羅性と重複をチェック
-    covered_indices = set()
-    for group in groups:
-        member_indices = group.get("member_indices", [])
-        covered_indices.update(member_indices)
+    context_params = {
+        "cluster_id": None,
+        "save_raw": save_raw,
+        "level_name": "super",
+        "level_name_duplicate": "super_duplicate",
+    }
 
-    all_indices = set(range(len(meta_intents)))
-    uncovered = all_indices - covered_indices
+    groups = _check_coverage_and_reassign(
+        groups, meta_intents, context_params, "クラスタ横断"
+    )
+    groups = _check_duplicates_and_reassign(
+        groups, meta_intents, context_params, "クラスタ横断"
+    )
 
-    if uncovered:
-        print("\n⚠️ クラスタ横断グループ化が全てのmeta_intentをカバーしていません")
-        print(f"   カバーされていないインデックス: {sorted(uncovered)}")
-        print(
-            f"   Total: {len(meta_intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
-        )
+    super_intents = _build_super_intents(groups, meta_intents)
 
-        # 再割り振りテンプレートを読み込み
-        try:
-            reassignment_template = load_reassignment_template()
-            context = ReassignmentContext(
-                original_items=meta_intents,
-                reassignment_template=reassignment_template,
-                cluster_id=None,  # クラスタ横断なのでNone
-                save_raw=save_raw,
-                level_name="super",
-            )
+    _validate_flat_coverage(super_intents, meta_intents, "クラスタ横断")
 
-            # 未カバーのmeta_intentを再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
-                context=context,
-                max_retries=3,
-            )
+    stats = _calculate_validation_stats(groups, super_intents, meta_intents)
 
-            # 再割り振り後、covered_indicesを再計算
-            covered_indices = set()
-            for group in groups:
-                member_indices = group.get("member_indices", [])
-                covered_indices.update(member_indices)
-
-            uncovered = all_indices - covered_indices
-            if not uncovered:
-                print("✓ 全てのmeta_intentが再割り振りでカバーされました")
-
-        except Exception as e:
-            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # 重複チェック
-    duplicate_check = []
-    for group in groups:
-        duplicate_check.extend(group.get("member_indices", []))
-
-    if len(duplicate_check) != len(set(duplicate_check)):
-        duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
-        duplicate_set = set(duplicates)
-        print(
-            f"\n⚠️ クラスタ横断グループ化で重複するインデックスが検出されました: {duplicate_set}"
-        )
-
-        # 重複項目をすべてのグループから削除
-        for group in groups:
-            original_indices = group.get("member_indices", [])
-            group["member_indices"] = [
-                idx for idx in original_indices if idx not in duplicate_set
-            ]
-
-        # 再割り振りテンプレートを読み込んで再判定
-        try:
-            reassignment_template = load_reassignment_template()
-            context = ReassignmentContext(
-                original_items=meta_intents,
-                reassignment_template=reassignment_template,
-                cluster_id=None,  # クラスタ横断なのでNone
-                save_raw=save_raw,
-                level_name="super_duplicate",
-            )
-
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
-                context=context,
-                max_retries=3,
-            )
-
-            print("✓ 重複項目を再割り振りしました")
-
-        except Exception as e:
-            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # Pythonでsuper_intentオブジェクトを構築
-    super_intents = []
-    for group in groups:
-        member_indices = group.get("member_indices", [])
-
-        # statusを決定（最も進んでいないステータス）
-        statuses = [
-            meta_intents[idx].get("aggregate_status", "idea")
-            for idx in member_indices
-            if idx < len(meta_intents)
-        ]
-        status_priority = {"idea": 0, "todo": 1, "doing": 2, "done": 3}
-        aggregate_status = (
-            min(statuses, key=lambda s: status_priority.get(s, 0))
-            if statuses
-            else "idea"
-        )
-
-        # meta_intentを通じて個別意図のグローバルIDをflatten
-        covered_intent_ids_flat = []
-        for meta_idx in member_indices:
-            if meta_idx < len(meta_intents):
-                meta_intent = meta_intents[meta_idx]
-                covered_intent_ids_flat.extend(
-                    meta_intent.get("covered_intent_ids", [])
-                )
-
-        # 重複を除去（dict は hashable でないので tuple で一意化）
-        unique_ids = []
-        seen = set()
-        for intent_id in covered_intent_ids_flat:
-            key = (intent_id["cluster_id"], intent_id["intent_index"])
-            if key not in seen:
-                seen.add(key)
-                unique_ids.append(intent_id)
-
-        # cluster_id, intent_index でソート
-        covered_intent_ids_flat = sorted(
-            unique_ids, key=lambda x: (x["cluster_id"], x["intent_index"])
-        )
-
-        # source_full_paths を集約（全meta_intentから収集してユニーク化）
-        aggregated_full_paths = []
-        for meta_idx in member_indices:
-            if meta_idx < len(meta_intents):
-                paths = meta_intents[meta_idx].get("source_full_paths", [])
-                aggregated_full_paths.extend(paths)
-        aggregated_full_paths = sorted(set(aggregated_full_paths))
-
-        # start_timestamps を集約（全meta_intentから全タイムスタンプを収集）
-        timestamps = []
-        for meta_idx in member_indices:
-            if meta_idx < len(meta_intents):
-                ts_list = meta_intents[meta_idx].get("start_timestamps", [])
-                if ts_list:
-                    timestamps.extend(ts_list)
-        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
-
-        super_intent = {
-            "super_intent": group.get("group_name", "（未定義）"),
-            "objective_facts": group.get("objective_facts", ""),
-            "context": group.get("context", ""),
-            "covered_meta_intent_indices": member_indices,
-            "covered_intent_ids_flat": covered_intent_ids_flat,
-            "source_full_paths": aggregated_full_paths,
-            "start_timestamps": aggregated_timestamps,
-            "aggregate_status": aggregate_status,
-        }
-        super_intents.append(super_intent)
-
-    # flatten された個別意図IDの網羅性チェック（グローバルIDベース）
-    covered_flat_ids = set()
-    for super_intent in super_intents:
-        for intent_id in super_intent["covered_intent_ids_flat"]:
-            covered_flat_ids.add((intent_id["cluster_id"], intent_id["intent_index"]))
-
-    # 全meta_intentsに含まれる個別意図IDを収集
-    all_individual_intent_ids = set()
-    for meta_intent in meta_intents:
-        for intent_id in meta_intent.get("covered_intent_ids", []):
-            all_individual_intent_ids.add(
-                (intent_id["cluster_id"], intent_id["intent_index"])
-            )
-
-    uncovered_flat = all_individual_intent_ids - covered_flat_ids
-
-    if uncovered_flat:
-        print(
-            "\n⚠️ クラスタ横断グループ化（flatten）が全ての個別意図をカバーしていません"
-        )
-        print(f"   カバーされていない個別意図ID: {sorted(uncovered_flat)}")
-        print(
-            f"   Total: {len(all_individual_intent_ids)}, Covered: {len(covered_flat_ids)}, Uncovered: {len(uncovered_flat)}"
-        )
-
-    # 重複チェック
-    duplicate_flat_ids = []
-    for super_intent in super_intents:
-        for intent_id in super_intent["covered_intent_ids_flat"]:
-            duplicate_flat_ids.append(
-                (intent_id["cluster_id"], intent_id["intent_index"])
-            )
-
-    if len(duplicate_flat_ids) != len(set(duplicate_flat_ids)):
-        dup_set = [x for x in duplicate_flat_ids if duplicate_flat_ids.count(x) > 1]
-        print(
-            f"\n⚠️ クラスタ横断グループ化（flatten）で重複する個別意図IDが検出されました: {set(dup_set)}"
-        )
-
-    # クラスタ横断上位意図を保存
     output_file = CROSS_CLUSTER_DIR / "super_intents.json"
     cross_cluster_result = {
         "generated_at": datetime.now().isoformat(),
@@ -1298,21 +1496,24 @@ def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
         "validation": {
             "meta_level": {
                 "total_meta_intents": len(meta_intents),
-                "covered_meta_intents": len(covered_indices),
-                "uncovered_meta_intents": len(uncovered),
-                "uncovered_meta_indices": sorted(uncovered) if uncovered else [],
-                "has_duplicates": len(duplicate_check) != len(set(duplicate_check)),
+                "covered_meta_intents": len(stats["covered_indices"]),
+                "uncovered_meta_intents": len(stats["uncovered"]),
+                "uncovered_meta_indices": sorted(stats["uncovered"])
+                if stats["uncovered"]
+                else [],
+                "has_duplicates": len(stats["duplicate_check"])
+                != len(set(stats["duplicate_check"])),
             },
             "individual_level": {
-                "total_individual_intents": len(all_individual_intent_ids),
-                "covered_individual_intents": len(covered_flat_ids),
-                "uncovered_individual_intents": len(uncovered_flat),
+                "total_individual_intents": len(stats["all_individual_intent_ids"]),
+                "covered_individual_intents": len(stats["covered_flat_ids"]),
+                "uncovered_individual_intents": len(stats["uncovered_flat"]),
                 "uncovered_individual_ids": [
                     {"cluster_id": cid, "intent_index": idx}
-                    for cid, idx in sorted(uncovered_flat)
+                    for cid, idx in sorted(stats["uncovered_flat"])
                 ],
-                "has_duplicates": len(duplicate_flat_ids)
-                != len(set(duplicate_flat_ids)),
+                "has_duplicates": len(stats["duplicate_flat_ids"])
+                != len(set(stats["duplicate_flat_ids"])),
             },
         },
     }
@@ -1320,7 +1521,6 @@ def aggregate_cross_cluster_intents(  # noqa: C901, PLR0912, PLR0915, PLR0914
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(cross_cluster_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
-    # 詳細展開版も生成（元データは変更しない）
     enrich_and_save_super_intents(cross_cluster_result, output_file.parent)
 
     return super_intents, meta_intents, total_individual_intents
@@ -1496,7 +1696,7 @@ def enrich_and_save_super_intents(super_result: Dict, output_dir: Path):
     )
 
 
-def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR0914
+def aggregate_super_intents_recursively(
     super_intents: List[Dict],
     meta_intents: List[Dict],
     total_individual_intents: int,
@@ -1523,237 +1723,35 @@ def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR091
         f"\n📊 super_intentsが{len(super_intents)}件あるため、さらに抽象化を実行します"
     )
 
-    # 決定的なプロンプトを生成
-    prompt_text = build_deterministic_prompt(super_intents, grouping_template)
+    prompt_file = CROSS_CLUSTER_DIR / "ultra_intent_prompt.md"
+    raw_file = OUTPUT_DIR / "raw_ultra_intent_responses" / "ultra_intent_raw.txt"
 
-    # プロンプトを保存
-    prompt_output_file = CROSS_CLUSTER_DIR / "ultra_intent_prompt.md"
-    with open(prompt_output_file, "w", encoding="utf-8") as f:
-        f.write(prompt_text)
-
-    # API呼び出し（litellm側でキャッシュされる）
-    try:
-        model = gemini_client.GenerativeModel()
-        response = model.generate_content(prompt_text)
-        response_text = response.text
-
-    except Exception as e:
-        print(f"\n❌ 2段階目の抽象化でエラー発生: {type(e).__name__}: {e}")
-        return None
-
-    # 生のレスポンスを保存（オプション）
-    if save_raw:
-        raw_output_dir = OUTPUT_DIR / "raw_ultra_intent_responses"
-        raw_output_dir.mkdir(exist_ok=True)
-        raw_file = raw_output_dir / "ultra_intent_raw.txt"
-        with open(raw_file, "w", encoding="utf-8") as f:
-            f.write(response_text)
-
-    # JSONをパース（LLMからのグループ情報）
-    groups = preprocess_extract_json_from_response(response_text)
+    groups = _call_llm_for_cross_cluster_grouping(
+        super_intents, grouping_template, prompt_file, save_raw, raw_file
+    )
     if groups is None:
-        print("\n⚠️ 2段階目の抽象化でJSONパース失敗")
         return None
 
-    # Pythonで網羅性と重複をチェック
-    covered_indices = set()
-    for group in groups:
-        member_indices = group.get("member_indices", [])
-        covered_indices.update(member_indices)
+    context_params = {
+        "cluster_id": None,
+        "save_raw": save_raw,
+        "level_name": "ultra",
+        "level_name_duplicate": "ultra_duplicate",
+    }
 
-    all_indices = set(range(len(super_intents)))
-    uncovered = all_indices - covered_indices
+    groups = _check_coverage_and_reassign(
+        groups, super_intents, context_params, "2段階目の抽象化"
+    )
+    groups = _check_duplicates_and_reassign(
+        groups, super_intents, context_params, "2段階目の抽象化"
+    )
 
-    if uncovered:
-        print("\n⚠️ 2段階目の抽象化が全てのsuper_intentをカバーしていません")
-        print(f"   カバーされていないインデックス: {sorted(uncovered)}")
-        print(
-            f"   Total: {len(super_intents)}, Covered: {len(covered_indices)}, Uncovered: {len(uncovered)}"
-        )
+    ultra_intents = _build_ultra_intents(groups, super_intents)
 
-        # 再割り振りテンプレートを読み込み
-        try:
-            reassignment_template = load_reassignment_template()
-            context = ReassignmentContext(
-                original_items=super_intents,
-                reassignment_template=reassignment_template,
-                cluster_id=None,  # クラスタ横断なのでNone
-                save_raw=save_raw,
-                level_name="ultra",
-            )
+    _validate_flat_coverage(ultra_intents, super_intents, "2段階目の抽象化")
 
-            # 未カバーのsuper_intentを再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=uncovered,
-                context=context,
-                max_retries=3,
-            )
+    stats = _calculate_validation_stats(groups, ultra_intents, super_intents)
 
-            # 再割り振り後、covered_indicesを再計算
-            covered_indices = set()
-            for group in groups:
-                member_indices = group.get("member_indices", [])
-                covered_indices.update(member_indices)
-
-            uncovered = all_indices - covered_indices
-            if not uncovered:
-                print("✓ 全てのsuper_intentが再割り振りでカバーされました")
-
-        except Exception as e:
-            print(f"\n⚠️ 再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # 重複チェック
-    duplicate_check = []
-    for group in groups:
-        duplicate_check.extend(group.get("member_indices", []))
-
-    if len(duplicate_check) != len(set(duplicate_check)):
-        duplicates = [idx for idx in duplicate_check if duplicate_check.count(idx) > 1]
-        duplicate_set = set(duplicates)
-        print(
-            f"\n⚠️ 2段階目の抽象化で重複するインデックスが検出されました: {duplicate_set}"
-        )
-
-        # 重複項目をすべてのグループから削除
-        for group in groups:
-            original_indices = group.get("member_indices", [])
-            group["member_indices"] = [
-                idx for idx in original_indices if idx not in duplicate_set
-            ]
-
-        # 再割り振りテンプレートを読み込んで再判定
-        try:
-            reassignment_template = load_reassignment_template()
-            context = ReassignmentContext(
-                original_items=super_intents,
-                reassignment_template=reassignment_template,
-                cluster_id=None,  # クラスタ横断なのでNone
-                save_raw=save_raw,
-                level_name="ultra_duplicate",
-            )
-
-            # 重複項目を再割り振り
-            groups = reassign_uncovered_items(
-                existing_groups=groups,
-                uncovered_indices=duplicate_set,
-                context=context,
-                max_retries=3,
-            )
-
-            print("✓ 重複項目を再割り振りしました")
-
-        except Exception as e:
-            print(f"\n⚠️ 重複項目の再割り振り処理でエラー発生: {type(e).__name__}: {e}")
-
-    # Pythonでultra_intentオブジェクトを構築
-    ultra_intents = []
-    for group in groups:
-        member_indices = group.get("member_indices", [])
-
-        # statusを決定（最も進んでいないステータス）
-        statuses = [
-            super_intents[idx].get("aggregate_status", "idea")
-            for idx in member_indices
-            if idx < len(super_intents)
-        ]
-        status_priority = {"idea": 0, "todo": 1, "doing": 2, "done": 3}
-        aggregate_status = (
-            min(statuses, key=lambda s: status_priority.get(s, 0))
-            if statuses
-            else "idea"
-        )
-
-        # super_intentを通じて個別意図のグローバルIDをflatten
-        covered_intent_ids_flat = []
-        for super_idx in member_indices:
-            if super_idx < len(super_intents):
-                super_intent = super_intents[super_idx]
-                covered_intent_ids_flat.extend(
-                    super_intent.get("covered_intent_ids_flat", [])
-                )
-
-        # 重複を除去（dict は hashable でないので tuple で一意化）
-        unique_ids = []
-        seen = set()
-        for intent_id in covered_intent_ids_flat:
-            key = (intent_id["cluster_id"], intent_id["intent_index"])
-            if key not in seen:
-                seen.add(key)
-                unique_ids.append(intent_id)
-
-        # cluster_id, intent_index でソート
-        covered_intent_ids_flat = sorted(
-            unique_ids, key=lambda x: (x["cluster_id"], x["intent_index"])
-        )
-
-        # source_full_paths を集約（全super_intentから収集してユニーク化）
-        aggregated_full_paths = []
-        for super_idx in member_indices:
-            if super_idx < len(super_intents):
-                paths = super_intents[super_idx].get("source_full_paths", [])
-                aggregated_full_paths.extend(paths)
-        aggregated_full_paths = sorted(set(aggregated_full_paths))
-
-        # start_timestamps を集約（全super_intentから全タイムスタンプを収集）
-        timestamps = []
-        for super_idx in member_indices:
-            if super_idx < len(super_intents):
-                ts_list = super_intents[super_idx].get("start_timestamps", [])
-                if ts_list:
-                    timestamps.extend(ts_list)
-        aggregated_timestamps = sorted(list(set(timestamps))) if timestamps else []
-
-        ultra_intent = {
-            "ultra_intent": group.get("group_name", "（未定義）"),
-            "objective_facts": group.get("objective_facts", ""),
-            "context": group.get("context", ""),
-            "covered_super_intent_indices": member_indices,
-            "covered_intent_ids_flat": covered_intent_ids_flat,
-            "source_full_paths": aggregated_full_paths,
-            "start_timestamps": aggregated_timestamps,
-            "aggregate_status": aggregate_status,
-        }
-        ultra_intents.append(ultra_intent)
-
-    # flatten された個別意図IDの網羅性チェック（グローバルIDベース）
-    covered_flat_ids = set()
-    for ultra_intent in ultra_intents:
-        for intent_id in ultra_intent["covered_intent_ids_flat"]:
-            covered_flat_ids.add((intent_id["cluster_id"], intent_id["intent_index"]))
-
-    # 全super_intentsに含まれる個別意図IDを収集
-    all_individual_intent_ids = set()
-    for super_intent in super_intents:
-        for intent_id in super_intent.get("covered_intent_ids_flat", []):
-            all_individual_intent_ids.add(
-                (intent_id["cluster_id"], intent_id["intent_index"])
-            )
-
-    uncovered_flat = all_individual_intent_ids - covered_flat_ids
-
-    if uncovered_flat:
-        print("\n⚠️ 2段階目の抽象化（flatten）が全ての個別意図をカバーしていません")
-        print(f"   カバーされていない個別意図ID: {sorted(uncovered_flat)}")
-        print(
-            f"   Total: {len(all_individual_intent_ids)}, Covered: {len(covered_flat_ids)}, Uncovered: {len(uncovered_flat)}"
-        )
-
-    # 重複チェック
-    duplicate_flat_ids = []
-    for ultra_intent in ultra_intents:
-        for intent_id in ultra_intent["covered_intent_ids_flat"]:
-            duplicate_flat_ids.append(
-                (intent_id["cluster_id"], intent_id["intent_index"])
-            )
-
-    if len(duplicate_flat_ids) != len(set(duplicate_flat_ids)):
-        dup_set = [x for x in duplicate_flat_ids if duplicate_flat_ids.count(x) > 1]
-        print(
-            f"\n⚠️ 2段階目の抽象化（flatten）で重複する個別意図IDが検出されました: {set(dup_set)}"
-        )
-
-    # 最終結果を保存
     output_file = CROSS_CLUSTER_DIR / "ultra_intents.json"
     ultra_result = {
         "generated_at": datetime.now().isoformat(),
@@ -1765,21 +1763,24 @@ def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR091
         "validation": {
             "super_level": {
                 "total_super_intents": len(super_intents),
-                "covered_super_intents": len(covered_indices),
-                "uncovered_super_intents": len(uncovered),
-                "uncovered_super_indices": sorted(uncovered) if uncovered else [],
-                "has_duplicates": len(duplicate_check) != len(set(duplicate_check)),
+                "covered_super_intents": len(stats["covered_indices"]),
+                "uncovered_super_intents": len(stats["uncovered"]),
+                "uncovered_super_indices": sorted(stats["uncovered"])
+                if stats["uncovered"]
+                else [],
+                "has_duplicates": len(stats["duplicate_check"])
+                != len(set(stats["duplicate_check"])),
             },
             "individual_level": {
-                "total_individual_intents": len(all_individual_intent_ids),
-                "covered_individual_intents": len(covered_flat_ids),
-                "uncovered_individual_intents": len(uncovered_flat),
+                "total_individual_intents": len(stats["all_individual_intent_ids"]),
+                "covered_individual_intents": len(stats["covered_flat_ids"]),
+                "uncovered_individual_intents": len(stats["uncovered_flat"]),
                 "uncovered_individual_ids": [
                     {"cluster_id": cid, "intent_index": idx}
-                    for cid, idx in sorted(uncovered_flat)
+                    for cid, idx in sorted(stats["uncovered_flat"])
                 ],
-                "has_duplicates": len(duplicate_flat_ids)
-                != len(set(duplicate_flat_ids)),
+                "has_duplicates": len(stats["duplicate_flat_ids"])
+                != len(set(stats["duplicate_flat_ids"])),
             },
         },
     }
@@ -1787,7 +1788,6 @@ def aggregate_super_intents_recursively(  # noqa: C901, PLR0912, PLR0915, PLR091
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(ultra_result, f, ensure_ascii=False, indent=2, sort_keys=True)
 
-    # 詳細展開版も生成（元データは変更しない）
     enrich_and_save_ultra_intents(ultra_result, output_file.parent)
 
     return ultra_intents

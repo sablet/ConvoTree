@@ -6,6 +6,7 @@ Balanced Strategy: Parent（全て）、Self、Siblings（全て）、Children�
 """
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 from lib.rag_models import GoalEdge, GoalNetwork, GoalNode, UnifiedIntent
@@ -108,7 +109,7 @@ def get_ancestors(
     if visited is None:
         visited = set()
 
-    ancestors = set()
+    ancestors: set[str] = set()
     if node_id in visited:
         return ancestors
 
@@ -327,6 +328,47 @@ def extract_subgraph(
     return GoalNetwork(nodes=subgraph_nodes, edges=subgraph_edges)
 
 
+def _build_node_properties(
+    node_id: str,
+    nodes_detail: dict[str, Any],
+    intents_map: dict[str, Any] | None,
+    status_value: str,
+) -> str:
+    """
+    ノードのプロパティ文字列を構築
+
+    Args:
+        node_id: ノードID
+        nodes_detail: ゴールネットワークJSONのnodes詳細情報
+        intents_map: UnifiedIntentマッピング
+        status_value: ステータス値
+
+    Returns:
+        プロパティ文字列（例: 'objective_facts="..." context="..." timestamp="..." status=done'）
+    """
+    node_detail = nodes_detail.get(node_id, {})
+    objective_facts = node_detail.get("objective_facts") or ""
+    context = node_detail.get("context") or ""
+
+    # timestampを取得
+    timestamp = ""
+    if intents_map and node_id in intents_map:
+        intent = intents_map[node_id]
+        timestamp = intent.timestamps[0].isoformat() if intent.timestamps else ""
+
+    # プロパティ構築
+    props = []
+    if objective_facts:
+        props.append(f'objective_facts="{objective_facts}"')
+    if context:
+        props.append(f'context="{context}"')
+    if timestamp:
+        props.append(f'timestamp="{timestamp}"')
+    props.append(f"status={status_value}")
+
+    return " ".join(props)
+
+
 def _format_node_line(
     node_id: str,
     nodes_detail: dict[str, Any],
@@ -351,263 +393,244 @@ def _format_node_line(
         return f"{'  ' * indent}- (ノード情報なし: {node_id})"
 
     node = node_map[node_id]
-    node_detail = nodes_detail.get(node_id, {})
-    objective_facts = node_detail.get("objective_facts") or ""
-    context = node_detail.get("context") or ""
-
-    # timestampを取得
-    timestamp = ""
-    if intents_map and node_id in intents_map:
-        intent = intents_map[node_id]
-        timestamp = intent.timestamps[0].isoformat() if intent.timestamps else ""
-
-    # プロパティ構築
-    props = []
-    if objective_facts:
-        props.append(f'objective_facts="{objective_facts}"')
-    if context:
-        props.append(f'context="{context}"')
-    if timestamp:
-        props.append(f'timestamp="{timestamp}"')
-    props.append(f"status={node.status.value}")
-
-    props_str = " ".join(props)
+    props_str = _build_node_properties(
+        node_id, nodes_detail, intents_map, node.status.value
+    )
     prefix = "  " * indent
     return f"{prefix}- {node.intent} {{{props_str}}}"
 
 
-def format_subgraph_for_llm(
-    subgraph: GoalNetwork,
-    intents_map: dict[str, Any] | None = None,
-    network_path: str = "output/goal_network/ultra_intent_goal_network.json",
-    hit_intent_ids: list[str] | None = None,
-) -> str:
+def _format_hit_not_in_network(
+    hit_id: str,
+    hit_idx: int,
+    intents_map: dict[str, Any] | None,
+) -> list[str]:
     """
-    部分グラフをLLMプロンプト用にフォーマット（構造化形式）
+    Goal Networkに存在しないヒットをフォーマット
 
-    全ての検索ヒットが同じ最上位ノードを持つ場合、インデント構造の単一ツリーで表示
+    Args:
+        hit_id: ヒットID
+        hit_idx: ヒット番号（1-indexed）
+        intents_map: UnifiedIntentマッピング
+
+    Returns:
+        フォーマット済みの行リスト
+    """
+    lines = [f"\n#### 検索ヒット {hit_idx}: {hit_id} (Goal Networkに未登録)"]
+    if intents_map and hit_id in intents_map:
+        intent = intents_map[hit_id]
+        timestamp_str = intent.timestamps[0].isoformat() if intent.timestamps else ""
+        lines.append(
+            f'- **{intent.intent}** {{timestamp="{timestamp_str}" status={intent.status.value}}}'
+        )
+    return lines
+
+
+@dataclass
+class _TreeBuilderContext:
+    """ツリー構築のコンテキスト情報"""
+
+    node_map: dict[str, GoalNode]
+    nodes_detail: dict[str, Any]
+    intents_map: dict[str, Any] | None
+    children_map: dict[str, list[str]]
+    hit_ids_set: set[str]
+    hit_intent_ids: list[str]
+
+
+def _build_tree_recursive(
+    node_id: str, indent: int, visited: set[str], ctx: _TreeBuilderContext
+) -> list[str]:
+    """
+    ノードから再帰的にツリーを構築
+
+    Args:
+        node_id: 現在のノードID
+        indent: インデントレベル
+        visited: 訪問済みノードセット（循環参照対策）
+        ctx: ツリー構築のコンテキスト情報
+
+    Returns:
+        フォーマット済みの行リスト
+    """
+    if node_id in visited or node_id not in ctx.node_map:
+        return []
+
+    visited.add(node_id)
+
+    # ノード情報をフォーマット
+    node = ctx.node_map[node_id]
+    props_str = _build_node_properties(
+        node_id, ctx.nodes_detail, ctx.intents_map, node.status.value
+    )
+    prefix = "  " * indent
+
+    # 検索ヒットの場合はマーカーを追加
+    hit_marker = ""
+    if node_id in ctx.hit_ids_set:
+        hit_idx = ctx.hit_intent_ids.index(node_id) + 1
+        hit_marker = f"**[HIT {hit_idx}]** "
+
+    result = [f"{prefix}- {hit_marker}{node.intent} {{{props_str}}}"]
+
+    # 子ノードを取得（部分グラフに含まれるもののみ）
+    all_children = [
+        child_id
+        for child_id in ctx.children_map.get(node_id, [])
+        if child_id in ctx.node_map
+    ]
+
+    # 子ノードが11件以上の場合、検索ヒット以外を省略
+    if len(all_children) > MAX_CHILD_NODES_IN_PROMPT:
+        # 検索ヒットの子ノードのみを表示
+        hit_children = [
+            child_id for child_id in all_children if child_id in ctx.hit_ids_set
+        ]
+        non_hit_count = len(all_children) - len(hit_children)
+
+        # 検索ヒットの子ノードを再帰的に追加
+        for child_id in sorted(hit_children):
+            result.extend(_build_tree_recursive(child_id, indent + 1, visited, ctx))
+
+        # 省略メッセージを追加
+        if non_hit_count > 0:
+            omit_prefix = "  " * (indent + 1)
+            result.append(f"{omit_prefix}（他{non_hit_count}件の子ノードは省略）")
+    else:
+        # 全ての子ノードを再帰的に追加
+        for child_id in sorted(all_children):
+            result.extend(_build_tree_recursive(child_id, indent + 1, visited, ctx))
+
+    return result
+
+
+def _format_with_hit_intents(
+    hit_intent_ids: list[str],
+    node_map: dict[str, GoalNode],
+    intents_map: dict[str, Any] | None,
+    parent_map: dict[str, list[str]],
+    children_map: dict[str, list[str]],
+    nodes_detail: dict[str, Any],
+) -> list[str]:
+    """
+    検索ヒットがある場合のフォーマット
+
+    Args:
+        hit_intent_ids: 検索でヒットしたintent IDのリスト
+        node_map: ノードIDから意図テキストへのマッピング
+        intents_map: UnifiedIntentマッピング
+        parent_map: {child_id: [parent_id1, ...]}
+        children_map: {parent_id: [child_id1, ...]}
+        nodes_detail: ゴールネットワークJSONのnodes詳細情報
+
+    Returns:
+        フォーマット済みの行リスト
+    """
+    from collections import defaultdict
+
+    lines: list[str] = []
+
+    # 検索ヒットをルートノードでグループ化
+    root_groups: dict[str, list[str]] = defaultdict(list)
+    hit_ids_not_in_network = []
+
+    for hit_id in hit_intent_ids:
+        if hit_id not in node_map:
+            hit_ids_not_in_network.append(hit_id)
+            continue
+
+        # このヒットのルートノードを取得
+        root_id = get_root_node(hit_id, parent_map)
+        root_groups[root_id].append(hit_id)
+
+    # Goal Networkに存在しないヒットを先に表示
+    for hit_id in hit_ids_not_in_network:
+        hit_idx = hit_intent_ids.index(hit_id) + 1
+        lines.extend(_format_hit_not_in_network(hit_id, hit_idx, intents_map))
+
+    # 検索ヒットIDのセット（マーキング用）
+    hit_ids_set = set(hit_intent_ids)
+
+    # 各ルートノードごとにツリーを構築
+    for tree_idx, (root_id, hit_ids_in_root) in enumerate(
+        sorted(root_groups.items()), 1
+    ):
+        if root_id not in node_map:
+            continue
+
+        # ヒット番号を取得
+        hit_indices = [hit_intent_ids.index(hit_id) + 1 for hit_id in hit_ids_in_root]
+        hit_indices_str = ", ".join(str(idx) for idx in sorted(hit_indices))
+
+        # ツリーのタイトル
+        if len(root_groups) == 1:
+            lines.append(f"\n#### ゴールツリー (検索ヒット {hit_indices_str})")
+        else:
+            lines.append(
+                f"\n#### ゴールツリー {tree_idx} (検索ヒット {hit_indices_str})"
+            )
+        lines.append("")
+
+        # ルートから再帰的にツリーを構築
+        visited: set[str] = set()
+        ctx = _TreeBuilderContext(
+            node_map,
+            nodes_detail,
+            intents_map,
+            children_map,
+            hit_ids_set,
+            hit_intent_ids,
+        )
+        tree_lines = _build_tree_recursive(root_id, 0, visited, ctx)
+        lines.extend(tree_lines)
+
+    return lines
+
+
+def _format_without_hit_intents(
+    subgraph: GoalNetwork,
+    node_map: dict[str, GoalNode],
+    intents_map: dict[str, Any] | None,
+    nodes_detail: dict[str, Any],
+    hit_intent_ids: list[str] | None,
+) -> list[str]:
+    """
+    検索ヒットがない場合のフォーマット
 
     Args:
         subgraph: 部分グラフ
-        intents_map: {intent_id: UnifiedIntent} のマッピング（timestamp情報用）
-        network_path: ゴールネットワークJSONのパス（objective_facts, context取得用）
-        hit_intent_ids: 検索でヒットしたintent IDのリスト（マーキング用）
+        node_map: ノードIDから意図テキストへのマッピング
+        intents_map: UnifiedIntentマッピング
+        nodes_detail: ゴールネットワークJSONのnodes詳細情報
+        hit_intent_ids: 検索でヒットしたintent IDのリスト
 
     Returns:
-        構造化されたMarkdown形式の文字列
+        フォーマット済みの行リスト
     """
-    if not subgraph.nodes:
-        return "（グラフ情報なし）"
+    lines: list[str] = [""]
 
-    # ゴールネットワークから詳細情報を読み込む
-    network_data = load_goal_network(network_path)
-    nodes_detail = network_data.get("nodes", {})
-
-    # ノードIDから意図テキストへのマッピング
-    node_map = {node.id: node for node in subgraph.nodes}
-
-    # 親子マップを構築
-    all_nodes_in_network, parent_map, children_map = build_graph_structure(network_data)
-
-    lines = [
-        "### ゴールネットワーク（検索ヒット中心）",
-        "",
-        "このネットワークは**目的-手段階層（Means-Ends Hierarchy / Goal Hierarchy）**を表現しています：",
-        "- **親ノード**: より抽象的・上位の目的（goal/end）",
-        "- **子ノード**: より具体的・下位の手段（means）",
-        "- **兄弟ノード**: 同じ上位目的を達成するための代替手段",
-        "",
-    ]
-
-    # 検索ヒットがある場合、ルートノードごとにツリーを構築
-    if hit_intent_ids:
-        from collections import defaultdict
-
-        # 検索ヒットをルートノードでグループ化
-        root_groups: dict[str, list[str]] = defaultdict(list)
-        hit_ids_not_in_network = []
-
-        for hit_id in hit_intent_ids:
-            if hit_id not in node_map:
-                hit_ids_not_in_network.append(hit_id)
-                continue
-
-            # このヒットのルートノードを取得
-            root_id = get_root_node(hit_id, parent_map)
-            root_groups[root_id].append(hit_id)
-
-        # Goal Networkに存在しないヒットを先に表示
-        for hit_id in hit_ids_not_in_network:
-            hit_idx = hit_intent_ids.index(hit_id) + 1
-            lines.append(f"\n#### 検索ヒット {hit_idx}: {hit_id} (Goal Networkに未登録)")
-            if intents_map and hit_id in intents_map:
-                intent = intents_map[hit_id]
-                timestamp_str = (
-                    intent.timestamps[0].isoformat() if intent.timestamps else ""
-                )
-                lines.append(
-                    f'- **{intent.intent}** {{timestamp="{timestamp_str}" status={intent.status.value}}}'
-                )
-
-        # 検索ヒットIDのセット（マーキング用）
-        hit_ids_set = set(hit_intent_ids)
-
-        # ツリー構築の再帰関数
-        def build_tree_recursive(
-            node_id: str, indent: int, visited: set[str]
-        ) -> list[str]:
-            """
-            ノードから再帰的にツリーを構築
-
-            Args:
-                node_id: 現在のノードID
-                indent: インデントレベル
-                visited: 訪問済みノードセット（循環参照対策）
-
-            Returns:
-                フォーマット済みの行リスト
-            """
-            if node_id in visited or node_id not in node_map:
-                return []
-
-            visited.add(node_id)
-
-            # ノード情報をフォーマット
-            node = node_map[node_id]
-            node_detail = nodes_detail.get(node_id, {})
-            objective_facts = node_detail.get("objective_facts") or ""
-            context = node_detail.get("context") or ""
-
-            # timestampを取得
-            timestamp = ""
-            if intents_map and node_id in intents_map:
-                intent = intents_map[node_id]
-                timestamp = intent.timestamps[0].isoformat() if intent.timestamps else ""
-
-            # プロパティ構築
-            props = []
-            if objective_facts:
-                props.append(f'objective_facts="{objective_facts}"')
-            if context:
-                props.append(f'context="{context}"')
-            if timestamp:
-                props.append(f'timestamp="{timestamp}"')
-            props.append(f"status={node.status.value}")
-
-            props_str = " ".join(props)
-            prefix = "  " * indent
-
-            # 検索ヒットの場合はマーカーを追加
-            hit_marker = ""
-            if node_id in hit_ids_set:
-                hit_idx = hit_intent_ids.index(node_id) + 1
-                hit_marker = f"**[HIT {hit_idx}]** "
-
-            result = [f"{prefix}- {hit_marker}{node.intent} {{{props_str}}}"]
-
-            # 子ノードを取得（部分グラフに含まれるもののみ）
-            all_children = [
-                child_id
-                for child_id in children_map.get(node_id, [])
-                if child_id in node_map
-            ]
-
-            # 子ノードが11件以上の場合、検索ヒット以外を省略
-            if len(all_children) > MAX_CHILD_NODES_IN_PROMPT:
-                # 検索ヒットの子ノードのみを表示
-                hit_children = [
-                    child_id for child_id in all_children if child_id in hit_ids_set
-                ]
-                non_hit_count = len(all_children) - len(hit_children)
-
-                # 検索ヒットの子ノードを再帰的に追加
-                for child_id in sorted(hit_children):
-                    result.extend(build_tree_recursive(child_id, indent + 1, visited))
-
-                # 省略メッセージを追加
-                if non_hit_count > 0:
-                    omit_prefix = "  " * (indent + 1)
-                    result.append(
-                        f"{omit_prefix}（他{non_hit_count}件の子ノードは省略）"
-                    )
-            else:
-                # 全ての子ノードを再帰的に追加
-                for child_id in sorted(all_children):
-                    result.extend(build_tree_recursive(child_id, indent + 1, visited))
-
-            return result
-
-        # 各ルートノードごとにツリーを構築
-        for tree_idx, (root_id, hit_ids_in_root) in enumerate(
-            sorted(root_groups.items()), 1
-        ):
-            if root_id not in node_map:
-                continue
-
-            # ヒット番号を取得
-            hit_indices = [hit_intent_ids.index(hit_id) + 1 for hit_id in hit_ids_in_root]
-            hit_indices_str = ", ".join(str(idx) for idx in sorted(hit_indices))
-
-            # ツリーのタイトル
-            root_node = node_map[root_id]
-            if len(root_groups) == 1:
-                lines.append(f"\n#### ゴールツリー (検索ヒット {hit_indices_str})")
-            else:
-                lines.append(
-                    f"\n#### ゴールツリー {tree_idx} (検索ヒット {hit_indices_str})"
-                )
-            lines.append("")
-
-            # ルートから再帰的にツリーを構築
-            visited: set[str] = set()
-            tree_lines = build_tree_recursive(root_id, 0, visited)
-            lines.extend(tree_lines)
-
-        return "\n".join(lines)
-
-    # 検索ヒットがない場合は従来通りの全体表示
     # ルートノードを見つける（親がないノード）
     # 注: 自己ループは無視する
     child_ids = {edge.from_id for edge in subgraph.edges if edge.from_id != edge.to_id}
     root_ids = {node.id for node in subgraph.nodes if node.id not in child_ids}
 
-    lines.append("")
-
     # ルートノードから階層的に表示
-    visited: set[str] = set()
+    visited_ids: set[str] = set()
     hit_ids_set = set(hit_intent_ids) if hit_intent_ids else set()
 
     def format_node_tree(node_id: str, indent: int = 0) -> list[str]:
         """ノードを階層的にフォーマット"""
-        if node_id in visited or node_id not in node_map:
+        if node_id in visited_ids or node_id not in node_map:
             return []
 
-        visited.add(node_id)
+        visited_ids.add(node_id)
         node = node_map[node_id]
         prefix = "  " * indent
 
-        # ノード詳細情報を取得
-        node_detail = nodes_detail.get(node_id, {})
-        objective_facts = node_detail.get("objective_facts") or ""
-        context = node_detail.get("context") or ""
-
-        # timestampを取得（UnifiedIntentから）
-        timestamp = ""
-        if intents_map and node_id in intents_map:
-            intent = intents_map[node_id]
-            timestamp = intent.timestamps[0].isoformat() if intent.timestamps else ""
-
-        # プロパティ部分を構築（id は除外）
-        props = []
-        if objective_facts:
-            props.append(f'objective_facts="{objective_facts}"')
-        if context:
-            props.append(f'context="{context}"')
-        if timestamp:
-            props.append(f'timestamp="{timestamp}"')
-        props.append(f"status={node.status.value}")
-
-        props_str = " ".join(props)
+        # プロパティ部分を構築
+        props_str = _build_node_properties(
+            node_id, nodes_detail, intents_map, node.status.value
+        )
 
         # 検索ヒットの場合はマーカーを追加
         hit_marker = ""
@@ -641,33 +664,14 @@ def format_subgraph_for_llm(
         lines.extend(format_node_tree(root_id))
 
     # 孤立ノード（エッジに含まれないノード）も表示
-    orphan_nodes = [node for node in subgraph.nodes if node.id not in visited]
+    orphan_nodes = [node for node in subgraph.nodes if node.id not in visited_ids]
     if orphan_nodes:
         lines.append("\n### 孤立ノード")
         for node in sorted(orphan_nodes, key=lambda n: n.id):
-            node_detail = nodes_detail.get(node.id, {})
-            objective_facts = node_detail.get("objective_facts") or ""
-            context = node_detail.get("context") or ""
-
-            # timestampを取得
-            timestamp = ""
-            if intents_map and node.id in intents_map:
-                intent = intents_map[node.id]
-                timestamp = (
-                    intent.timestamps[0].isoformat() if intent.timestamps else ""
-                )
-
-            # プロパティ部分を構築（id は除外）
-            props = []
-            if objective_facts:
-                props.append(f'objective_facts="{objective_facts}"')
-            if context:
-                props.append(f'context="{context}"')
-            if timestamp:
-                props.append(f'timestamp="{timestamp}"')
-            props.append(f"status={node.status.value}")
-
-            props_str = " ".join(props)
+            # プロパティ部分を構築
+            props_str = _build_node_properties(
+                node.id, nodes_detail, intents_map, node.status.value
+            )
 
             # 検索ヒットの場合はマーカーを追加
             hit_marker = ""
@@ -682,6 +686,73 @@ def format_subgraph_for_llm(
 
             lines.append(f"- {hit_marker}{node.intent} {{{props_str}}}")
 
+    return lines
+
+
+def format_subgraph_for_llm(
+    subgraph: GoalNetwork,
+    intents_map: dict[str, Any] | None = None,
+    network_path: str = "output/goal_network/ultra_intent_goal_network.json",
+    hit_intent_ids: list[str] | None = None,
+) -> str:
+    """
+    部分グラフをLLMプロンプト用にフォーマット（構造化形式）
+
+    全ての検索ヒットが同じ最上位ノードを持つ場合、インデント構造の単一ツリーで表示
+
+    Args:
+        subgraph: 部分グラフ
+        intents_map: {intent_id: UnifiedIntent} のマッピング（timestamp情報用）
+        network_path: ゴールネットワークJSONのパス（objective_facts, context取得用）
+        hit_intent_ids: 検索でヒットしたintent IDのリスト（マーキング用）
+
+    Returns:
+        構造化されたMarkdown形式の文字列
+    """
+    if not subgraph.nodes:
+        return "（グラフ情報なし）"
+
+    # ゴールネットワークから詳細情報を読み込む
+    network_data = load_goal_network(network_path)
+    nodes_detail = network_data.get("nodes", {})
+
+    # ノードIDから意図テキストへのマッピング
+    node_map = {node.id: node for node in subgraph.nodes}
+
+    # 親子マップを構築
+    _, parent_map, children_map = build_graph_structure(network_data)
+
+    lines = [
+        "### ゴールネットワーク（検索ヒット中心）",
+        "",
+        "このネットワークは**目的-手段階層（Means-Ends Hierarchy / Goal Hierarchy）**を表現しています：",
+        "- **親ノード**: より抽象的・上位の目的（goal/end）",
+        "- **子ノード**: より具体的・下位の手段（means）",
+        "- **兄弟ノード**: 同じ上位目的を達成するための代替手段",
+        "",
+    ]
+
+    # 検索ヒットがある場合、ルートノードごとにツリーを構築
+    if hit_intent_ids:
+        lines.extend(
+            _format_with_hit_intents(
+                hit_intent_ids,
+                node_map,
+                intents_map,
+                parent_map,
+                children_map,
+                nodes_detail,
+            )
+        )
+        return "\n".join(lines)
+
+    # 検索ヒットがない場合は従来通りの全体表示
+    lines.extend(
+        _format_without_hit_intents(
+            subgraph, node_map, intents_map, nodes_detail, hit_intent_ids
+        )
+    )
+
     return "\n".join(lines)
 
 
@@ -691,13 +762,15 @@ if __name__ == "__main__":
     network_path = "output/goal_network/ultra_intent_goal_network.json"
 
     # ダミーのUnifiedIntentを作成
+    from datetime import datetime
+
     from lib.rag_models import IntentStatus
 
     test_intents = [
         UnifiedIntent(
             id="intent_16_5",
             intent="テスト意図1",
-            timestamp="2025-11-14T00:00:00",
+            timestamps=[datetime.fromisoformat("2025-11-14T00:00:00")],
             status=IntentStatus.TODO,
             cluster_id=16,
             ultra_intent_id="ultra_0",

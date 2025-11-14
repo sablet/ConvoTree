@@ -1,8 +1,8 @@
 """RAGシステムのデータモデル定義"""
 
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -54,7 +54,9 @@ class UnifiedIntent(BaseModel):
 
     @field_validator("timestamps", mode="before")
     @classmethod
-    def parse_timestamps(cls, v: Any) -> list[datetime]:
+    def parse_timestamps(
+        cls, v: list[str | datetime] | str | datetime
+    ) -> list[datetime]:
         """タイムスタンプ文字列リストをdatetimeリストに変換"""
         if isinstance(v, list):
             result = []
@@ -76,7 +78,7 @@ class UnifiedIntent(BaseModel):
 
     @field_validator("status", mode="before")
     @classmethod
-    def normalize_status(cls, v: Any) -> str:
+    def normalize_status(cls, v: str | IntentStatus) -> str:
         """ステータス文字列を小文字に正規化"""
         if isinstance(v, str):
             return v.lower()
@@ -95,7 +97,7 @@ class GoalNode(BaseModel):
 
     @field_validator("status", mode="before")
     @classmethod
-    def normalize_status(cls, v: Any) -> str:
+    def normalize_status(cls, v: str | IntentStatus) -> str:
         """ステータス文字列を小文字に正規化"""
         if isinstance(v, str):
             return v.lower()
@@ -129,11 +131,29 @@ class QueryParams(BaseModel):
 
     @field_validator("status_filter", mode="before")
     @classmethod
-    def parse_status_list(cls, v: Any) -> list[IntentStatus]:
+    def parse_status_list(
+        cls, v: list[str | IntentStatus] | list[IntentStatus]
+    ) -> list[IntentStatus]:
         """ステータスリストをパース"""
         if isinstance(v, list):
             return [IntentStatus(s.lower()) if isinstance(s, str) else s for s in v]
         return v
+
+
+@dataclass
+class QueryDebugParams:
+    """RAGデバッグクエリのパラメータ"""
+
+    topic: str | None = None
+    start_date: str | None = None
+    end_date: str | None = None
+    status: str = "todo,idea"
+    top_k: int = 15
+    subgraph_strategy: str = "balanced"
+    answer_with_llm: bool = False
+    save_output: bool = False
+    chroma_db_path: str = "output/rag_index/chroma_db"
+    network_path: str = "output/goal_network/ultra_intent_goal_network.json"
 
 
 class SearchResult(BaseModel):
@@ -148,4 +168,6 @@ class SearchResult(BaseModel):
         default=None, description="抽出された部分グラフ"
     )
     answer: str | None = Field(None, description="LLM生成の最終回答")
-    metadata: dict[str, Any] = Field(default_factory=dict, description="検索メタデータ")
+    metadata: dict[str, str | int] = Field(
+        default_factory=dict, description="検索メタデータ"
+    )

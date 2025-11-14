@@ -235,12 +235,17 @@ class MessageData:
 
         # テキストとインデックスを準備
         texts = []
-        indices = []
+        indices: list[int] = []
         for idx, row in self.df.iterrows():
             text = row["combined_content"]
             if not pd.isna(text) and str(text).strip() != "":
                 texts.append(str(text))
-                indices.append(idx)
+                # idxはHashable型だが、実際にはintなのでキャストする
+                if isinstance(idx, int):
+                    indices.append(idx)
+                else:
+                    # 念のため、int型でない場合はスキップ
+                    continue
 
         # 埋め込みリストを初期化（ゼロベクトルで埋める）
         embeddings_list = [[0.0] * 1024 for _ in range(len(self.df))]
@@ -333,8 +338,9 @@ class DistanceCalculator:
             時間距離行列 (n_samples, n_samples)
         """
         # 時刻を数値化（Unix timestamp）
-        timestamps = df["start_time"].astype(np.int64) / 1e9 / 3600  # 時間単位
-        timestamps = timestamps.values.reshape(-1, 1)
+        timestamps_series = df["start_time"].astype(np.int64) / 1e9 / 3600  # 時間単位
+        timestamps_array = np.array(timestamps_series.values)
+        timestamps = timestamps_array.reshape(-1, 1)
 
         # ユークリッド距離を計算
         time_diff = euclidean_distances(timestamps, timestamps)
@@ -388,7 +394,30 @@ class DistanceCalculator:
         return hierarchy_distance
 
     @staticmethod
-    def combine_distances(  # noqa: PLR0914
+    def _normalize_distance_matrix(
+        dist_matrix: np.ndarray, triu_indices: tuple[np.ndarray, np.ndarray]
+    ) -> np.ndarray:
+        """
+        距離行列を正規化（最小値0にシフト、標準偏差で割る）
+
+        Args:
+            dist_matrix: 距離行列
+            triu_indices: 上三角インデックス
+
+        Returns:
+            正規化された距離行列
+        """
+        vals = dist_matrix[triu_indices]
+        shifted = vals - vals.min()
+        std = shifted.std()
+        normalized_vals = shifted / std if std > 0 else shifted
+        normalized = np.zeros_like(dist_matrix)
+        normalized[triu_indices] = normalized_vals
+        normalized += normalized.T
+        return normalized
+
+    @staticmethod
+    def combine_distances(
         embedding_dist: Optional[np.ndarray],
         time_dist: np.ndarray,
         hierarchy_dist: np.ndarray,
@@ -410,58 +439,35 @@ class DistanceCalculator:
             合成距離行列
         """
         n = time_dist.shape[0]
-
-        # 各距離行列を正規化（上三角のみ使用）
         triu_indices = np.triu_indices(n, k=1)
 
-        # 時間距離の正規化（最小値0にシフト、標準偏差で割る）
-        time_vals = time_dist[triu_indices]
-        time_min = time_vals.min()
-        time_shifted = time_vals - time_min
-        time_std = time_shifted.std()
-        time_normalized_vals = time_shifted / time_std if time_std > 0 else time_shifted
-        time_normalized = np.zeros_like(time_dist)
-        time_normalized[triu_indices] = time_normalized_vals
-        time_normalized += time_normalized.T
-
-        # 階層距離の正規化（最小値0にシフト、標準偏差で割る）
-        hier_vals = hierarchy_dist[triu_indices]
-        hier_min = hier_vals.min()
-        hier_shifted = hier_vals - hier_min
-        hier_std = hier_shifted.std()
-        hier_normalized_vals = hier_shifted / hier_std if hier_std > 0 else hier_shifted
-        hier_normalized = np.zeros_like(hierarchy_dist)
-        hier_normalized[triu_indices] = hier_normalized_vals
-        hier_normalized += hier_normalized.T
+        # 各距離行列を正規化
+        time_normalized = DistanceCalculator._normalize_distance_matrix(
+            time_dist, triu_indices
+        )
+        hier_normalized = DistanceCalculator._normalize_distance_matrix(
+            hierarchy_dist, triu_indices
+        )
 
         if embedding_dist is None:
             # 埋め込みが無い場合は時間と階層のみ
             total_weight = config.time_weight + config.hierarchy_weight
-            combined = (
+            return (
                 config.time_weight / total_weight * time_normalized
                 + config.hierarchy_weight / total_weight * hier_normalized
             )
-        else:
-            # 埋め込み距離の正規化（最小値0にシフト、標準偏差で割る）
-            embed_vals = embedding_dist[triu_indices]
-            embed_min = embed_vals.min()
-            embed_shifted = embed_vals - embed_min
-            embed_std = embed_shifted.std()
-            embed_normalized_vals = (
-                embed_shifted / embed_std if embed_std > 0 else embed_shifted
-            )
-            embed_normalized = np.zeros_like(embedding_dist)
-            embed_normalized[triu_indices] = embed_normalized_vals
-            embed_normalized += embed_normalized.T
 
-            # 全ての距離を合成
-            combined = (
-                config.embedding_weight * embed_normalized
-                + config.time_weight * time_normalized
-                + config.hierarchy_weight * hier_normalized
-            )
+        # 埋め込み距離の正規化
+        embed_normalized = DistanceCalculator._normalize_distance_matrix(
+            embedding_dist, triu_indices
+        )
 
-        return combined
+        # 全ての距離を合成
+        return (
+            config.embedding_weight * embed_normalized
+            + config.time_weight * time_normalized
+            + config.hierarchy_weight * hier_normalized
+        )
 
 
 class ClusterAnalyzer:

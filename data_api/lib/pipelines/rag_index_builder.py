@@ -5,6 +5,7 @@ RAGインデックス構築モジュール
 JSONL形式で保存。Phase 3でVector DBにインデックス化する。
 """
 
+import contextlib
 import json
 from pathlib import Path
 from typing import Any
@@ -136,6 +137,175 @@ def build_message_content_map(
     return mapping
 
 
+def _create_individual_intent(
+    intent_id: str,
+    cluster_id: int,
+    intent_dict: dict[str, Any],
+    hierarchy_info: dict[str, str],
+    combined_content: str,
+) -> UnifiedIntent:
+    """
+    個別の意図からUnifiedIntentを作成
+
+    Args:
+        intent_id: 意図ID
+        cluster_id: クラスタID
+        intent_dict: 意図の辞書
+        hierarchy_info: 階層情報
+        combined_content: 結合されたメッセージ内容
+
+    Returns:
+        UnifiedIntent
+    """
+    intent_text = intent_dict.get("intent", "")
+    context = intent_dict.get("context") or ""
+    ultra_intent_text = hierarchy_info.get("ultra_intent_text", "")
+
+    embedding_text = f"{intent_text}\n{context}\n{ultra_intent_text}".strip()
+
+    # timestamps: 新フォーマット優先、古いフォーマットにフォールバック
+    timestamps = intent_dict.get("start_timestamps") or intent_dict.get(
+        "min_start_timestamp"
+    )
+    if timestamps is None:
+        timestamps = []
+
+    return UnifiedIntent(
+        id=intent_id,
+        type="individual_intent",
+        intent=intent_text,
+        context=context,
+        combined_content=combined_content,
+        timestamps=timestamps,
+        status=IntentStatus(intent_dict.get("status", "idea").lower()),
+        cluster_id=cluster_id,
+        source_message_ids=intent_dict.get("source_message_ids", []),
+        source_full_paths=intent_dict.get("source_full_paths", []),
+        ultra_intent_id=hierarchy_info.get("ultra_intent_id", ""),
+        ultra_intent_text=ultra_intent_text,
+        meta_intent_id=hierarchy_info.get("meta_intent_id", ""),
+        meta_intent_text=hierarchy_info.get("meta_intent_text", ""),
+        embedding_text=embedding_text,
+    )
+
+
+def _create_generated_node_intent(node_dict: dict[str, Any]) -> UnifiedIntent:
+    """
+    生成ノードからUnifiedIntentを作成
+
+    Args:
+        node_dict: ノードの辞書
+
+    Returns:
+        UnifiedIntent
+    """
+    node_id = node_dict["intent_id"]
+    intent_text = node_dict.get("intent", "")
+    context = node_dict.get("context") or ""
+    objective_facts = node_dict.get("objective_facts") or ""
+
+    embedding_text = f"{intent_text}\n{context}\n{objective_facts}".strip()
+
+    return UnifiedIntent(
+        id=node_id,
+        type="generated_node",
+        intent=intent_text,
+        context=context,
+        combined_content="",
+        timestamps=[],
+        status=IntentStatus(node_dict.get("status", "idea").lower()),
+        cluster_id=-1,
+        source_message_ids=[],
+        source_full_paths=[],
+        ultra_intent_id="",
+        ultra_intent_text="",
+        meta_intent_id="",
+        meta_intent_text="",
+        embedding_text=embedding_text,
+    )
+
+
+def _process_cluster_intents(
+    cluster_intents: dict[int, list[dict[str, Any]]],
+    hierarchy_map: dict[str, dict[str, str]],
+    message_map: dict[str, dict[str, Any]],
+) -> list[UnifiedIntent]:
+    """
+    クラスタの意図を処理
+
+    Args:
+        cluster_intents: {cluster_id: [intent_dict, ...]}
+        hierarchy_map: {intent_id: {ultra_intent_id, ...}}
+        message_map: {message_id: {combined_content, ...}}
+
+    Returns:
+        UnifiedIntentのリスト
+    """
+    unified_intents: list[UnifiedIntent] = []
+
+    for cluster_id, intents in tqdm(
+        cluster_intents.items(), desc="Generating unified intents", unit="cluster"
+    ):
+        for intent_idx, intent_dict in enumerate(intents):
+            intent_id = f"intent_{cluster_id}_{intent_idx}"
+
+            hierarchy_info = hierarchy_map.get(intent_id, {})
+            if not hierarchy_info:
+                continue
+
+            # 元メッセージの全文を結合
+            source_message_ids = intent_dict.get("source_message_ids", [])
+            combined_contents = [
+                message_map[msg_id]["combined_content"]
+                for msg_id in source_message_ids
+                if msg_id in message_map
+            ]
+            combined_content = "\n".join(combined_contents)
+
+            try:
+                unified_intent = _create_individual_intent(
+                    intent_id, cluster_id, intent_dict, hierarchy_info, combined_content
+                )
+                unified_intents.append(unified_intent)
+            except Exception as e:
+                print(f"⚠️  Error creating UnifiedIntent for {intent_id}: {e}")
+
+    return unified_intents
+
+
+def _process_generated_nodes(
+    generated_nodes: list[dict[str, Any]],
+) -> list[UnifiedIntent]:
+    """
+    生成ノードを処理
+
+    Args:
+        generated_nodes: 生成ノード（ultra_intent, meta_intent）のリスト
+
+    Returns:
+        UnifiedIntentのリスト
+    """
+    unified_intents: list[UnifiedIntent] = []
+    seen_node_ids: set[str] = set()
+
+    for node_dict in tqdm(
+        generated_nodes, desc="Processing generated nodes", unit="node"
+    ):
+        node_id = node_dict.get("intent_id", "")
+        if not node_id or node_id in seen_node_ids:
+            continue
+
+        seen_node_ids.add(node_id)
+
+        try:
+            unified_intent = _create_generated_node_intent(node_dict)
+            unified_intents.append(unified_intent)
+        except Exception as e:
+            print(f"⚠️  Error creating UnifiedIntent for generated node {node_id}: {e}")
+
+    return unified_intents
+
+
 def generate_unified_intents(
     cluster_intents: dict[int, list[dict[str, Any]]],
     hierarchy_map: dict[str, dict[str, str]],
@@ -154,119 +324,14 @@ def generate_unified_intents(
     Returns:
         UnifiedIntentのリスト
     """
-    unified_intents: list[UnifiedIntent] = []
+    # cluster_intentsを処理
+    unified_intents = _process_cluster_intents(
+        cluster_intents, hierarchy_map, message_map
+    )
 
-    # cluster_intentsを全て処理
-    for cluster_id, intents in tqdm(
-        cluster_intents.items(), desc="Generating unified intents", unit="cluster"
-    ):
-        for intent_idx, intent_dict in enumerate(intents):
-            # intent_idを構築
-            intent_id = f"intent_{cluster_id}_{intent_idx}"
-
-            # 階層情報を取得
-            hierarchy_info = hierarchy_map.get(intent_id, {})
-            if not hierarchy_info:
-                # 階層情報がない場合はスキップ
-                continue
-
-            # メッセージ情報を収集
-            source_message_ids = intent_dict.get("source_message_ids", [])
-            source_full_paths = intent_dict.get("source_full_paths", [])
-
-            # 元メッセージの全文を結合
-            combined_contents = []
-            for msg_id in source_message_ids:
-                msg_info = message_map.get(msg_id, {})
-                if msg_info:
-                    combined_contents.append(msg_info["combined_content"])
-
-            combined_content = "\n".join(combined_contents)
-
-            # embedding_textを構築（intent + context + ultra_intent_text）
-            intent_text = intent_dict.get("intent", "")
-            context = intent_dict.get("context") or ""
-            ultra_intent_text = hierarchy_info.get("ultra_intent_text", "")
-
-            embedding_text = f"{intent_text}\n{context}\n{ultra_intent_text}".strip()
-
-            # UnifiedIntentを作成
-            try:
-                # timestamps: 新フォーマット優先、古いフォーマットにフォールバック
-                timestamps = intent_dict.get("start_timestamps") or intent_dict.get(
-                    "min_start_timestamp"
-                )
-                if timestamps is None:
-                    timestamps = []
-
-                unified_intent = UnifiedIntent(
-                    id=intent_id,
-                    type="individual_intent",
-                    intent=intent_text,
-                    context=context,
-                    combined_content=combined_content,
-                    timestamps=timestamps,
-                    status=IntentStatus(intent_dict.get("status", "idea").lower()),
-                    cluster_id=cluster_id,
-                    source_message_ids=source_message_ids,
-                    source_full_paths=source_full_paths,
-                    ultra_intent_id=hierarchy_info.get("ultra_intent_id", ""),
-                    ultra_intent_text=ultra_intent_text,
-                    meta_intent_id=hierarchy_info.get("meta_intent_id", ""),
-                    meta_intent_text=hierarchy_info.get("meta_intent_text", ""),
-                    embedding_text=embedding_text,
-                )
-                unified_intents.append(unified_intent)
-            except Exception as e:
-                print(f"⚠️  Error creating UnifiedIntent for {intent_id}: {e}")
-                continue
-
-    # generated_nodes（ultra_intent, meta_intent）を処理
+    # generated_nodesを処理
     if generated_nodes:
-        # 重複除去のためのセット
-        seen_node_ids: set[str] = set()
-
-        for node_dict in tqdm(
-            generated_nodes, desc="Processing generated nodes", unit="node"
-        ):
-            node_id = node_dict.get("intent_id", "")
-            if not node_id:
-                continue
-
-            # 重複IDをスキップ
-            if node_id in seen_node_ids:
-                continue
-            seen_node_ids.add(node_id)
-
-            # embedding_textを構築（intent + context + objective_facts）
-            intent_text = node_dict.get("intent", "")
-            context = node_dict.get("context") or ""
-            objective_facts = node_dict.get("objective_facts") or ""
-
-            embedding_text = f"{intent_text}\n{context}\n{objective_facts}".strip()
-
-            try:
-                unified_intent = UnifiedIntent(
-                    id=node_id,
-                    type="generated_node",
-                    intent=intent_text,
-                    context=context,
-                    combined_content="",  # generated nodeには元メッセージがない
-                    timestamps=[],  # generated nodeにはタイムスタンプがない
-                    status=IntentStatus(node_dict.get("status", "idea").lower()),
-                    cluster_id=-1,  # generated nodeはクラスタに属さない
-                    source_message_ids=[],
-                    source_full_paths=[],
-                    ultra_intent_id="",  # 自分自身がultra_intentの場合がある
-                    ultra_intent_text="",
-                    meta_intent_id="",
-                    meta_intent_text="",
-                    embedding_text=embedding_text,
-                )
-                unified_intents.append(unified_intent)
-            except Exception as e:
-                print(f"⚠️  Error creating UnifiedIntent for generated node {node_id}: {e}")
-                continue
+        unified_intents.extend(_process_generated_nodes(generated_nodes))
 
     return unified_intents
 
@@ -287,9 +352,7 @@ def save_unified_intents(intents: list[UnifiedIntent], output_path: str) -> None
             # Pydanticのmodel_dump()でdictに変換
             intent_dict = intent.model_dump()
             # timestampsをISO形式の文字列リストに変換
-            intent_dict["timestamps"] = [
-                ts.isoformat() for ts in intent.timestamps
-            ]
+            intent_dict["timestamps"] = [ts.isoformat() for ts in intent.timestamps]
             # statusをstrに変換
             intent_dict["status"] = intent.status.value
             f.write(json.dumps(intent_dict, ensure_ascii=False) + "\n")
@@ -323,10 +386,8 @@ def build_chroma_index(
     client = chromadb.PersistentClient(path=str(chroma_db_path))
 
     # 既存のコレクションを削除（再構築のため）
-    try:
+    with contextlib.suppress(Exception):
         client.delete_collection(name="intents")
-    except Exception:
-        pass  # コレクションが存在しない場合は無視
 
     collection = client.get_or_create_collection(
         name="intents", metadata={"hnsw:space": "cosine"}
@@ -433,7 +494,9 @@ def build_rag_index(
     unified_intents = generate_unified_intents(
         cluster_intents, hierarchy_map, message_map, generated_nodes
     )
-    print(f"  ✓ Unified intents: {len(unified_intents)} 件 (generated_nodes: {len(generated_nodes)} 件含む)")
+    print(
+        f"  ✓ Unified intents: {len(unified_intents)} 件 (generated_nodes: {len(generated_nodes)} 件含む)"
+    )
 
     # 4. JSONL保存
     print("\n[4/5] JSONL保存中...")

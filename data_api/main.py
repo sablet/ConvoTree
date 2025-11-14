@@ -104,8 +104,7 @@ class Pipeline:
         status: str = "todo,idea",
         top_k: int | None = None,
         subgraph_strategy: str | None = None,
-        answer_with_llm: bool = False,
-        save_output: bool = False,
+        **kwargs: bool,
     ):
         """
         RAG検索（デバッグ用・パラメータ直接指定）
@@ -117,21 +116,22 @@ class Pipeline:
             status: ステータスフィルタ（カンマ区切り、例: "todo,idea"）
             top_k: 取得件数（Noneの場合は設定ファイルから読み込み）
             subgraph_strategy: グラフ抽出戦略（Noneの場合は設定ファイルから読み込み）
-            answer_with_llm: LLMで最終回答を生成するか
-            save_output: 検索結果を保存するか
+            **kwargs: answer_with_llm, save_output など
         """
         from lib.pipelines.rag_query_executor import execute_rag_query_debug
+        from lib.rag_models import QueryDebugParams
 
-        execute_rag_query_debug(
+        params = QueryDebugParams(
             topic=topic,
             start_date=start_date,
             end_date=end_date,
             status=status,
             top_k=top_k or config.rag_top_k,
             subgraph_strategy=subgraph_strategy or config.rag_subgraph_strategy,
-            answer_with_llm=answer_with_llm,
-            save_output=save_output,
+            answer_with_llm=kwargs.get("answer_with_llm", False),
+            save_output=kwargs.get("save_output", False),
         )
+        execute_rag_query_debug(params)
 
     def clustering(
         self,
