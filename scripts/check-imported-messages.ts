@@ -6,7 +6,7 @@ import * as fs from 'fs';
 
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db } from '../lib/db/client-node';
+import { db, closeDb } from '../lib/db/client-node';
 import { messages } from '../lib/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
@@ -61,4 +61,8 @@ async function checkImportedMessages() {
   }
 }
 
-checkImportedMessages().catch(console.error).finally(() => process.exit(0));
+checkImportedMessages()
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

@@ -5,7 +5,7 @@ import * as path from 'path';
 
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db } from '../lib/db/client-node';
+import { db, closeDb } from '../lib/db/client-node';
 import { lines, messages } from '../lib/db/schema';
 import { sql } from 'drizzle-orm';
 
@@ -36,4 +36,8 @@ async function checkLines() {
   messagesByLine.forEach(row => console.log(`  - ${row.line_id}: ${row.count} 件`));
 }
 
-checkLines().catch(console.error).finally(() => process.exit(0));
+checkLines()
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

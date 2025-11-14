@@ -8,7 +8,7 @@ import admin from 'firebase-admin';
 // .env.localを読み込む
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db as neonDb } from '../lib/db/client-node';
+import { db as neonDb, closeDb } from '../lib/db/client-node';
 import { messages } from '../lib/db/schema';
 
 const OUTPUT_DIR = path.join(__dirname, '../output/db-exports');
@@ -180,4 +180,8 @@ if (args.length === 0) {
 
 const conversationId = args[0];
 
-exportDiff(conversationId).catch(console.error);
+exportDiff(conversationId)
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

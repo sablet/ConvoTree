@@ -7,7 +7,7 @@ import * as fs from 'fs';
 // .env.localを読み込む
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db } from '../lib/db/client-node';
+import { db, closeDb } from '../lib/db/client-node';
 import { messages, lines, tags, tagGroups } from '../lib/db/schema';
 import { sql } from 'drizzle-orm';
 
@@ -119,6 +119,7 @@ async function exportData() {
   );
 
   const hierarchicalData = await db.execute(sql.raw(hierarchicalQuery));
+  // メッセージを 一定期間(30 minutes etc) x line_id で集約するため、メッセージ時刻が点ではなくのstart/end の範囲になっている
   const hierarchicalCSV = convertToCSV(
     hierarchicalData as unknown as Record<string, unknown>[],
     ['full_path', 'start_time', 'end_time', 'combined_content']
@@ -156,4 +157,8 @@ async function exportData() {
   console.log(`\n📁 エクスポート先: ${exportDir}`);
 }
 
-exportData().catch(console.error);
+exportData()
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

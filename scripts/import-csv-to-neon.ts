@@ -8,7 +8,7 @@ import * as crypto from 'crypto';
 // .env.localを読み込む
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db } from '../lib/db/client-node';
+import { db, closeDb } from '../lib/db/client-node';
 import { messages, lines, tags, tagGroups } from '../lib/db/schema';
 
 // UUID v4 を生成する関数
@@ -276,4 +276,8 @@ if (!fs.existsSync(importDir)) {
   process.exit(1);
 }
 
-importData(importDir, clearExisting).catch(console.error);
+importData(importDir, clearExisting)
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

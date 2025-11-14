@@ -5,7 +5,7 @@ import * as path from 'path';
 
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-import { db } from '../lib/db/client-node';
+import { db, closeDb } from '../lib/db/client-node';
 import { sql } from 'drizzle-orm';
 
 async function testConnection() {
@@ -32,4 +32,8 @@ async function testConnection() {
   }
 }
 
-testConnection().catch(console.error);
+testConnection()
+  .catch(console.error)
+  .finally(async () => {
+    await closeDb();
+  });

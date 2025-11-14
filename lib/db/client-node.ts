@@ -23,3 +23,13 @@ export const db = new Proxy({} as ReturnType<typeof drizzle>, {
     return getDb()[prop as keyof ReturnType<typeof drizzle>];
   }
 });
+
+// データベース接続をクローズする関数
+export async function closeDb() {
+  const client = _client;
+  if (client) {
+    _client = null;
+    _db = null;
+    await client.end();
+  }
+}
