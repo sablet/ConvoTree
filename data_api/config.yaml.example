@@ -1,0 +1,71 @@
+# データAPI設定ファイル（サンプル）
+# 実際に使用する際は、config.yaml としてコピーして値を設定してください
+# cp config.yaml.example config.yaml
+
+# 入力データパス
+input:
+  # メッセージCSVファイルのパス
+  csv_path: "/Users/your-username/git_dir/chat-line/output/db-exports/YYYY-MM-DDTHH-MM-SS/messages_with_hierarchy.csv"
+
+# 出力ディレクトリパス
+output:
+  # ベースディレクトリ
+  base_dir: "output"
+  # クラスタリング結果
+  clustering_dir: "output/message_clustering"
+  # 意図抽出結果
+  intent_extraction_dir: "output/intent_extraction"
+  # ゴールネットワーク
+  goal_network_dir: "output/goal_network"
+  # RAGインデックス
+  rag_index_dir: "output/rag_index"
+
+# クラスタリングパラメータ
+clustering:
+  # 埋め込みベクトルの重み
+  embedding_weight: 0.7
+  # 時間の重み
+  time_weight: 0.15
+  # 階層の重み
+  hierarchy_weight: 0.15
+  # 時間カーネル帯域幅（時間）
+  time_bandwidth_hours: 168.0
+  # クラスタリング手法 (kmeans_constrained, hdbscan, agglomerative)
+  method: "kmeans_constrained"
+  # 最小クラスタサイズ
+  size_min: 10
+  # 最大クラスタサイズ
+  size_max: 50
+  # K-meansのクラスタ数（Noneの場合は自動決定）
+  n_clusters: null
+  # HDBSCANの最小クラスタサイズ
+  min_cluster_size: 10
+  # HDBSCANの最小サンプル数
+  min_samples: 5
+  # Agglomerativeのリンケージ方法
+  linkage: "average"
+  # K-meansの初期化回数
+  n_init: 10
+  # K-meansの最大反復回数
+  max_iter: 300
+
+# 意図抽出パラメータ
+intent_extraction:
+  # 並列処理の最大ワーカー数
+  max_workers: 5
+
+# ゴールネットワーク構築パラメータ
+goal_network:
+  # 入力ファイル（ultra_intents_enriched.json）
+  input_path: "output/intent_extraction/cross_cluster/ultra_intents_enriched.json"
+
+# RAGパラメータ
+rag:
+  # 統合ドキュメント出力先
+  unified_intents_path: "output/rag_index/unified_intents.jsonl"
+  # Chroma DBパス
+  chroma_db_path: "output/rag_index/chroma_db"
+  # 検索時の取得件数
+  top_k: 15
+  # グラフ抽出戦略
+  subgraph_strategy: "balanced"

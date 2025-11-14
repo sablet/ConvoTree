@@ -25,6 +25,7 @@ import fire  # type: ignore[import-untyped]
 # lib/pipelines をインポート可能にする
 sys.path.insert(0, str(Path(__file__).parent))
 
+from lib.config import config
 from lib.pipelines.goal_network_builder import build_ultra_goal_network
 from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
 from lib.pipelines.message_clustering import ClusteringConfig, run_clustering_pipeline
@@ -53,23 +54,23 @@ class Pipeline:
 
     def rag_build(
         self,
-        output: str = "output/rag_index/unified_intents.jsonl",
-        chroma_db: str = "output/rag_index/chroma_db",
+        output: str | None = None,
+        chroma_db: str | None = None,
         build_chroma: bool = True,
     ):
         """
         RAGインデックス構築
 
         Args:
-            output: 統合ドキュメント出力先
-            chroma_db: Chroma DBパス
+            output: 統合ドキュメント出力先（Noneの場合は設定ファイルから読み込み）
+            chroma_db: Chroma DBパス（Noneの場合は設定ファイルから読み込み）
             build_chroma: Chromaインデックスを構築するか
         """
         from lib.pipelines.rag_index_builder import build_rag_index
 
         build_rag_index(
-            output_path=output,
-            chroma_db_path=chroma_db,
+            output_path=output or config.rag_unified_intents_path,
+            chroma_db_path=chroma_db or config.rag_chroma_db_path,
             build_chroma=build_chroma,
         )
 
@@ -101,8 +102,8 @@ class Pipeline:
         start_date: str | None = None,
         end_date: str | None = None,
         status: str = "todo,idea",
-        top_k: int = 15,
-        subgraph_strategy: str = "balanced",
+        top_k: int | None = None,
+        subgraph_strategy: str | None = None,
         answer_with_llm: bool = False,
         save_output: bool = False,
     ):
@@ -114,8 +115,8 @@ class Pipeline:
             start_date: 開始日（YYYY-MM-DD）
             end_date: 終了日（YYYY-MM-DD）
             status: ステータスフィルタ（カンマ区切り、例: "todo,idea"）
-            top_k: 取得件数
-            subgraph_strategy: グラフ抽出戦略（balanced）
+            top_k: 取得件数（Noneの場合は設定ファイルから読み込み）
+            subgraph_strategy: グラフ抽出戦略（Noneの場合は設定ファイルから読み込み）
             answer_with_llm: LLMで最終回答を生成するか
             save_output: 検索結果を保存するか
         """
@@ -126,33 +127,35 @@ class Pipeline:
             start_date=start_date,
             end_date=end_date,
             status=status,
-            top_k=top_k,
-            subgraph_strategy=subgraph_strategy,
+            top_k=top_k or config.rag_top_k,
+            subgraph_strategy=subgraph_strategy or config.rag_subgraph_strategy,
             answer_with_llm=answer_with_llm,
             save_output=save_output,
         )
 
     def clustering(
         self,
-        csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
+        csv_path: str | None = None,
         **kwargs: Unpack[ClusteringKwargs],
     ):
         """
         ステップ1: メッセージクラスタリング
 
         Args:
-            csv_path: 入力CSVファイルパス
+            csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
             **kwargs: ClusteringConfigの追加パラメータ
-                embedding_weight: 埋め込み重み (default: 0.7)
-                time_weight: 時間重み (default: 0.15)
-                hierarchy_weight: 階層重み (default: 0.15)
-                time_bandwidth_hours: 時間カーネル帯域幅 (default: 168.0)
-                method: クラスタリング手法 (default: "kmeans_constrained")
-                size_min: 最小クラスタサイズ (default: 10)
-                size_max: 最大クラスタサイズ (default: 50)
+                embedding_weight: 埋め込み重み (default: config.yaml or 0.7)
+                time_weight: 時間重み (default: config.yaml or 0.15)
+                hierarchy_weight: 階層重み (default: config.yaml or 0.15)
+                time_bandwidth_hours: 時間カーネル帯域幅 (default: config.yaml or 168.0)
+                method: クラスタリング手法 (default: config.yaml or "kmeans_constrained")
+                size_min: 最小クラスタサイズ (default: config.yaml or 10)
+                size_max: 最大クラスタサイズ (default: config.yaml or 50)
         """
-        config = ClusteringConfig(csv_path=csv_path, **kwargs)
-        run_clustering_pipeline(config)
+        clustering_config = ClusteringConfig(
+            csv_path=csv_path or config.csv_path, **kwargs
+        )
+        run_clustering_pipeline(clustering_config)
 
     def intent_extraction(
         self,
@@ -161,7 +164,7 @@ class Pipeline:
         save_raw: bool = False,
         aggregate: bool = False,
         aggregate_all: bool = False,
-        max_workers: int = 5,
+        max_workers: int | None = None,
     ):
         """
         ステップ2: 意図抽出と階層化
@@ -172,7 +175,7 @@ class Pipeline:
             save_raw: 生レスポンスを保存
             aggregate: 上位意図を生成
             aggregate_all: 最上位意図を生成
-            max_workers: 並列実行の最大ワーカー数
+            max_workers: 並列実行の最大ワーカー数（Noneの場合は設定ファイルから読み込み）
         """
         run_intent_extraction_pipeline(
             gemini=gemini,
@@ -180,12 +183,12 @@ class Pipeline:
             save_raw=save_raw,
             aggregate=aggregate,
             aggregate_all=aggregate_all,
-            max_workers=max_workers,
+            max_workers=max_workers or config.intent_extraction_max_workers,
         )
 
     def goal_network(
         self,
-        input_path: str = "output/intent_extraction/cross_cluster/ultra_intents_enriched.json",
+        input_path: str | None = None,
         ultra_id: int | None = None,
         save_prompts: bool = False,
     ):
@@ -193,38 +196,39 @@ class Pipeline:
         ステップ3: ゴールネットワーク構築
 
         Args:
-            input_path: ultra_intents_enriched.jsonのパス
+            input_path: ultra_intents_enriched.jsonのパス（Noneの場合は設定ファイルから読み込み）
             ultra_id: 処理対象のUltra Intent ID
             save_prompts: プロンプト/レスポンスを保存
         """
         build_ultra_goal_network(
-            input_path=input_path,
+            input_path=input_path or config.goal_network_input_path,
             ultra_id=ultra_id,
             save_prompts=save_prompts,
         )
 
     def run_all(
         self,
-        csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
+        csv_path: str | None = None,
         save_prompts: bool = False,
     ):
         """
         全パイプライン実行: clustering → intent_extraction → goal_network
 
         Args:
-            csv_path: 入力CSVファイルパス
+            csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
             save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
         """
+        input_csv = csv_path or config.csv_path
         print("=" * 60)
         print("メッセージ意図分析パイプライン")
         print("=" * 60)
-        print(f"入力: {csv_path}\n")
+        print(f"入力: {input_csv}\n")
 
         # ステップ1: メッセージクラスタリング
         print("\n" + "=" * 60)
         print("ステップ 1/3: メッセージクラスタリング")
         print("=" * 60)
-        self.clustering(csv_path=csv_path)
+        self.clustering(csv_path=input_csv)
 
         # 出力ファイルの確認
         cluster_output = Path("output/message_clustering/clustered_messages.csv")
@@ -279,7 +283,7 @@ class Pipeline:
 
     def run_all_with_rag(
         self,
-        csv_path: str = "/Users/mikke/git_dir/chat-line/output/db-exports/2025-11-10T23-54-08/messages_with_hierarchy.csv",
+        csv_path: str | None = None,
         save_prompts: bool = False,
     ):
         """
@@ -287,11 +291,11 @@ class Pipeline:
         clustering → intent_extraction → goal_network → rag_build
 
         Args:
-            csv_path: 入力CSVファイルパス
+            csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
             save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
         """
         # 基本パイプライン実行
-        self.run_all(csv_path=csv_path, save_prompts=save_prompts)
+        self.run_all(csv_path=csv_path or config.csv_path, save_prompts=save_prompts)
 
         # ステップ4: RAGインデックス構築
         print("\n" + "=" * 60)
