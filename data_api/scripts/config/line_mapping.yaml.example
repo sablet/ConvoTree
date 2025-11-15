@@ -1,0 +1,26 @@
+# Claude History Parser - LINE マッピング設定
+#
+# プロジェクトパスから自動生成されたline_idを、
+# より意味のある階層的な名前にマッピングできます。
+#
+# マッピング方式: 部分一致
+# - line_idにパターンが含まれていればマッチ
+# - より長い（具体的な）パターンが優先される
+#
+# 形式: "パターン: 表示名"
+# - パターンはline_idに含まれる文字列（例: chat-line, spec2code）
+# - 表示名は任意の文字列（階層表示は " -> " で区切る）
+# - マッピングされていないline_idはそのまま使用されます
+
+line_mapping:
+  # 例: chat-line系プロジェクト
+  # "chat-line_data_api" を含むものは、より具体的なマッピングが適用される
+  chat-line_data_api: "Inbox -> タスク開発アプリ -> claude_code -> data_api"
+  chat-line: "Inbox -> タスク開発アプリ -> claude_code"
+
+  # 例: その他のプロジェクト
+  spec2code: "開発ツール -> spec2code"
+  trade_pipelines: "トレード -> パイプライン開発"
+  TransformFn: "開発ツール -> TransformFn"
+  TypeTrace: "開発ツール -> TypeTrace"
+  Pipeliner: "個人開発 -> Pipeliner"

@@ -4,8 +4,13 @@
 
 # 入力データパス
 input:
-  # メッセージCSVファイルのパス
-  csv_path: "/Users/your-username/git_dir/chat-line/output/db-exports/YYYY-MM-DDTHH-MM-SS/messages_with_hierarchy.csv"
+  # メッセージCSVファイルのパス（単一ファイルまたは複数ファイルのリスト）
+  # 単一ファイルの場合:
+  # csv_path: "/Users/your-username/git_dir/chat-line/output/db-exports/YYYY-MM-DDTHH-MM-SS/messages_with_hierarchy.csv"
+  # 複数ファイルの場合（結合して処理）:
+  csv_path:
+    - "/Users/your-username/git_dir/chat-line/output/db-exports/2025-11-01/messages_with_hierarchy.csv"
+    - "/Users/your-username/git_dir/chat-line/output/db-exports/2025-11-02/messages_with_hierarchy.csv"
 
 # 出力ディレクトリパス
 output:

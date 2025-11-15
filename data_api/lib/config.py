@@ -127,10 +127,14 @@ class Config:
 
     # === 入力パス ===
     @property
-    def csv_path(self) -> str:
-        """入力CSVファイルのパス"""
+    def csv_path(self) -> list[str]:
+        """入力CSVファイルのパス（リストまたは単一文字列）"""
         value = self.get("input.csv_path")
-        assert isinstance(value, str)
+        # 単一文字列の場合はリストに変換
+        if isinstance(value, str):
+            return [value]
+        # リストの場合はそのまま返す
+        assert isinstance(value, list)
         return value
 
     # === 出力パス ===

@@ -1,4 +1,4 @@
-.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run
+.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history
 
 UV ?= uv
 
@@ -71,3 +71,6 @@ rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
 		$(if $(STATUS),--status=$(STATUS)) \
 		$(if $(TOP_K),--top_k=$(TOP_K)) \
 		$(if $(SUBGRAPH),--subgraph_strategy=$(SUBGRAPH))
+
+parse-claude-history: ## Claude履歴をパースしてCSVに変換
+	$(UV) run python scripts/claude_history_parser.py parse

@@ -3,3 +3,4 @@ config.yaml
 *.pyc
 data
 output_*
+scripts/config/line_mapping.yaml
