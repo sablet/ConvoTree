@@ -13,8 +13,11 @@ export class ApiDataSource implements IDataSource {
     return response.json();
   }
 
-  async loadChatData(): Promise<ChatData> {
-    return this.fetchApi('/api/chat/data');
+  async loadChatData(since?: Date): Promise<ChatData> {
+    const url = since
+      ? `/api/chat/data?since=${since.toISOString()}`
+      : '/api/chat/data';
+    return this.fetchApi(url);
   }
 
   async createMessage(message: MessageInput): Promise<string> {

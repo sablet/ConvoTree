@@ -117,7 +117,7 @@ export function useMessageMove({
         setLines
       })
       clearAllCaches()
-      chatRepository.clearAllCache()
+      await chatRepository.clearAllCache()
 
       const movedCount = selectedMessages.size
       setSelectedMessages(new Set())

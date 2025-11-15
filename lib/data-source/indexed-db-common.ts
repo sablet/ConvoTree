@@ -20,11 +20,7 @@ interface ChatLineDB extends DBSchema {
   };
   timestamps: {
     key: string;
-    value: {
-      conversationId: string;
-      collection: string;
-      timestamp: string;
-    };
+    value: string;
   };
 }
 

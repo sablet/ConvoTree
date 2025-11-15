@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef, Dispatch, SetStateAction } from "react"
 import { dataSourceManager } from "@/lib/data-source"
 import { useChatRepository } from "@/lib/chat-repository-context"
 import type { ChatData as SourceChatData } from "@/lib/data-source/base"
@@ -69,9 +69,9 @@ const transformChatData = (data: SourceChatData): ChatData => {
 }
 
 interface DataSetters {
-  setMessages: (messages: Record<string, Message>) => void
-  setLines: (lines: Record<string, Line>) => void
-  setTags: (tags: Record<string, Tag>) => void
+  setMessages: Dispatch<SetStateAction<Record<string, Message>>>
+  setLines: Dispatch<SetStateAction<Record<string, Line>>>
+  setTags: Dispatch<SetStateAction<Record<string, Tag>>>
 }
 
 const applyLoadedData = (
@@ -79,9 +79,9 @@ const applyLoadedData = (
   setters: DataSetters,
   onDataLoaded?: (data: ChatData) => void
 ) => {
-  setters.setMessages(chatData.messages)
-  setters.setLines(chatData.lines)
-  setters.setTags(chatData.tags)
+  setters.setMessages((prev: Record<string, Message>) => ({ ...prev, ...chatData.messages }))
+  setters.setLines((prev: Record<string, Line>) => ({ ...prev, ...chatData.lines }))
+  setters.setTags((prev: Record<string, Tag>) => ({ ...prev, ...chatData.tags }))
 
   if (onDataLoaded) {
     onDataLoaded(chatData)
@@ -96,6 +96,9 @@ const clearAllData = (setters: DataSetters) => {
 
 export function useChatData(options: UseChatDataOptions = {}) {
   const chatRepository = useChatRepository();
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   const [messages, setMessages] = useState<Record<string, Message>>({})
   const [lines, setLines] = useState<Record<string, Line>>({})
   const [tags, setTags] = useState<Record<string, Tag>>({})
@@ -103,10 +106,11 @@ export function useChatData(options: UseChatDataOptions = {}) {
 
   const loadChatData = useCallback(async (clearCache = false) => {
     const setters: DataSetters = { setMessages, setLines, setTags }
+    const opts = optionsRef.current;
 
     try {
-      if (options.setIsLoading) {
-        options.setIsLoading(true)
+      if (opts.setIsLoading) {
+        opts.setIsLoading(true)
       }
       setError(null)
 
@@ -121,7 +125,7 @@ export function useChatData(options: UseChatDataOptions = {}) {
         onRevalidate: (data) => {
           console.log('[useChatData] Background revalidation completed, updating UI');
           const chatData = transformChatData(data);
-          applyLoadedData(chatData, setters, options.onDataLoaded);
+          applyLoadedData(chatData, setters, opts.onDataLoaded);
         }
       })
 
@@ -134,21 +138,21 @@ export function useChatData(options: UseChatDataOptions = {}) {
       }
 
       const chatData = transformChatData(result.data)
-      applyLoadedData(chatData, setters, options.onDataLoaded)
+      applyLoadedData(chatData, setters, opts.onDataLoaded)
 
-      if (options.setIsLoading) {
-        options.setIsLoading(false)
+      if (opts.setIsLoading) {
+        opts.setIsLoading(false)
       }
     } catch (error) {
       console.error('[useChatData] Failed to load chat data:', error)
       clearAllData(setters)
       setError(error instanceof Error ? error : new Error('データの読み込みに失敗しました'))
 
-      if (options.setIsLoading) {
-        options.setIsLoading(false)
+      if (opts.setIsLoading) {
+        opts.setIsLoading(false)
       }
     }
-  }, [chatRepository, options])
+  }, [chatRepository])
 
   return {
     messages,

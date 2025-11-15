@@ -134,7 +134,7 @@ async function performLineDeletion({
 
   clearTimelineCaches()
   clearAllCaches()
-  chatRepository.clearAllCache()
+  await chatRepository.clearAllCache()
   setFooterKey(prev => prev + 1)
 }
 
@@ -212,7 +212,7 @@ async function performLineCreation({
 
   clearTimelineCaches()
   clearAllCaches()
-  chatRepository.clearAllCache()
+  await chatRepository.clearAllCache()
   setFooterKey(prev => prev + 1)
 
   if (messagesContainerRef.current) {

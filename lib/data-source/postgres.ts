@@ -1,14 +1,18 @@
-import { eq } from 'drizzle-orm';
+import { eq, gt } from 'drizzle-orm';
 import { db } from '@/lib/db/client';
 import { messages, lines, tags, tagGroups } from '@/lib/db/schema';
 import type { Message, Line, Tag, TagGroup } from '@/lib/types';
 import type { IDataSource, ChatData, MessageInput } from './base';
 
 export class PostgresDataSource implements IDataSource {
-  async loadChatData(): Promise<ChatData> {
+  async loadChatData(since?: Date): Promise<ChatData> {
     const [messagesData, linesData, tagsData, tagGroupsData] = await Promise.all([
-      db.select().from(messages),
-      db.select().from(lines),
+      since
+        ? db.select().from(messages).where(gt(messages.updated_at, since))
+        : db.select().from(messages),
+      since
+        ? db.select().from(lines).where(gt(lines.updated_at, since))
+        : db.select().from(lines),
       db.select().from(tags),
       db.select().from(tagGroups),
     ]);

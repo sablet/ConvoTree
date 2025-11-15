@@ -70,7 +70,7 @@ export async function executeBulkDelete(params: ExecuteBulkDeleteParams): Promis
   })
 
   clearAllCaches()
-  chatRepository.clearAllCache()
+  await chatRepository.clearAllCache()
   setSelectedMessages(new Set())
   setShowBulkDeleteDialog(false)
   setIsSelectionMode(false)

@@ -25,15 +25,13 @@ interface UpdateMessageParams {
   setMessages: React.Dispatch<React.SetStateAction<Record<string, Message>>>
   setIsUpdating: React.Dispatch<React.SetStateAction<boolean>>
   onCacheInvalidate: () => void
-  chatRepository: ChatRepository
 }
 
 function useHandleUpdateMessage({
   messages,
   setMessages,
   setIsUpdating,
-  onCacheInvalidate,
-  chatRepository
+  onCacheInvalidate
 }: UpdateMessageParams): (messageId: string, updates: Partial<Message>) => Promise<void> {
   return useCallback(async (messageId: string, updates: Partial<Message>) => {
     const targetMessage = messages[messageId]
@@ -86,7 +84,6 @@ function useHandleUpdateMessage({
       })
 
       onCacheInvalidate()
-      chatRepository.clearAllCache()
 
     } catch (error) {
       console.error('Failed to update message:', error)
@@ -205,8 +202,7 @@ export function useMessageOperations({
     messages,
     setMessages,
     setIsUpdating,
-    onCacheInvalidate,
-    chatRepository
+    onCacheInvalidate
   })
 
   /**
@@ -276,9 +272,8 @@ export function useMessageOperations({
         updateLocalStateAfterMessage(newMessageId, newMessage, setMessages, setLines)
       }
 
-      // キャッシュをクリア（構造が変わった可能性があるため）
+      // キャッシュの再検証をトリガー
       onCacheInvalidate()
-      chatRepository.clearAllCache()
 
       // メッセージ投稿後に最下部にスクロール
       if (onScrollToBottom) {
@@ -328,7 +323,6 @@ export function useMessageOperations({
 
       updateLocalMessageState(editingMessageId, updateData, editingContent, setMessages)
       onCacheInvalidate()
-      chatRepository.clearAllCache()
 
       setEditingMessageId(null)
       setEditingContent("")
@@ -388,7 +382,6 @@ export function useMessageOperations({
 
       updateLocalStateAfterDelete(messageId, message, setMessages, setLines)
       onCacheInvalidate()
-      chatRepository.clearAllCache()
       setDeleteConfirmation(null)
 
     } catch (error) {

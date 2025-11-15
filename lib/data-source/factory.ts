@@ -47,8 +47,8 @@ export class DataSourceManager {
     return this.dataSource;
   }
 
-  async loadChatData() {
-    return this.dataSource.loadChatData();
+  async loadChatData(since?: Date) {
+    return this.dataSource.loadChatData(since);
   }
 
   async createMessage(message: Parameters<IDataSource['createMessage']>[0]) {

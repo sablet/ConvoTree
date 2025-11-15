@@ -4,7 +4,12 @@ import type { ChatData, DataSource } from '@/lib/data-source/base';
 import { DataSourceFactory, dataSourceManager } from '@/lib/data-source/factory';
 import type { IDataSource } from '@/lib/data-source/base';
 import { loadChatDataCache, saveChatDataCache, clearChatDataCache } from '@/lib/data-source/indexed-db-storage';
-import { clearAllLastFetchTimestamps } from '@/lib/data-source/indexed-db-timestamp-storage';
+import {
+  getLastFetchTimestamp,
+  setLastFetchTimestamp,
+  clearAllLastFetchTimestamps
+} from '@/lib/data-source/indexed-db-timestamp-storage';
+import type { Message, Line } from '@/lib/types';
 
 interface LoadChatDataOptions {
   source?: DataSource;
@@ -30,6 +35,7 @@ export class ChatRepository {
   private static readonly CACHE_KEY = 'default';
   private currentData: ChatData | null = null;
   private initPromise: Promise<void> | null = null;
+  private loadPromise: Promise<LoadChatDataResult> | null = null;
 
   constructor() {
     // 即座にIndexedDBからのキャッシュ復元を開始（バックグラウンド）
@@ -67,6 +73,12 @@ export class ChatRepository {
    * キャッシュがあれば即座に返し、バックグラウンドで最新データを取得
    */
   async loadChatData(options: LoadChatDataOptions = {}): Promise<LoadChatDataResult> {
+    // 既に進行中のリクエストがあれば、それを待つ（重複排除）
+    if (this.loadPromise) {
+      console.log('[ChatRepository] Reusing in-flight request');
+      return this.loadPromise;
+    }
+
     // 初回はIndexedDBからキャッシュを復元
     await this.ensureInitialized();
 
@@ -91,12 +103,20 @@ export class ChatRepository {
     }
 
     // キャッシュがない場合は通常通りサーバーから取得
-    try {
-      return await this.loadFromSource(source);
-    } catch (primaryError) {
-      console.error(`[ChatRepository] Primary source '${source}' failed:`, primaryError);
-      return await this.handleLoadError(primaryError, fallbackSources, source);
-    }
+    this.loadPromise = (async () => {
+      try {
+        const result = await this.loadFromSource(source);
+        this.loadPromise = null;
+        return result;
+      } catch (primaryError) {
+        console.error(`[ChatRepository] Primary source '${source}' failed:`, primaryError);
+        const result = await this.handleLoadError(primaryError, fallbackSources, source);
+        this.loadPromise = null;
+        return result;
+      }
+    })();
+
+    return this.loadPromise;
   }
 
   /**
@@ -179,9 +199,17 @@ export class ChatRepository {
 
   private async loadFromSource(source: DataSource): Promise<LoadChatDataResult> {
     const dataSource = this.resolveDataSource(source);
-    const fetchedData = await dataSource.loadChatData();
+    const since = await getLastFetchTimestamp(ChatRepository.CACHE_KEY);
 
-    // 既存データとマージ（差分取得の場合）
+    console.log(`[ChatRepository] Fetching data${since ? ` since ${since.toISOString()}` : ' (full)'}`);
+    const fetchedData = await dataSource.loadChatData(since ?? undefined);
+    const fetchedCount = {
+      messages: Object.keys(fetchedData.messages).length,
+      lines: fetchedData.lines.length,
+    };
+    console.log(`[ChatRepository] Fetched ${fetchedCount.messages} messages, ${fetchedCount.lines} lines`);
+
+    // 既存データとマージ
     let mergedData = fetchedData;
     if (this.currentData) {
       const mergedMessages = { ...this.currentData.messages, ...fetchedData.messages };
@@ -194,15 +222,16 @@ export class ChatRepository {
         }
       });
 
+      const allLines = [...this.currentData.lines, ...fetchedData.lines];
+      const lineMap = new Map<string, Line>();
+      allLines.forEach(line => {
+        lineMap.set(line.id, line);
+      });
+      const mergedLines = Array.from(lineMap.values());
+
       mergedData = {
         messages: filteredMessages,
-        lines: [...this.currentData.lines, ...fetchedData.lines].reduce((acc, line) => {
-          const existing = acc.find(l => l.id === line.id);
-          if (existing) {
-            return acc.map(l => l.id === line.id ? line : l);
-          }
-          return [...acc, line];
-        }, [] as typeof fetchedData.lines),
+        lines: mergedLines,
         tags: { ...this.currentData.tags, ...fetchedData.tags },
         tagGroups: { ...this.currentData.tagGroups, ...fetchedData.tagGroups }
       };
@@ -220,15 +249,48 @@ export class ChatRepository {
       };
     }
 
+    // 取得したデータから最新の updated_at を計算
+    const latestTimestamp = this.getLatestTimestamp(mergedData);
+    console.log(`[ChatRepository] Saving latest timestamp: ${latestTimestamp.toISOString()}`);
+
     // マージしたデータをメモリとIndexedDBにキャッシュ
     this.currentData = mergedData;
-    await saveChatDataCache(ChatRepository.CACHE_KEY, mergedData);
+    await Promise.all([
+      saveChatDataCache(ChatRepository.CACHE_KEY, mergedData),
+      setLastFetchTimestamp(ChatRepository.CACHE_KEY, latestTimestamp)
+    ]);
 
     return {
       data: mergedData,
       source,
       fromCache: false
     };
+  }
+
+  private getLatestTimestamp(data: ChatData): Date {
+    let latest = new Date(0);
+
+    // messages の updated_at をチェック
+    Object.values(data.messages).forEach((msg) => {
+      if (msg.updatedAt && msg.updatedAt > latest) {
+        latest = msg.updatedAt;
+      }
+      if (msg.timestamp > latest) {
+        latest = msg.timestamp;
+      }
+    });
+
+    // lines の updated_at をチェック
+    data.lines.forEach((line) => {
+      if (line.updated_at) {
+        const lineDate = new Date(line.updated_at);
+        if (lineDate > latest) {
+          latest = lineDate;
+        }
+      }
+    });
+
+    return latest;
   }
 
   /**
@@ -261,9 +323,27 @@ export class ChatRepository {
     const dataSource = dataSourceManager.getDataSource();
     const messageId = await dataSource.createMessage(message);
 
-    // 作成したメッセージを再取得してキャッシュに追加
-    // （loadChatDataを呼んで差分取得することで、updatedAtなどの値も正確に取得）
-    await this.loadChatData();
+    // 新しいメッセージをキャッシュに追加
+    if (this.currentData) {
+      const newMessage: Message = {
+        ...message,
+        id: messageId,
+        // サーバーで設定されるタイムスタンプを仮で設定。
+        // 正確な値は次回の差分取得で更新される。
+        timestamp: new Date(),
+        updatedAt: new Date(),
+      };
+
+      this.currentData.messages[messageId] = newMessage;
+
+      // タイムスタンプはクリアせず、キャッシュのみ更新
+      await saveChatDataCache(ChatRepository.CACHE_KEY, this.currentData);
+      console.log(`[ChatRepository] Message ${messageId} created and added to cache`);
+    } else {
+      // キャッシュがない場合は、次回のロードで全データ取得されるようにする
+      await clearAllLastFetchTimestamps(ChatRepository.CACHE_KEY);
+      console.log('[ChatRepository] Timestamp cleared after message creation (no existing cache)');
+    }
 
     return messageId;
   }
@@ -277,8 +357,39 @@ export class ChatRepository {
     const dataSource = dataSourceManager.getDataSource();
     await dataSource.updateMessage(id, updates);
 
-    // 更新したメッセージを再取得してキャッシュに反映
-    await this.loadChatData();
+    // メッセージをキャッシュ内で更新
+    if (this.currentData && this.currentData.messages[id]) {
+      // 'deleted' フラグの変更を正しく処理する
+      if (updates.deleted) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete this.currentData.messages[id];
+      } else {
+        const existingMessage = this.currentData.messages[id];
+
+        // スプレッド構文でマージ
+        const merged = {
+          ...existingMessage,
+          ...updates,
+        };
+
+        // Date 型に変換
+        const updatedMessage: Message = {
+          ...merged,
+          timestamp: merged.timestamp ? new Date(merged.timestamp) : existingMessage.timestamp,
+          updatedAt: new Date(), // 常に現在時刻で更新
+        };
+
+        this.currentData.messages[id] = updatedMessage;
+      }
+
+      // タイムスタンプはクリアせず、キャッシュのみ更新
+      await saveChatDataCache(ChatRepository.CACHE_KEY, this.currentData);
+      console.log(`[ChatRepository] Message ${id} updated in cache`);
+    } else {
+      // キャッシュがない、または対象メッセージがキャッシュにない場合
+      await clearAllLastFetchTimestamps(ChatRepository.CACHE_KEY);
+      console.log('[ChatRepository] Timestamp cleared after message update (no existing cache or message)');
+    }
   }
 
   /**

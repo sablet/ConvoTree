@@ -4,21 +4,16 @@ import type { Message, Line, Tag, TagGroup } from '@/lib/types';
 import type { IDataSource, ChatData, MessageInput } from './base';
 
 export class SampleDataSource implements IDataSource {
-  async loadChatData(): Promise<ChatData> {
-    try {
-      const response = await fetch('/data/chat-sample.json');
-      const data = await response.json();
+  async loadChatData(_since?: Date): Promise<ChatData> {
+    const response = await fetch('/data/chat-sample.json');
+    const data = await response.json();
 
-      return {
-        messages: data.messages || {},
-        lines: data.lines || [],
-        tags: data.tags || {},
-        tagGroups: data.tagGroups || {},
-      };
-    } catch (error) {
-      console.error('❌ Failed to load sample data:', error);
-      throw error;
-    }
+    return {
+      messages: data.messages || {},
+      lines: data.lines || [],
+      tags: data.tags || {},
+      tagGroups: data.tagGroups || {},
+    };
   }
 
   async createMessage(_message: MessageInput): Promise<string> {

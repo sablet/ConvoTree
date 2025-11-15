@@ -149,7 +149,7 @@ export function useImageOperations({
 
       // キャッシュをクリア
       onCacheInvalidate()
-      chatRepository.clearAllCache()
+      await chatRepository.clearAllCache()
 
     } catch {
       alert('画像の削除に失敗しました')

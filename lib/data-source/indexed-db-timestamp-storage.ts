@@ -2,44 +2,24 @@
 
 import { getDB, TIMESTAMP_STORE } from './indexed-db-common';
 
-interface LastFetchTimestamps {
-  messages: Date | null;
-  lines: Date | null;
-  tags: Date | null;
-  tagGroups: Date | null;
+export async function getLastFetchTimestamp(key: string): Promise<Date | null> {
+  if (typeof window === 'undefined') return null;
+
+  const db = await getDB();
+  const timestamp = await db.get(TIMESTAMP_STORE, key);
+  return timestamp ? new Date(timestamp) : null;
 }
 
-/**
- * キーを生成
- */
-function getKey(conversationId: string, collection: keyof LastFetchTimestamps): string {
-  return `${conversationId}_${collection}`;
-}
-
-/**
- * 全てのタイムスタンプをクリア
- */
-export async function clearAllLastFetchTimestamps(conversationId: string): Promise<void> {
+export async function setLastFetchTimestamp(key: string, timestamp: Date): Promise<void> {
   if (typeof window === 'undefined') return;
 
-  try {
-    const db = await getDB();
-    const collections: Array<keyof LastFetchTimestamps> = [
-      'messages',
-      'lines',
-      'tags',
-      'tagGroups',
-    ];
+  const db = await getDB();
+  await db.put(TIMESTAMP_STORE, timestamp.toISOString(), key);
+}
 
-    await Promise.all(
-      collections.map((collection) => {
-        const key = getKey(conversationId, collection);
-        return db.delete(TIMESTAMP_STORE, key);
-      })
-    );
+export async function clearAllLastFetchTimestamps(key: string): Promise<void> {
+  if (typeof window === 'undefined') return;
 
-    console.log('[IndexedDBTimestampStorage] Cleared all fetch timestamps');
-  } catch (error) {
-    console.warn('[IndexedDBTimestampStorage] Failed to clear timestamps:', error);
-  }
+  const db = await getDB();
+  await db.delete(TIMESTAMP_STORE, key);
 }

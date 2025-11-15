@@ -12,8 +12,8 @@ export type MessageInput = Omit<Message, 'id' | 'timestamp'> & {
 };
 
 export interface IDataSource {
-  // Data loading
-  loadChatData(): Promise<ChatData>;
+  // Data loading - since を指定すると差分取得
+  loadChatData(since?: Date): Promise<ChatData>;
 
   // Message operations
   createMessage(message: MessageInput): Promise<string>;
