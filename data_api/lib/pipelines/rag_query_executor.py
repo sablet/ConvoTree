@@ -408,6 +408,201 @@ def extract_query_params(query: str, save_prompt: bool = True) -> "QueryParams":
     return QueryParams(**params_dict)
 
 
+def _is_silent_mode() -> bool:
+    """
+    サイレントモードかどうかを判定
+
+    Returns:
+        サイレントモードの場合True
+    """
+    import os
+
+    return os.environ.get("SILENT_MODE") == "1"
+
+
+def _print_query_header(query: str) -> None:
+    """
+    クエリ実行のヘッダーを表示
+
+    Args:
+        query: クエリ文字列
+    """
+    print("=" * 60)
+    print("RAGクエリ実行（自然言語モード）")
+    print("=" * 60)
+    print(f"\nクエリ: {query}")
+
+
+def _extract_and_print_params(query: str, silent: bool) -> QueryParams:
+    """
+    クエリパラメータを抽出して表示
+
+    Args:
+        query: クエリ文字列
+        silent: サイレントモードかどうか
+
+    Returns:
+        QueryParams
+    """
+    if not silent:
+        print("\n[1/4] クエリパラメータ抽出中...")
+    params = extract_query_params(query, save_prompt=not silent)
+    if not silent:
+        print("  ✓ 抽出パラメータ:")
+        print(f"    - period_days: {params.period_days}")
+        print(f"    - topic: {params.topic}")
+        print(f"    - status_filter: {[s.value for s in params.status_filter]}")
+    return params
+
+
+def _build_search_conditions(
+    params: QueryParams,
+) -> tuple[str | None, str | None, str | None, str]:
+    """
+    QueryParamsから検索条件を構築
+
+    Args:
+        params: クエリパラメータ
+
+    Returns:
+        (topic, start_date_str, end_date_str, status_str)
+    """
+    topic = params.topic
+    if params.period_days:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=params.period_days)
+        start_date_str = start_date.strftime("%Y-%m-%d")
+        end_date_str = end_date.strftime("%Y-%m-%d")
+    else:
+        start_date_str = None
+        end_date_str = None
+
+    status_str = ",".join([s.value for s in params.status_filter])
+    return topic, start_date_str, end_date_str, status_str
+
+
+def _execute_search_and_print(
+    topic: str | None,
+    start_date_str: str | None,
+    end_date_str: str | None,
+    status_str: str,
+    chroma_db_path: str,
+    silent: bool,
+) -> list[UnifiedIntent]:
+    """
+    検索を実行して結果を表示
+
+    Args:
+        topic: トピック
+        start_date_str: 開始日
+        end_date_str: 終了日
+        status_str: ステータス文字列
+        chroma_db_path: Chroma DBのパス
+        silent: サイレントモードかどうか
+
+    Returns:
+        検索結果の意図リスト
+    """
+    if not silent:
+        print("\n[2/4] 検索実行中...")
+
+    intents = execute_search(
+        topic=topic,
+        start_date=start_date_str,
+        end_date=end_date_str,
+        status=status_str,
+        top_k=15,
+        chroma_db_path=chroma_db_path,
+    )
+
+    if not silent:
+        print(f"  ✓ 検索結果: {len(intents)} 件")
+        _print_search_results(intents)
+
+    return intents
+
+
+def _extract_subgraph_and_print(
+    intents: list[UnifiedIntent], network_path: str, silent: bool
+) -> "GoalNetwork":
+    """
+    部分グラフを抽出して結果を表示
+
+    Args:
+        intents: 検索結果の意図リスト
+        network_path: ゴールネットワークJSONのパス
+        silent: サイレントモードかどうか
+
+    Returns:
+        抽出された部分グラフ
+    """
+    if not silent:
+        print("\n[3/4] 部分グラフ抽出中...")
+
+    subgraph = extract_subgraph(
+        intents,
+        network_path=network_path,
+        strategy="balanced",
+    )
+
+    if not silent:
+        print(
+            f"  ✓ 部分グラフ: {len(subgraph.nodes)} ノード, {len(subgraph.edges)} エッジ"
+        )
+
+    return subgraph
+
+
+def _generate_and_print_answer(
+    query: str,
+    intents: list[UnifiedIntent],
+    subgraph: "GoalNetwork",
+    network_path: str,
+    answer_with_llm: bool,
+    silent: bool,
+) -> str | None:
+    """
+    LLM回答を生成して表示
+
+    Args:
+        query: クエリ文字列
+        intents: 検索結果の意図リスト
+        subgraph: 抽出された部分グラフ
+        network_path: ゴールネットワークJSONのパス
+        answer_with_llm: LLMで回答を生成するか
+        silent: サイレントモードかどうか
+
+    Returns:
+        LLM生成の回答（生成しない場合はNone）
+    """
+    if not answer_with_llm:
+        if not silent:
+            print("\n[4/4] LLM回答生成をスキップしました")
+        return None
+
+    if not silent:
+        print("\n[4/4] LLM回答生成中...")
+
+    answer = generate_answer(
+        query=query,
+        intents=intents,
+        subgraph=subgraph,
+        network_path=network_path,
+        save_prompt=not silent,
+    )
+
+    if silent:
+        print(answer)
+    else:
+        print(f"\n{'=' * 60}")
+        print("【LLM生成の回答】")
+        print(f"{'=' * 60}")
+        print(answer)
+        print(f"{'=' * 60}")
+
+    return answer
+
+
 def execute_rag_query(
     query: str,
     answer_with_llm: bool = True,
@@ -428,78 +623,31 @@ def execute_rag_query(
     Returns:
         SearchResult
     """
-    print("=" * 60)
-    print("RAGクエリ実行（自然言語モード）")
-    print("=" * 60)
-    print(f"\nクエリ: {query}")
+    silent = _is_silent_mode()
+
+    if not silent:
+        _print_query_header(query)
 
     # 1. クエリパラメータ抽出
-    print("\n[1/4] クエリパラメータ抽出中...")
-    params = extract_query_params(query)
-    print("  ✓ 抽出パラメータ:")
-    print(f"    - period_days: {params.period_days}")
-    print(f"    - topic: {params.topic}")
-    print(f"    - status_filter: {[s.value for s in params.status_filter]}")
+    params = _extract_and_print_params(query, silent)
 
-    # 2. 検索実行
-    print("\n[2/4] 検索実行中...")
+    # 2. 検索条件構築
+    topic, start_date_str, end_date_str, status_str = _build_search_conditions(params)
 
-    # パラメータから検索条件を構築
-    topic = params.topic
-    start_date = None
-    end_date = None
-    if params.period_days:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=params.period_days)
-        start_date_str = start_date.strftime("%Y-%m-%d")
-        end_date_str = end_date.strftime("%Y-%m-%d")
-    else:
-        start_date_str = None
-        end_date_str = None
-
-    status_str = ",".join([s.value for s in params.status_filter])
-
-    intents = execute_search(
-        topic=topic,
-        start_date=start_date_str,
-        end_date=end_date_str,
-        status=status_str,
-        top_k=15,
-        chroma_db_path=chroma_db_path,
+    # 3. 検索実行
+    intents = _execute_search_and_print(
+        topic, start_date_str, end_date_str, status_str, chroma_db_path, silent
     )
-    print(f"  ✓ 検索結果: {len(intents)} 件")
 
-    # 結果を表示
-    _print_search_results(intents)
+    # 4. 部分グラフ抽出
+    subgraph = _extract_subgraph_and_print(intents, network_path, silent)
 
-    # 3. 部分グラフ抽出
-    print("\n[3/4] 部分グラフ抽出中...")
-    subgraph = extract_subgraph(
-        intents,
-        network_path=network_path,
-        strategy="balanced",
+    # 5. LLM回答生成
+    answer = _generate_and_print_answer(
+        query, intents, subgraph, network_path, answer_with_llm, silent
     )
-    print(f"  ✓ 部分グラフ: {len(subgraph.nodes)} ノード, {len(subgraph.edges)} エッジ")
 
-    # 4. LLM回答生成
-    answer = None
-    if answer_with_llm:
-        print("\n[4/4] LLM回答生成中...")
-        answer = generate_answer(
-            query=query,
-            intents=intents,
-            subgraph=subgraph,
-            network_path=network_path,
-        )
-        print(f"\n{'=' * 60}")
-        print("【LLM生成の回答】")
-        print(f"{'=' * 60}")
-        print(answer)
-        print(f"{'=' * 60}")
-    else:
-        print("\n[4/4] LLM回答生成をスキップしました")
-
-    # 5. 結果保存
+    # 6. 結果保存
     return _finalize_and_save_result(
         query, params, intents, subgraph, answer, save_output
     )
@@ -542,6 +690,9 @@ def _finalize_and_save_result(
     Returns:
         SearchResult
     """
+    import os
+
+    silent = os.environ.get("SILENT_MODE") == "1"
     result = SearchResult(
         query=query,
         params=params,
@@ -563,9 +714,10 @@ def _finalize_and_save_result(
 
         _save_search_result_to_json(result, output_path)
 
-    print("\n" + "=" * 60)
-    print("✅ クエリ実行完了！")
-    print("=" * 60)
+    if not silent:
+        print("\n" + "=" * 60)
+        print("✅ クエリ実行完了！")
+        print("=" * 60)
 
     return result
 

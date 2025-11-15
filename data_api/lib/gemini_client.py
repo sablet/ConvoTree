@@ -77,7 +77,8 @@ class GenerativeModel:
 
         # キャッシュヒット判定
         _status = "CACHE" if _elapsed < CACHE_HIT_THRESHOLD_SECONDS else "API"
-        print(f"[{_status}] {_elapsed:.3f}s", flush=True)
+        if os.environ.get("SILENT_MODE") != "1":
+            print(f"[{_status}] {_elapsed:.3f}s", flush=True)
 
         return Response(response)
 
@@ -134,11 +135,13 @@ def initialize() -> None:
     load_dotenv()
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        print("❌ エラー: GEMINI_API_KEY が .env ファイルに設定されていません")
+        if os.environ.get("SILENT_MODE") != "1":
+            print("❌ エラー: GEMINI_API_KEY が .env ファイルに設定されていません")
         raise SystemExit(1)
 
     configure(api_key=api_key)
-    print("✓ Gemini API を初期化しました（litellm + diskcacheでキャッシュ有効）")
+    if os.environ.get("SILENT_MODE") != "1":
+        print("✓ Gemini API を初期化しました（litellm + diskcacheでキャッシュ有効）")
 
 
 def get_cache_stats() -> dict:

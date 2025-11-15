@@ -1,4 +1,4 @@
-.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history export-neon rag-query-ui
+.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history export-neon rag-query-ui rag-query-silent
 
 UV ?= uv
 
@@ -15,7 +15,14 @@ rag-query: ## RAG検索（自然言語クエリ）
 		echo "Error: QUERY is required. Usage: make rag-query QUERY=\"your question\""; \
 		exit 1; \
 	fi
-	$(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm
+	$(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm $(if $(SILENT),--silent)
+
+rag-query-silent: ## RAG検索（LLM回答のみ出力）
+	@if [ -z "$(QUERY)" ]; then \
+		echo "Error: QUERY is required. Usage: make rag-query-silent QUERY=\"your question\""; \
+		exit 1; \
+	fi
+	SILENT_MODE=1 $(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm
 
 rag-query-ui: ## RAGクエリUIを起動（Streamlit）
 	$(UV) run streamlit run scripts/rag_query_app.py

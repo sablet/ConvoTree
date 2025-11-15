@@ -3,5 +3,4 @@ config.yaml
 *.pyc
 data
 output_*
-output/rag_query_history/
 scripts/config/line_mapping.yaml

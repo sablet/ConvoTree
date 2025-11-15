@@ -523,6 +523,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "scikit-learn" },
     { name = "sentence-transformers" },
+    { name = "streamlit" },
     { name = "tqdm" },
     { name = "unidic-lite" },
 ]
@@ -534,7 +535,6 @@ dev = [
     { name = "pandas-stubs" },
     { name = "pylint" },
     { name = "ruff" },
-    { name = "streamlit" },
     { name = "types-pyyaml" },
     { name = "vulture" },
     { name = "xenon" },
@@ -557,6 +557,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "scikit-learn", specifier = ">=1.7.2" },
     { name = "sentence-transformers", specifier = ">=5.1.2" },
+    { name = "streamlit", specifier = ">=1.51.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
     { name = "unidic-lite", specifier = ">=1.0.8" },
 ]
@@ -568,7 +569,6 @@ dev = [
     { name = "pandas-stubs", specifier = ">=2.3.2.250926" },
     { name = "pylint", specifier = ">=4.0.2" },
     { name = "ruff", specifier = ">=0.14.4" },
-    { name = "streamlit", specifier = ">=1.51.0" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20250915" },
     { name = "vulture", specifier = ">=2.14" },
     { name = "xenon", specifier = ">=0.9.3" },

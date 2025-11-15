@@ -42,14 +42,20 @@ class Config:
             config_path: 設定ファイルのパス
             example_path: サンプル設定ファイルのパス
         """
+        import os
+
+        silent = os.environ.get("SILENT_MODE") == "1"
+
         # 1. デフォルト設定を読み込み
         example_file = Path(example_path)
         if example_file.exists():
             with open(example_file, encoding="utf-8") as f:
                 self._config = yaml.safe_load(f) or {}
-            print(f"✓ デフォルト設定を読み込みました: {example_path}")
+            if not silent:
+                print(f"✓ デフォルト設定を読み込みました: {example_path}")
         else:
-            print(f"⚠️  デフォルト設定ファイルが見つかりません: {example_path}")
+            if not silent:
+                print(f"⚠️  デフォルト設定ファイルが見つかりません: {example_path}")
             self._config = {}
 
         # 2. ユーザー設定で上書き
@@ -58,8 +64,9 @@ class Config:
             with open(config_file, encoding="utf-8") as f:
                 user_config = yaml.safe_load(f) or {}
             self._merge_config(user_config)
-            print(f"✓ ユーザー設定で上書きしました: {config_path}")
-        else:
+            if not silent:
+                print(f"✓ ユーザー設定で上書きしました: {config_path}")
+        elif not silent:
             print(
                 f"ℹ️  ユーザー設定ファイルが見つかりません: {config_path}\n"
                 f"   {example_path} のデフォルト値を使用します。"

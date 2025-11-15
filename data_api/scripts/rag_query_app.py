@@ -2,6 +2,7 @@
 """RAGクエリ検証用Streamlitアプリ"""
 
 import json
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -55,7 +56,9 @@ with st.sidebar:
     if history:
         for i, entry in enumerate(history):
             ts = datetime.fromisoformat(entry["timestamp"]).strftime("%m/%d %H:%M")
-            query_preview = entry["query"][:30] + ("..." if len(entry["query"]) > 30 else "")
+            query_preview = entry["query"][:30] + (
+                "..." if len(entry["query"]) > 30 else ""
+            )
             if st.button(f"{ts} - {query_preview}", key=f"hist_{i}"):
                 st.session_state.selected_history = entry
     else:
@@ -83,20 +86,24 @@ if st.button("検索実行"):
                     capture_output=True,
                     text=True,
                     check=True,
+                    env={**os.environ, "SILENT_MODE": "1"},
                 )
                 save_history_entry(query, result.stdout, result.stderr, True)
                 st.success("検索完了")
-                st.text_area("結果", result.stdout, height=400, disabled=True)
+                st.subheader("結果")
+                st.code(result.stdout, language=None)
 
                 if result.stderr:
                     with st.expander("標準エラー出力"):
-                        st.text_area("", result.stderr, height=200, disabled=True, label_visibility="collapsed")
+                        st.code(result.stderr, language=None)
 
             except subprocess.CalledProcessError as e:
                 save_history_entry(query, e.stdout, e.stderr, False)
                 st.error(f"エラーが発生しました: {e}")
-                st.text_area("標準出力", e.stdout, height=200, disabled=True)
-                st.text_area("標準エラー出力", e.stderr, height=200, disabled=True)
+                st.subheader("標準出力")
+                st.code(e.stdout, language=None)
+                st.subheader("標準エラー出力")
+                st.code(e.stderr, language=None)
 
 # 履歴選択時の表示
 if "selected_history" in st.session_state:
@@ -104,8 +111,10 @@ if "selected_history" in st.session_state:
     st.divider()
     st.subheader("履歴の詳細")
     st.text(f"実行日時: {entry['timestamp']}")
-    st.text_area("クエリ", entry["query"], height=100, disabled=True)
-    st.text_area("結果", entry["stdout"], height=400, disabled=True)
+    st.subheader("クエリ")
+    st.code(entry["query"], language=None)
+    st.subheader("結果")
+    st.code(entry["stdout"], language=None)
     if entry["stderr"]:
         with st.expander("標準エラー出力"):
-            st.text_area("", entry["stderr"], height=200, disabled=True, label_visibility="collapsed")
+            st.code(entry["stderr"], language=None)
