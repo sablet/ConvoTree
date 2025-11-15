@@ -445,7 +445,9 @@ def parse_history(
             filtered_sessions, similarity_threshold
         )
         after_cross_session_dedup = sum(len(s) for s in final_sessions)
-        cross_session_dups_removed = after_within_session_dedup - after_cross_session_dedup
+        cross_session_dups_removed = (
+            after_within_session_dedup - after_cross_session_dedup
+        )
         print(
             f"Removed {cross_session_dups_removed} duplicate messages across sessions "
             f"({after_within_session_dedup} → {after_cross_session_dedup})"
@@ -513,7 +515,8 @@ def parse_history(
         "total_sessions": len(sessions),
         "total_messages_before_dedup": original_messages,
         "total_messages_after_dedup": filtered_messages,
-        "duplicates_removed_within_sessions": original_messages - after_within_session_dedup,
+        "duplicates_removed_within_sessions": original_messages
+        - after_within_session_dedup,
         "duplicates_removed_across_sessions": cross_session_dups_removed,
         "duplicates_removed_total": original_messages - filtered_messages,
         "line_distribution": stats,

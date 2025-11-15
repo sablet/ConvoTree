@@ -1,7 +1,8 @@
-.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history
+.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history export-neon
 
 UV ?= uv
 
+ALL_DIRS := main.py lib scripts
 CHECK_DIRS := main.py lib
 ENTRY_POINT := main.py
 
@@ -12,7 +13,7 @@ help: ## ヘルプを表示
 check: duplication dead-code deps module-lines format lint complexity typecheck ## 全品質チェックを実行（一部エラーになる可能性あり）
 
 format: ## コードフォーマット (ruff format)
-	$(UV) run ruff format $(CHECK_DIRS)
+	$(UV) run ruff format $(ALL_DIRS)
 
 lint: ## リントチェック (ruff check)
 	$(UV) run ruff check --fix --unsafe-fixes $(CHECK_DIRS)
@@ -26,9 +27,6 @@ complexity: ## 複雑度チェック (xenon)
 duplication: ## コードの重複をチェック (jscpd)
 	jscpd --config .jscpd.json $(CHECK_DIRS)
 
-jscpd: ## コードの重複をチェック (非推奨: duplication を使用)
-	jscpd .
-
 dead-code: ## 未使用コード検出 (vulture)
 	$(UV) run vulture $(ENTRY_POINT) --min-confidence 80
 
@@ -39,32 +37,32 @@ module-lines: ## モジュール行数チェック (pylint max-module-lines=500)
 	$(UV) run pylint $(CHECK_DIRS) --rcfile=pyproject.toml
 
 run: ## 全パイプライン実行（クラスタリング→意図抽出→ゴールネットワーク）
-	$(UV) run python main.py run_all --save_prompts
+	$(UV) run python $(ENTRY_POINT) run_all --save_prompts --save_raw 
 
 run-with-rag: ## 全パイプライン + RAGインデックス構築
-	$(UV) run python main.py run_all_with_rag --save_prompts
+	$(UV) run python $(ENTRY_POINT) run_all_with_rag --save_prompts
 
 clustering: ## ステップ1: メッセージクラスタリング
-	$(UV) run python main.py clustering
+	$(UV) run python $(ENTRY_POINT) clustering
 
 intent-extraction: ## ステップ2: 意図抽出と階層化（Gemini API使用）
-	$(UV) run python main.py intent_extraction --gemini --aggregate --aggregate_all
+	$(UV) run python $(ENTRY_POINT) intent_extraction --gemini --aggregate --aggregate_all
 
 goal-network: ## ステップ3: ゴールネットワーク構築
-	$(UV) run python main.py goal_network
+	$(UV) run python $(ENTRY_POINT) goal_network
 
 rag-build: ## RAGインデックス構築
-	$(UV) run python main.py rag_build
+	$(UV) run python $(ENTRY_POINT) rag_build
 
 rag-query: ## RAG検索（自然言語クエリ）
 	@if [ -z "$(QUERY)" ]; then \
 		echo "Error: QUERY is required. Usage: make rag-query QUERY=\"your question\""; \
 		exit 1; \
 	fi
-	$(UV) run python main.py rag_query --query="$(QUERY)" --answer_with_llm
+	$(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm
 
 rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
-	$(UV) run python main.py rag_query_debug \
+	$(UV) run python $(ENTRY_POINT) rag_query_debug \
 		$(if $(TOPIC),--topic="$(TOPIC)") \
 		$(if $(START),--start_date=$(START)) \
 		$(if $(END),--end_date=$(END)) \
@@ -74,3 +72,13 @@ rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
 
 parse-claude-history: ## Claude履歴をパースしてCSVに変換
 	$(UV) run python scripts/claude_history_parser.py parse
+
+export-neon: ## 親ディレクトリでnpm run export:neonを実行
+	cd ../../chat-line && npm run export:neon
+
+all-build:
+	@make export-neon
+	@make parse-claude-history
+	# @make run
+	@make run-with-rag
+	# @make rag-query QUERY="タスク開発アプリで次にやるべきことは何か"

@@ -98,7 +98,7 @@ def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[fl
 class ClusteringConfig:
     """k-means-constrainedクラスタリング設定"""
 
-    csv_path: str  # 入力CSVファイルパス
+    csv_paths: list[str]  # 入力CSVファイルパス（単一または複数）
 
     # 距離合成の重み（正規化後）
     embedding_weight: float = 0.7  # 埋め込み距離の重み
@@ -135,22 +135,25 @@ class MessageData:
 
     def __init__(
         self,
-        csv_path: str,
+        csv_paths: list[str] | str,
         embedding_path: Optional[str] = None,
         generate_embeddings: bool = True,
     ):
         """
         Args:
-            csv_path: メッセージCSVのパス
+            csv_paths: メッセージCSVのパス（単一または複数）
             embedding_path: 埋め込みJSONのパス（Noneの場合は自動生成または埋め込み無し）
             generate_embeddings: 埋め込みを自動生成するか
         """
-        self.csv_path = Path(csv_path)
+        # 単一文字列の場合はリストに変換
+        if isinstance(csv_paths, str):
+            csv_paths = [csv_paths]
+        self.csv_paths = [Path(p) for p in csv_paths]
         self.embedding_path = Path(embedding_path) if embedding_path else None
         self.generate_embeddings_flag = generate_embeddings
 
-        # データ読み込み
-        self.df = pd.read_csv(self.csv_path)
+        # データ読み込み（複数ファイルの場合は結合）
+        self._load_csv_files()
         self._preprocess_dataframe()
 
         # 埋め込み読み込みまたは生成
@@ -160,6 +163,25 @@ class MessageData:
             self._load_embeddings()
         elif self.generate_embeddings_flag:
             self._generate_embeddings()
+
+    def _load_csv_files(self) -> None:
+        """複数のCSVファイルを読み込んで結合"""
+        dfs = []
+        for csv_path in self.csv_paths:
+            if not csv_path.exists():
+                raise FileNotFoundError(f"CSVファイルが見つかりません: {csv_path}")
+            df = pd.read_csv(csv_path)
+            dfs.append(df)
+            print(f"✓ CSVファイルを読み込み: {csv_path} ({len(df)}件)")
+
+        # 複数のDataFrameを結合
+        if len(dfs) == 0:
+            raise ValueError("CSVファイルが指定されていません")
+        if len(dfs) == 1:
+            self.df = dfs[0]
+        else:
+            self.df = pd.concat(dfs, ignore_index=True)
+            print(f"✓ {len(dfs)}個のCSVファイルを結合しました（合計{len(self.df)}件）")
 
     def _preprocess_dataframe(self) -> None:
         """DataFrameの前処理"""
@@ -755,7 +777,7 @@ class ClusterVisualizer:
 
 
 def run_clustering_with_config(
-    csv_path: str,
+    csv_paths: list[str] | str,
     embedding_path: Optional[str],
     config: ClusteringConfig,
     generate_embeddings: bool = True,
@@ -764,7 +786,7 @@ def run_clustering_with_config(
     設定に基づいてクラスタリングを実行
 
     Args:
-        csv_path: メッセージCSVのパス
+        csv_paths: メッセージCSVのパス（単一または複数）
         embedding_path: 埋め込みJSONのパス（Noneの場合は自動生成）
         config: クラスタリング設定
         generate_embeddings: 埋め込みを自動生成するか
@@ -774,7 +796,7 @@ def run_clustering_with_config(
     """
     # データ読み込み（埋め込み自動生成含む）
     data = MessageData(
-        csv_path, embedding_path, generate_embeddings=generate_embeddings
+        csv_paths, embedding_path, generate_embeddings=generate_embeddings
     )
 
     # クラスタリング実行
@@ -788,7 +810,7 @@ def run_clustering_with_config(
 
 
 def tune_parameters(
-    csv_path: str,
+    csv_paths: list[str] | str,
     embedding_path: Optional[str],
     param_grid: Dict,
     generate_embeddings: bool = True,
@@ -797,7 +819,7 @@ def tune_parameters(
     パラメータチューニング
 
     Args:
-        csv_path: メッセージCSVのパス
+        csv_paths: メッセージCSVのパス（単一または複数）
         embedding_path: 埋め込みJSONのパス（Noneの場合は自動生成）
         param_grid: 探索するパラメータ範囲
         generate_embeddings: 埋め込みを自動生成するか
@@ -828,7 +850,7 @@ def tune_parameters(
         try:
             # クラスタリング実行
             data, labels, metrics = run_clustering_with_config(
-                csv_path,
+                csv_paths,
                 embedding_path,
                 config,
                 generate_embeddings=generate_embeddings,
@@ -871,7 +893,7 @@ def run_clustering_pipeline(config: ClusteringConfig) -> None:
 
     # クラスタリング実行
     data, labels, metrics = run_clustering_with_config(
-        config.csv_path, embedding_path, config, generate_embeddings=True
+        config.csv_paths, embedding_path, config, generate_embeddings=True
     )
 
     # 可視化

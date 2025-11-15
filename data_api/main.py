@@ -6,9 +6,19 @@ messages_with_hierarchy.csv から ultra_intent_goal_network.json までの
 全パイプラインを実行します。
 
 使用例:
+  # 単一ファイル
   python main.py run_all --csv_path=data/messages.csv
-  python main.py run_all_with_rag --csv_path=data/messages.csv
   python main.py clustering --csv_path=data/messages.csv
+
+  # 複数ファイル（カンマ区切り）
+  python main.py run_all --csv_path="data/msg1.csv,data/msg2.csv"
+  python main.py clustering --csv_path="data/msg1.csv,data/msg2.csv"
+
+  # 設定ファイルから読み込み（複数ファイル対応）
+  python main.py run_all
+  python main.py run_all_with_rag
+
+  # その他のコマンド
   python main.py intent_extraction --gemini --aggregate --aggregate_all
   python main.py goal_network
   python main.py rag_build
@@ -143,6 +153,7 @@ class Pipeline:
 
         Args:
             csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
+                     単一ファイルまたはカンマ区切りで複数ファイルを指定可能
             **kwargs: ClusteringConfigの追加パラメータ
                 embedding_weight: 埋め込み重み (default: config.yaml or 0.7)
                 time_weight: 時間重み (default: config.yaml or 0.15)
@@ -152,9 +163,17 @@ class Pipeline:
                 size_max: 最大クラスタサイズ (default: config.yaml or 50)
                 n_clusters: クラスタ数 (default: 自動決定)
         """
+        # CSVパスの処理
+        if csv_path is not None:
+            # コマンドライン引数の場合、カンマ区切りで複数ファイル対応
+            csv_paths = [p.strip() for p in csv_path.split(",")]
+        else:
+            # 設定ファイルから読み込み（既にリスト形式）
+            csv_paths = config.csv_path
+
         # config.yamlの値をデフォルトとして使用し、kwargsで上書き
         clustering_config = ClusteringConfig(
-            csv_path=csv_path or config.csv_path,
+            csv_paths=csv_paths,
             embedding_weight=kwargs.get(
                 "embedding_weight", config.clustering_embedding_weight
             ),
@@ -238,19 +257,27 @@ class Pipeline:
 
         Args:
             csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
+                     カンマ区切りで複数ファイルを指定可能
             save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
         """
-        input_csv = csv_path or config.csv_path
+        # CSVパスの処理
+        if csv_path is not None:
+            input_paths = [p.strip() for p in csv_path.split(",")]
+            input_display = ", ".join(input_paths)
+        else:
+            input_paths = config.csv_path
+            input_display = ", ".join(input_paths)
+
         print("=" * 60)
         print("メッセージ意図分析パイプライン")
         print("=" * 60)
-        print(f"入力: {input_csv}\n")
+        print(f"入力: {input_display}\n")
 
         # ステップ1: メッセージクラスタリング
         print("\n" + "=" * 60)
         print("ステップ 1/3: メッセージクラスタリング")
         print("=" * 60)
-        self.clustering(csv_path=input_csv)
+        self.clustering(csv_path=csv_path)
 
         # 出力ファイルの確認
         cluster_output = Path("output/message_clustering/clustered_messages.csv")
@@ -314,10 +341,11 @@ class Pipeline:
 
         Args:
             csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
+                     カンマ区切りで複数ファイルを指定可能
             save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
         """
         # 基本パイプライン実行
-        self.run_all(csv_path=csv_path or config.csv_path, save_prompts=save_prompts)
+        self.run_all(csv_path=csv_path, save_prompts=save_prompts)
 
         # ステップ4: RAGインデックス構築
         print("\n" + "=" * 60)
