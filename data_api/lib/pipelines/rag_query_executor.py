@@ -203,10 +203,21 @@ def _load_intents_map(
         {intent_id: UnifiedIntent}のマッピング
     """
     if jsonl_path.exists():
+        from lib.parse_error_handler import safe_json_loads
+
         intents_map: dict[str, UnifiedIntent] = {}
         with open(jsonl_path, encoding="utf-8") as f:
-            for line in f:
-                intent_dict = json.loads(line)
+            for line_num, line in enumerate(f, start=1):
+                intent_dict = safe_json_loads(
+                    line.strip(),
+                    context=f"unified_intents_jsonl_line_{line_num}",
+                    metadata={"file": str(jsonl_path), "line_number": line_num},
+                    log_errors=True,
+                    save_errors=True,
+                )
+                if intent_dict is None:
+                    print(f"  ⚠️ 行 {line_num} のパースをスキップしました: {jsonl_path}")
+                    continue
                 intent_obj = UnifiedIntent(**intent_dict)
                 intents_map[intent_obj.id] = intent_obj
         return intents_map
@@ -377,18 +388,21 @@ def extract_query_params(query: str, save_prompt: bool = True) -> "QueryParams":
 
         print(f"  ✓ パーサーレスポンスを保存しました: {response_path}")
 
-    # JSONパース（```json ... ``` のような囲みがある場合は除去）
-    response_clean = response.text.strip()
-    if response_clean.startswith("```json"):
-        response_clean = response_clean[7:]  # "```json\n" を除去
-    if response_clean.startswith("```"):
-        response_clean = response_clean[3:]  # "```" を除去
-    if response_clean.endswith("```"):
-        response_clean = response_clean[:-3]  # "```" を除去
-    response_clean = response_clean.strip()
+    # JSONパース（エラーハンドリング付き）
+    from lib.parse_error_handler import extract_json_from_markdown
 
-    # JSONパース
-    params_dict = json.loads(response_clean)
+    params_dict = extract_json_from_markdown(
+        response.text,
+        context="rag_query_param_extraction",
+        metadata={"query": query[:100]},  # クエリの最初の100文字を保存
+        log_errors=True,
+        save_errors=True,
+    )
+
+    if params_dict is None:
+        raise ValueError(
+            f"クエリパラメータの抽出に失敗しました。クエリ: {query[:100]}..."
+        )
 
     # Pydantic検証
     return QueryParams(**params_dict)

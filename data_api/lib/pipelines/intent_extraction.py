@@ -16,7 +16,7 @@ import json
 import pandas as pd  # type: ignore[import-untyped]
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 import sys
 from tqdm import tqdm  # type: ignore[import-untyped]
@@ -289,38 +289,39 @@ def generate_cluster_prompt(
     }
 
 
-def preprocess_extract_json_from_response(text: str) -> Optional[List[Dict]]:
+def preprocess_extract_json_from_response(
+    text: str,
+    context: str = "intent_extraction",
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Optional[List[Dict]]:
     """
     【前処理】レスポンステキストからJSONを抽出してパース
 
     Args:
         text: Gemini APIのレスポンステキスト
+        context: パース処理のコンテキスト（エラーログ用）
+        metadata: 追加のメタデータ（エラーログ用）
 
     Returns:
         パースされたJSON（リスト）またはNone
     """
-    text = text.strip()
+    from lib.parse_error_handler import extract_json_from_markdown
 
-    # ```json ... ``` ブロックを探す
-    if "```json" in text:
-        start = text.find("```json") + 7
-        end = text.find("```", start)
-        json_text = text[start:end].strip()
-    elif "```" in text:
-        start = text.find("```") + 3
-        end = text.find("```", start)
-        json_text = text[start:end].strip()
-    else:
-        json_text = text
+    # JSONを抽出してパース（エラーハンドリング付き）
+    result = extract_json_from_markdown(
+        text, context=context, metadata=metadata, log_errors=True, save_errors=True
+    )
 
-    # JSONパース
-    try:
-        result = json.loads(json_text)
-        if not isinstance(result, list):
-            return None
-        return result
-    except json.JSONDecodeError:
+    # リスト型でない場合はエラー
+    if result is not None and not isinstance(result, list):
+        print(
+            f"\n⚠️ パース結果がリスト型ではありません（{type(result).__name__}）: {context}"
+        )
+        if metadata:
+            print(f"   メタデータ: {metadata}")
         return None
+
+    return result
 
 
 def postprocess_enrich_and_save_intents(
@@ -338,7 +339,11 @@ def postprocess_enrich_and_save_intents(
         処理後の意図リスト、またはNone
     """
     # JSONをパース（前処理）
-    intents = preprocess_extract_json_from_response(raw_response_text)
+    intents = preprocess_extract_json_from_response(
+        raw_response_text,
+        context=f"intent_extraction_cluster_{cluster_id:02d}",
+        metadata={"cluster_id": cluster_id, "message_count": len(message_metadata)},
+    )
     if intents is None:
         return None
 
@@ -634,7 +639,17 @@ def _request_and_parse_reassignments(
             f.write(response_text)
 
     # JSONをパース
-    reassignments = preprocess_extract_json_from_response(response_text)
+    reassignments = preprocess_extract_json_from_response(
+        response_text,
+        context=f"reassignment_{context.level_name}"
+        + (f"_cluster_{context.cluster_id:02d}" if context.cluster_id else ""),
+        metadata={
+            "level": context.level_name,
+            "cluster_id": context.cluster_id,
+            "retry_count": retry_count,
+            "uncovered_count": len(uncovered_list),
+        },
+    )
     if reassignments is None:
         print(f"\n⚠️ 再割り振り {retry_count}回目でJSONパース失敗")
         return None
@@ -816,7 +831,11 @@ def _call_llm_for_grouping(
         with open(raw_file, "w", encoding="utf-8") as f:
             f.write(response_text)
 
-    groups = preprocess_extract_json_from_response(response_text)
+    groups = preprocess_extract_json_from_response(
+        response_text,
+        context=f"aggregation_cluster_{cluster_id:02d}",
+        metadata={"cluster_id": cluster_id, "intent_count": len(intents)},
+    )
     if groups is None:
         print(f"\n⚠️ クラスタ {cluster_id} の意図グループ化でJSONパース失敗")
     return groups
@@ -1429,7 +1448,11 @@ def _call_llm_for_cross_cluster_grouping(
         with open(raw_file_path, "w", encoding="utf-8") as f:
             f.write(response_text)
 
-    groups = preprocess_extract_json_from_response(response_text)
+    groups = preprocess_extract_json_from_response(
+        response_text,
+        context="cross_cluster_aggregation",
+        metadata={"meta_intent_count": len(meta_intents)},
+    )
     if groups is None:
         print("\n⚠️ クラスタ横断意図グループ化でJSONパース失敗")
     return groups
