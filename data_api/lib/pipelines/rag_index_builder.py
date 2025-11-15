@@ -229,6 +229,7 @@ def _process_cluster_intents(
     cluster_intents: dict[int, list[dict[str, Any]]],
     hierarchy_map: dict[str, dict[str, str]],
     message_map: dict[str, dict[str, Any]],
+    valid_intent_ids: set[str] | None = None,
 ) -> list[UnifiedIntent]:
     """
     クラスタの意図を処理
@@ -237,6 +238,7 @@ def _process_cluster_intents(
         cluster_intents: {cluster_id: [intent_dict, ...]}
         hierarchy_map: {intent_id: {ultra_intent_id, ...}}
         message_map: {message_id: {combined_content, ...}}
+        valid_intent_ids: Goal Networkに含まれる有効なノードIDのセット（孤立ノード除外）
 
     Returns:
         UnifiedIntentのリスト
@@ -248,6 +250,10 @@ def _process_cluster_intents(
     ):
         for intent_idx, intent_dict in enumerate(intents):
             intent_id = f"intent_{cluster_id}_{intent_idx}"
+
+            # 孤立ノードを除外
+            if valid_intent_ids is not None and intent_id not in valid_intent_ids:
+                continue
 
             hierarchy_info = hierarchy_map.get(intent_id, {})
             if not hierarchy_info:
@@ -311,6 +317,7 @@ def generate_unified_intents(
     hierarchy_map: dict[str, dict[str, str]],
     message_map: dict[str, dict[str, Any]],
     generated_nodes: list[dict[str, Any]] | None = None,
+    valid_intent_ids: set[str] | None = None,
 ) -> list[UnifiedIntent]:
     """
     統合ドキュメントを生成
@@ -320,13 +327,14 @@ def generate_unified_intents(
         hierarchy_map: {intent_id: {ultra_intent_id, ...}}
         message_map: {message_id: {combined_content, ...}}
         generated_nodes: 生成ノード（ultra_intent, meta_intent）のリスト
+        valid_intent_ids: Goal Networkに含まれる有効なノードIDのセット（孤立ノード除外）
 
     Returns:
         UnifiedIntentのリスト
     """
     # cluster_intentsを処理
     unified_intents = _process_cluster_intents(
-        cluster_intents, hierarchy_map, message_map
+        cluster_intents, hierarchy_map, message_map, valid_intent_ids
     )
 
     # generated_nodesを処理
@@ -472,14 +480,19 @@ def build_rag_index(
         f"  ✓ Hierarchy data: {len(hierarchy_data.get('ultra_intents', []))} ultra intents"
     )
 
-    # generated_nodesを読み込む
+    # generated_nodes と有効なノードIDセットを読み込む
     generated_nodes: list[dict[str, Any]] = []
+    valid_intent_ids: set[str] | None = None
     network_path_obj = Path(network_path)
     if network_path_obj.exists():
         with open(network_path, encoding="utf-8") as f:
             network_data = json.load(f)
             generated_nodes = network_data.get("generated_nodes", [])
+            # Goal Networkに含まれるノードIDのみが有効（孤立ノード除外済み）
+            valid_intent_ids = set(network_data.get("nodes", {}).keys())
         print(f"  ✓ Generated nodes: {len(generated_nodes)} 件")
+        if valid_intent_ids:
+            print(f"  ✓ Valid intent IDs: {len(valid_intent_ids)} 件（孤立ノード除外済み）")
 
     # 2. マッピング構築
     print("\n[2/5] マッピング構築中...")
@@ -492,7 +505,7 @@ def build_rag_index(
     # 3. 統合ドキュメント生成
     print("\n[3/5] 統合ドキュメント生成中...")
     unified_intents = generate_unified_intents(
-        cluster_intents, hierarchy_map, message_map, generated_nodes
+        cluster_intents, hierarchy_map, message_map, generated_nodes, valid_intent_ids
     )
     print(
         f"  ✓ Unified intents: {len(unified_intents)} 件 (generated_nodes: {len(generated_nodes)} 件含む)"

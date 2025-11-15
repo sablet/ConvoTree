@@ -251,6 +251,11 @@ class UltraIntentGoalNetworkBuilder:
                 "status": gen_node.get("status", "idea"),
             }
 
+        # 孤立ノード（親も子もないノード）を除外
+        all_nodes, all_relations = self._remove_orphan_nodes(
+            all_nodes, all_relations
+        )
+
         # 結果を構築
         root_nodes = []
         for list_idx, ui in enumerate(self.ultra_intents):
@@ -290,6 +295,53 @@ class UltraIntentGoalNetworkBuilder:
         self._print_statistics(result, all_relations, all_nodes, raw_responses)
 
         return result
+
+    def _remove_orphan_nodes(
+        self, all_nodes: Dict, all_relations: List[Dict]
+    ) -> tuple[Dict, List[Dict]]:
+        """
+        孤立ノード（親も子もないノード）を除外
+
+        Args:
+            all_nodes: 全てのノード
+            all_relations: 全てのリレーション
+
+        Returns:
+            (除外後のnodes, 除外後のrelations)
+        """
+        # リレーションに含まれるノードIDを収集
+        nodes_in_relations = set()
+        for rel in all_relations:
+            nodes_in_relations.add(rel["from"])
+            nodes_in_relations.add(rel["to"])
+
+        # 孤立ノードを検出
+        orphan_nodes = []
+        for node_id, node in all_nodes.items():
+            # リレーションに含まれていないノードが孤立ノード
+            if node_id not in nodes_in_relations:
+                # ただし、ultra_{数字}（例: ultra_0, ultra_1）の形式はルートノードなので除外しない
+                # ultra_0_generated_XXX は除外対象
+                if node_id.startswith("ultra_") and "_generated_" not in node_id:
+                    # ultra_0 のような形式 → 保持（除外しない）
+                    continue
+
+                # それ以外（intent_X_Y, ultra_X_generated_XXX など）は除外対象
+                orphan_nodes.append((node_id, node))
+
+        MAX_DISPLAY_ORPHANS = 5
+        if orphan_nodes:
+            print(f"\n⚠️  孤立ノード除外: {len(orphan_nodes)}件")
+            for node_id, node in orphan_nodes[:MAX_DISPLAY_ORPHANS]:
+                print(f"    - {node_id}: {node['intent'][:60]}...")
+            if len(orphan_nodes) > MAX_DISPLAY_ORPHANS:
+                print(f"    ... 他{len(orphan_nodes) - MAX_DISPLAY_ORPHANS}件")
+
+            # ノードから除外
+            for node_id, _ in orphan_nodes:
+                del all_nodes[node_id]
+
+        return all_nodes, all_relations
 
     def _print_statistics(
         self,
@@ -720,6 +772,73 @@ class UltraIntentGoalNetworkBuilder:
         relations = self._build_hierarchical_relations(lines_with_level)
         return relations, generated_nodes
 
+    def _fix_intent_id_mismatches(
+        self,
+        relations: List[Dict],
+        covered_intents: List[Dict],
+        ultra_idx: int,
+    ) -> tuple[List[Dict], int, int]:
+        """
+        LLMレスポンスのID/テキスト不一致を自動修正
+
+        Args:
+            relations: パース済みのリレーション
+            covered_intents: 入力の個別Intent
+            ultra_idx: Ultra IntentのインデックスID
+
+        Returns:
+            (修正済みrelations, ID修正数, テキスト修正数)
+        """
+        # 入力intentのマッピング構築
+        input_by_id = {
+            intent.get("intent_id"): intent.get("intent", "")
+            for intent in covered_intents
+            if intent.get("intent_id")
+        }
+
+        id_fixes = 0
+        text_fixes = 0
+        fixed_relations = []
+
+        # リレーション内のIDをチェック
+        seen_ids = set()
+        for rel in relations:
+            from_id = rel["from"]
+
+            # generated/ultra nodeはスキップ
+            if from_id.startswith(f"ultra_{ultra_idx}_generated_") or from_id.startswith(f"ultra_{ultra_idx}"):
+                fixed_relations.append(rel)
+                continue
+
+            seen_ids.add(from_id)
+            fixed_relations.append(rel)
+
+        # 入力intentとの整合性チェック
+        missing_ids = set(input_by_id.keys()) - seen_ids
+        unexpected_ids = seen_ids - set(input_by_id.keys())
+
+        # シンプルな修正: unexpected_idsとmissing_idsの数が同じで1件なら、置き換える
+        id_mapping = {}  # unexpected_id -> correct_id
+        if len(unexpected_ids) == 1 and len(missing_ids) == 1:
+            unexpected_id = list(unexpected_ids)[0]
+            correct_id = list(missing_ids)[0]
+            id_mapping[unexpected_id] = correct_id
+            print(
+                f"    ⚠️  ID修正: {unexpected_id} → {correct_id} "
+                f"(LLMが誤ったIDを出力)"
+            )
+            id_fixes = 1
+
+        # リレーションのIDを修正
+        if id_mapping:
+            for rel in fixed_relations:
+                if rel["from"] in id_mapping:
+                    rel["from"] = id_mapping[rel["from"]]
+                if rel["to"] in id_mapping:
+                    rel["to"] = id_mapping[rel["to"]]
+
+        return fixed_relations, id_fixes, text_fixes
+
     def _extract_ultra_sub_intent_relations(
         self, ultra_intent: Dict, ultra_idx: int, covered_intents: List[Dict]
     ) -> Dict:
@@ -756,6 +875,11 @@ class UltraIntentGoalNetworkBuilder:
             response_text = self._clean_markdown_response(response.text.strip())
             relations, generated_nodes = self._parse_response_and_extract_relations(
                 response_text, ultra_idx
+            )
+
+            # ID/テキスト不一致を自動修正
+            relations, id_fixes, text_fixes = self._fix_intent_id_mismatches(
+                relations, covered_intents, ultra_idx
             )
 
             return {

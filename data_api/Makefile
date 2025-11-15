@@ -80,5 +80,5 @@ all-build:
 	@make export-neon
 	@make parse-claude-history
 	# @make run
-	@make run-with-rag
+	@make build-rag
 	# @make rag-query QUERY="タスク開発アプリで次にやるべきことは何か"
