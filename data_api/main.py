@@ -2,28 +2,23 @@
 """
 メッセージ意図分析パイプライン - メイン実行スクリプト
 
-messages_with_hierarchy.csv から ultra_intent_goal_network.json までの
-全パイプラインを実行します。
+個々のパイプライン処理を実行します。
+パイプライン全体の実行は Makefile の all-build を使用してください。
 
 使用例:
-  # 単一ファイル
-  python main.py run_all --csv_path=data/messages.csv
+  # 個々のステップを実行
   python main.py clustering --csv_path=data/messages.csv
-
-  # 複数ファイル（カンマ区切り）
-  python main.py run_all --csv_path="data/msg1.csv,data/msg2.csv"
-  python main.py clustering --csv_path="data/msg1.csv,data/msg2.csv"
-
-  # 設定ファイルから読み込み（複数ファイル対応）
-  python main.py run_all
-  python main.py run_all_with_rag
-
-  # その他のコマンド
   python main.py intent_extraction --gemini --aggregate --aggregate_all
   python main.py goal_network
   python main.py rag_build
   python main.py rag_query --query="ここ1週間、開発ツールについて何をやっていたか"
   python main.py rag_query_debug --topic="開発ツール" --status="doing,done"
+
+  # 複数ファイル（カンマ区切り）
+  python main.py clustering --csv_path="data/msg1.csv,data/msg2.csv"
+
+  # 全パイプライン実行（Makefile推奨）
+  make all-build
 """
 
 import sys
@@ -246,140 +241,6 @@ class Pipeline:
             ultra_id=ultra_id,
             save_prompts=save_prompts,
         )
-
-    def run_all(
-        self,
-        csv_path: str | None = None,
-        save_prompts: bool = False,
-    ):
-        """
-        全パイプライン実行: clustering → intent_extraction → goal_network
-
-        Args:
-            csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
-                     カンマ区切りで複数ファイルを指定可能
-            save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
-        """
-        # CSVパスの処理
-        if csv_path is not None:
-            input_paths = [p.strip() for p in csv_path.split(",")]
-            input_display = ", ".join(input_paths)
-        else:
-            input_paths = config.csv_path
-            input_display = ", ".join(input_paths)
-
-        print("=" * 60)
-        print("メッセージ意図分析パイプライン")
-        print("=" * 60)
-        print(f"入力: {input_display}\n")
-
-        # ステップ1: メッセージクラスタリング
-        print("\n" + "=" * 60)
-        print("ステップ 1/3: メッセージクラスタリング")
-        print("=" * 60)
-        self.clustering(csv_path=csv_path)
-
-        # 出力ファイルの確認
-        cluster_output = Path("output/message_clustering/clustered_messages.csv")
-        if not cluster_output.exists():
-            print(f"\n❌ エラー: {cluster_output} が見つかりません")
-            sys.exit(1)
-        print(f"\n✓ クラスタリング結果: {cluster_output}")
-
-        # ステップ2: 意図抽出と階層化
-        print("\n" + "=" * 60)
-        print("ステップ 2/3: 意図抽出と階層化")
-        print("=" * 60)
-        self.intent_extraction(
-            gemini=True,
-            aggregate=True,
-            aggregate_all=True,
-        )
-
-        # 出力ファイルの確認
-        ultra_intents_output = Path(
-            "output/intent_extraction/cross_cluster/ultra_intents_enriched.json"
-        )
-        if not ultra_intents_output.exists():
-            print(f"\n❌ エラー: {ultra_intents_output} が見つかりません")
-            sys.exit(1)
-        print(f"\n✓ エンリッチ済み最上位意図: {ultra_intents_output}")
-
-        # ステップ3: ゴールネットワーク構築
-        print("\n" + "=" * 60)
-        print("ステップ 3/3: ゴールネットワーク構築")
-        print("=" * 60)
-        self.goal_network(save_prompts=save_prompts)
-
-        # 出力ファイルの確認
-        goal_network_output = Path("output/goal_network/ultra_intent_goal_network.json")
-        if not goal_network_output.exists():
-            print(f"\n❌ エラー: {goal_network_output} が見つかりません")
-            sys.exit(1)
-
-        # 完了メッセージ
-        print("\n" + "=" * 60)
-        print("✅ 全パイプライン完了！")
-        print("=" * 60)
-        print("\n📁 主要な出力ファイル:")
-        print("  1. output/message_clustering/clustered_messages.csv")
-        print("  2. output/message_clustering/clustering_report.html")
-        print("  3. output/intent_extraction/cross_cluster/ultra_intents_enriched.json")
-        print("  4. output/goal_network/ultra_intent_goal_network.json")
-
-        if save_prompts:
-            print("  5. output/goal_network/ultra_prompts_responses/")
-
-    def run_all_with_rag(
-        self,
-        csv_path: str | None = None,
-        save_prompts: bool = False,
-    ):
-        """
-        全パイプライン + RAGインデックス構築
-        clustering → intent_extraction → goal_network → rag_build
-
-        Args:
-            csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
-                     カンマ区切りで複数ファイルを指定可能
-            save_prompts: ゴールネットワークのプロンプト/レスポンスを保存
-        """
-        # 基本パイプライン実行
-        self.run_all(csv_path=csv_path, save_prompts=save_prompts)
-
-        # ステップ4: RAGインデックス構築
-        print("\n" + "=" * 60)
-        print("ステップ 4/4: RAGインデックス構築")
-        print("=" * 60)
-        self.rag_build()
-
-        # 出力ファイルの確認
-        unified_intents_output = Path("output/rag_index/unified_intents.jsonl")
-        chroma_db_output = Path("output/rag_index/chroma_db")
-        if not unified_intents_output.exists():
-            print(f"\n❌ エラー: {unified_intents_output} が見つかりません")
-            sys.exit(1)
-        if not chroma_db_output.exists():
-            print(f"\n❌ エラー: {chroma_db_output} が見つかりません")
-            sys.exit(1)
-
-        # 完了メッセージ
-        print("\n" + "=" * 60)
-        print("✅ 全パイプライン + RAG構築完了！")
-        print("=" * 60)
-        print("\n📁 主要な出力ファイル:")
-        print("  1. output/message_clustering/clustered_messages.csv")
-        print("  2. output/message_clustering/clustering_report.html")
-        print("  3. output/intent_extraction/cross_cluster/ultra_intents_enriched.json")
-        print("  4. output/goal_network/ultra_intent_goal_network.json")
-        print("  5. output/rag_index/unified_intents.jsonl")
-        print("  6. output/rag_index/chroma_db/")
-
-        if save_prompts:
-            print("  7. output/goal_network/ultra_prompts_responses/")
-
-        print("\n💡 RAG検索を試すには:")
-        print('  make rag-query QUERY="ここ1週間、何をやっていたか"')
 
 
 if __name__ == "__main__":
