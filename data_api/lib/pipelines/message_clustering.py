@@ -8,7 +8,7 @@
 主な機能:
 1. 埋め込みベースの距離（意味的近さ）の計算
 2. メタデータ（チャネル階層・時間）の数値化と距離化
-3. 合成距離に基づくクラスタリング（階層的・HDBSCAN）
+3. 合成距離に基づくk-means-constrainedクラスタリング
 4. チューニング可能なパラメータと評価指標
 """
 
@@ -27,8 +27,6 @@ from joblib import Memory  # type: ignore[import-untyped]
 
 # クラスタリング関連
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances  # type: ignore[import-untyped]
-from sklearn.cluster import AgglomerativeClustering  # type: ignore[import-untyped]
-import hdbscan  # type: ignore[import-untyped]
 from k_means_constrained import KMeansConstrained  # type: ignore[import-untyped]
 
 # 可視化
@@ -98,34 +96,29 @@ def _compute_embeddings_cached(texts: List[str], cache_key: str) -> List[List[fl
 
 @dataclass
 class ClusteringConfig:
-    """クラスタリング設定"""
+    """k-means-constrainedクラスタリング設定"""
 
     csv_path: str  # 入力CSVファイルパス
 
     # 距離合成の重み（正規化後）
-    embedding_weight: float = 0.75  # 埋め込み距離の重み
-    time_weight: float = 0.1  # 時間距離の重み
+    embedding_weight: float = 0.7  # 埋め込み距離の重み
+    time_weight: float = 0.15  # 時間距離の重み
     hierarchy_weight: float = 0.15  # 階層距離の重み
 
     # 時間カーネル設定
     time_bandwidth_hours: float = 168.0  # 1週間（時間単位）
 
-    # クラスタリング手法
-    method: str = "hdbscan"  # "hdbscan", "hierarchical", or "kmeans_constrained"
-
-    # HDBSCANパラメータ
-    min_cluster_size: int = 5
-    min_samples: int = 3
-
-    # 階層的クラスタリングパラメータ
-    n_clusters: Optional[int] = None  # Noneの場合は自動決定
-    linkage: str = "average"
-
     # k-means-constrainedパラメータ
+    n_clusters: Optional[int] = None  # Noneの場合は自動決定
     size_min: int = 10  # クラスタの最小サイズ
     size_max: int = 50  # クラスタの最大サイズ
     n_init: int = 10  # k-meansの初期化回数
     max_iter: int = 300  # k-meansの最大反復回数
+
+    # 後方互換パラメータ（使用されない）
+    min_cluster_size: int = 10  # HDBSCAN用
+    min_samples: int = 5  # HDBSCAN用
+    linkage: str = "average"  # hierarchical用
 
     # ノイズ処理
     convert_noise_to_cluster: bool = True  # ノイズを「その他」クラスタとして扱う
@@ -516,65 +509,40 @@ class ClusterAnalyzer:
 
     def cluster(self) -> np.ndarray:
         """
-        クラスタリングを実行
+        k-means-constrainedクラスタリングを実行
 
         Returns:
-            クラスタラベル（ノイズは「その他」クラスタとして扱う）
+            クラスタラベル
         """
-        print(f"\nクラスタリング実行中（手法: {self.config.method}）...")
+        print("\nk-means-constrainedクラスタリング実行中...")
 
-        if self.config.method == "hdbscan":
-            clusterer = hdbscan.HDBSCAN(
-                metric="precomputed",
-                min_cluster_size=self.config.min_cluster_size,
-                min_samples=self.config.min_samples,
-                cluster_selection_method="eom",
-            )
-            labels = clusterer.fit_predict(self.combined_dist)
+        # クラスタ数の決定
+        n_clusters = self.config.n_clusters
+        if n_clusters is None:
+            # デフォルト: データサイズ/平均クラスタサイズで自動決定
+            avg_size = (self.config.size_min + self.config.size_max) / 2
+            n_clusters = int(len(self.data.df) / avg_size)
 
-        elif self.config.method == "hierarchical":
-            # クラスタ数の決定
-            n_clusters = self.config.n_clusters
-            if n_clusters is None:
-                # デンドログラムから自動決定（仮実装: sqrt(n)）
-                n_clusters = int(np.sqrt(len(self.data.df)))
+        # k-means-constrainedは距離行列ではなく特徴ベクトルが必要
+        # 距離行列から埋め込み空間を再構成（MDS的アプローチ）
+        from sklearn.manifold import MDS
 
-            clusterer = AgglomerativeClustering(
-                n_clusters=n_clusters, metric="precomputed", linkage=self.config.linkage
-            )
-            labels = clusterer.fit_predict(self.combined_dist)
+        # 次元数はクラスタ数の2倍程度（経験則）
+        n_components = min(n_clusters * 2, len(self.data.df) - 1)
+        mds = MDS(
+            n_components=n_components, dissimilarity="precomputed", random_state=42
+        )
+        X_embedded = mds.fit_transform(self.combined_dist)
 
-        elif self.config.method == "kmeans_constrained":
-            # クラスタ数の決定
-            n_clusters = self.config.n_clusters
-            if n_clusters is None:
-                # デフォルト: データサイズ/平均クラスタサイズで自動決定
-                avg_size = (self.config.size_min + self.config.size_max) / 2
-                n_clusters = int(len(self.data.df) / avg_size)
-
-            # k-means-constrainedは距離行列ではなく特徴ベクトルが必要
-            # 距離行列から埋め込み空間を再構成（MDS的アプローチ）
-            from sklearn.manifold import MDS
-
-            # 次元数はクラスタ数の2倍程度（経験則）
-            n_components = min(n_clusters * 2, len(self.data.df) - 1)
-            mds = MDS(
-                n_components=n_components, dissimilarity="precomputed", random_state=42
-            )
-            X_embedded = mds.fit_transform(self.combined_dist)
-
-            clusterer = KMeansConstrained(
-                n_clusters=n_clusters,
-                size_min=self.config.size_min,
-                size_max=self.config.size_max,
-                n_init=self.config.n_init,
-                max_iter=self.config.max_iter,
-                random_state=42,
-            )
-            labels = clusterer.fit_predict(X_embedded)
-
-        else:
-            raise ValueError(f"未対応のクラスタリング手法: {self.config.method}")
+        clusterer = KMeansConstrained(
+            n_clusters=n_clusters,
+            size_min=self.config.size_min,
+            size_max=self.config.size_max,
+            n_init=self.config.n_init,
+            max_iter=self.config.max_iter,
+            random_state=42,
+        )
+        labels = clusterer.fit_predict(X_embedded)
 
         # 統計情報
         n_clusters_orig = len(set(labels)) - (1 if -1 in labels else 0)
@@ -925,13 +893,16 @@ def run_clustering_pipeline(config: ClusteringConfig) -> None:
     result_metadata = {
         "metrics": metrics,
         "config": {
+            "method": "kmeans_constrained",
             "embedding_weight": config.embedding_weight,
             "time_weight": config.time_weight,
             "hierarchy_weight": config.hierarchy_weight,
             "time_bandwidth_hours": config.time_bandwidth_hours,
-            "method": config.method,
-            "min_cluster_size": config.min_cluster_size,
-            "min_samples": config.min_samples,
+            "n_clusters": config.n_clusters,
+            "size_min": config.size_min,
+            "size_max": config.size_max,
+            "n_init": config.n_init,
+            "max_iter": config.max_iter,
         },
     }
     metadata_path = OUTPUT_DIR / "clustering_metadata.json"

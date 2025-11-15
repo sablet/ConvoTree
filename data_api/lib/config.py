@@ -199,13 +199,6 @@ class Config:
         return float(value)
 
     @property
-    def clustering_method(self) -> str:
-        """クラスタリング手法"""
-        value = self.get("clustering.method")
-        assert isinstance(value, str)
-        return value
-
-    @property
     def clustering_size_min(self) -> int:
         """最小クラスタサイズ"""
         value = self.get("clustering.size_min")
@@ -237,15 +230,15 @@ class Config:
 
     @property
     def clustering_min_samples(self) -> int:
-        """HDBSCANの最小サンプル数"""
+        """HDBSCANの最小サンプル数（後方互換）"""
         value = self.get("clustering.min_samples")
         assert isinstance(value, int)
         return value
 
     @property
     def clustering_linkage(self) -> str:
-        """Agglomerativeのリンケージ方法"""
-        value = self.get("clustering.linkage")
+        """hierarchicalのリンケージ方法（後方互換）"""
+        value = self.get("clustering.linkage", "average")
         assert isinstance(value, str)
         return value
 

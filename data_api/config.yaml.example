@@ -20,7 +20,7 @@ output:
   # RAGインデックス
   rag_index_dir: "output/rag_index"
 
-# クラスタリングパラメータ
+# クラスタリングパラメータ (k-means-constrained)
 clustering:
   # 埋め込みベクトルの重み
   embedding_weight: 0.7
@@ -30,24 +30,20 @@ clustering:
   hierarchy_weight: 0.15
   # 時間カーネル帯域幅（時間）
   time_bandwidth_hours: 168.0
-  # クラスタリング手法 (kmeans_constrained, hdbscan, agglomerative)
-  method: "kmeans_constrained"
   # 最小クラスタサイズ
   size_min: 10
   # 最大クラスタサイズ
   size_max: 50
-  # K-meansのクラスタ数（Noneの場合は自動決定）
+  # クラスタ数（Noneの場合は自動決定）
   n_clusters: null
-  # HDBSCANの最小クラスタサイズ
-  min_cluster_size: 10
-  # HDBSCANの最小サンプル数
-  min_samples: 5
-  # Agglomerativeのリンケージ方法
-  linkage: "average"
-  # K-meansの初期化回数
+  # k-means: 初期化回数
   n_init: 10
-  # K-meansの最大反復回数
+  # k-means: 最大反復回数
   max_iter: 300
+  # 後方互換パラメータ（使用されない）
+  min_cluster_size: 10
+  min_samples: 5
+  linkage: "average"
 
 # 意図抽出パラメータ
 intent_extraction:

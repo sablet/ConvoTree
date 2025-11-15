@@ -32,21 +32,21 @@ from lib.pipelines.message_clustering import ClusteringConfig, run_clustering_pi
 
 
 class ClusteringKwargs(TypedDict, total=False):
-    """クラスタリングのオプション引数"""
+    """k-means-constrainedクラスタリングのオプション引数"""
 
     embedding_weight: float
     time_weight: float
     hierarchy_weight: float
     time_bandwidth_hours: float
-    method: str
-    min_cluster_size: int
-    min_samples: int
     n_clusters: int | None
-    linkage: str
     size_min: int
     size_max: int
     n_init: int
     max_iter: int
+    # 後方互換パラメータ
+    min_cluster_size: int
+    min_samples: int
+    linkage: str
 
 
 class Pipeline:
@@ -139,7 +139,7 @@ class Pipeline:
         **kwargs: Unpack[ClusteringKwargs],
     ):
         """
-        ステップ1: メッセージクラスタリング
+        ステップ1: k-means-constrainedメッセージクラスタリング
 
         Args:
             csv_path: 入力CSVファイルパス（Noneの場合は設定ファイルから読み込み）
@@ -148,12 +148,34 @@ class Pipeline:
                 time_weight: 時間重み (default: config.yaml or 0.15)
                 hierarchy_weight: 階層重み (default: config.yaml or 0.15)
                 time_bandwidth_hours: 時間カーネル帯域幅 (default: config.yaml or 168.0)
-                method: クラスタリング手法 (default: config.yaml or "kmeans_constrained")
                 size_min: 最小クラスタサイズ (default: config.yaml or 10)
                 size_max: 最大クラスタサイズ (default: config.yaml or 50)
+                n_clusters: クラスタ数 (default: 自動決定)
         """
+        # config.yamlの値をデフォルトとして使用し、kwargsで上書き
         clustering_config = ClusteringConfig(
-            csv_path=csv_path or config.csv_path, **kwargs
+            csv_path=csv_path or config.csv_path,
+            embedding_weight=kwargs.get(
+                "embedding_weight", config.clustering_embedding_weight
+            ),
+            time_weight=kwargs.get("time_weight", config.clustering_time_weight),
+            hierarchy_weight=kwargs.get(
+                "hierarchy_weight", config.clustering_hierarchy_weight
+            ),
+            time_bandwidth_hours=kwargs.get(
+                "time_bandwidth_hours", config.clustering_time_bandwidth_hours
+            ),
+            size_min=kwargs.get("size_min", config.clustering_size_min),
+            size_max=kwargs.get("size_max", config.clustering_size_max),
+            n_clusters=kwargs.get("n_clusters", config.clustering_n_clusters),
+            n_init=kwargs.get("n_init", config.clustering_n_init),
+            max_iter=kwargs.get("max_iter", config.clustering_max_iter),
+            # 後方互換パラメータ
+            min_cluster_size=kwargs.get(
+                "min_cluster_size", config.clustering_min_cluster_size
+            ),
+            min_samples=kwargs.get("min_samples", config.clustering_min_samples),
+            linkage=kwargs.get("linkage", config.clustering_linkage),
         )
         run_clustering_pipeline(clustering_config)
 
