@@ -492,7 +492,9 @@ def build_rag_index(
             valid_intent_ids = set(network_data.get("nodes", {}).keys())
         print(f"  ✓ Generated nodes: {len(generated_nodes)} 件")
         if valid_intent_ids:
-            print(f"  ✓ Valid intent IDs: {len(valid_intent_ids)} 件（孤立ノード除外済み）")
+            print(
+                f"  ✓ Valid intent IDs: {len(valid_intent_ids)} 件（孤立ノード除外済み）"
+            )
 
     # 2. マッピング構築
     print("\n[2/5] マッピング構築中...")

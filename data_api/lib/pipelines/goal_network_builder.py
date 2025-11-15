@@ -252,9 +252,7 @@ class UltraIntentGoalNetworkBuilder:
             }
 
         # 孤立ノード（親も子もないノード）を除外
-        all_nodes, all_relations = self._remove_orphan_nodes(
-            all_nodes, all_relations
-        )
+        all_nodes, all_relations = self._remove_orphan_nodes(all_nodes, all_relations)
 
         # 結果を構築
         root_nodes = []
@@ -296,8 +294,9 @@ class UltraIntentGoalNetworkBuilder:
 
         return result
 
+    @staticmethod
     def _remove_orphan_nodes(
-        self, all_nodes: Dict, all_relations: List[Dict]
+        all_nodes: Dict, all_relations: List[Dict]
     ) -> tuple[Dict, List[Dict]]:
         """
         孤立ノード（親も子もないノード）を除外
@@ -772,8 +771,8 @@ class UltraIntentGoalNetworkBuilder:
         relations = self._build_hierarchical_relations(lines_with_level)
         return relations, generated_nodes
 
+    @staticmethod
     def _fix_intent_id_mismatches(
-        self,
         relations: List[Dict],
         covered_intents: List[Dict],
         ultra_idx: int,
@@ -806,7 +805,9 @@ class UltraIntentGoalNetworkBuilder:
             from_id = rel["from"]
 
             # generated/ultra nodeはスキップ
-            if from_id.startswith(f"ultra_{ultra_idx}_generated_") or from_id.startswith(f"ultra_{ultra_idx}"):
+            if from_id.startswith(
+                f"ultra_{ultra_idx}_generated_"
+            ) or from_id.startswith(f"ultra_{ultra_idx}"):
                 fixed_relations.append(rel)
                 continue
 
@@ -824,8 +825,7 @@ class UltraIntentGoalNetworkBuilder:
             correct_id = list(missing_ids)[0]
             id_mapping[unexpected_id] = correct_id
             print(
-                f"    ⚠️  ID修正: {unexpected_id} → {correct_id} "
-                f"(LLMが誤ったIDを出力)"
+                f"    ⚠️  ID修正: {unexpected_id} → {correct_id} (LLMが誤ったIDを出力)"
             )
             id_fixes = 1
 
