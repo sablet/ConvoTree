@@ -1,4 +1,4 @@
-.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history export-neon
+.PHONY: help check format lint typecheck complexity duplication jscpd dead-code deps module-lines run parse-claude-history export-neon rag-query-ui
 
 UV ?= uv
 
@@ -9,6 +9,16 @@ ENTRY_POINT := main.py
 help: ## ヘルプを表示
 	@echo "使用可能なコマンド:"
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+
+rag-query: ## RAG検索（自然言語クエリ）
+	@if [ -z "$(QUERY)" ]; then \
+		echo "Error: QUERY is required. Usage: make rag-query QUERY=\"your question\""; \
+		exit 1; \
+	fi
+	$(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm
+
+rag-query-ui: ## RAGクエリUIを起動（Streamlit）
+	$(UV) run streamlit run scripts/rag_query_app.py
 
 ## アプリケーションコマンド
 clustering: ## ステップ1: メッセージクラスタリング
@@ -22,13 +32,6 @@ goal-network: ## ステップ3: ゴールネットワーク構築
 
 rag-build: ## RAGインデックス構築
 	$(UV) run python $(ENTRY_POINT) rag_build
-
-rag-query: ## RAG検索（自然言語クエリ）
-	@if [ -z "$(QUERY)" ]; then \
-		echo "Error: QUERY is required. Usage: make rag-query QUERY=\"your question\""; \
-		exit 1; \
-	fi
-	$(UV) run python $(ENTRY_POINT) rag_query --query="$(QUERY)" --answer_with_llm
 
 rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
 	$(UV) run python $(ENTRY_POINT) rag_query_debug \
