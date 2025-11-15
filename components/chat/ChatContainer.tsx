@@ -28,10 +28,10 @@ import { useLineConnection } from "./use-line-connection"
 import { useMessageInsert } from "./use-message-insert"
 
 interface ChatContainerProps {
-  initialMessages?: Record<string, Message>
-  initialLines?: Record<string, Line>
-  initialTags?: Record<string, Tag>
-  initialCurrentLineId?: string
+  messages?: Record<string, Message>
+  lines?: Record<string, Line>
+  tags?: Record<string, Tag>
+  currentLineId?: string
   onLineChange?: (lineId: string) => void
   chatRepository: ChatRepository
 }
@@ -39,10 +39,10 @@ interface ChatContainerProps {
 /** Main container that integrates all hooks and components */
 // eslint-disable-next-line max-lines-per-function
 export function ChatContainer({
-  initialMessages = {},
-  initialLines = {},
-  initialTags = {},
-  initialCurrentLineId = '',
+  messages = {},
+  lines = {},
+  tags = {},
+  currentLineId = '',
   onLineChange,
   chatRepository
 }: ChatContainerProps) {
@@ -54,11 +54,43 @@ export function ChatContainer({
   const [showLineConnectionDialog, setShowLineConnectionDialog] = useState<boolean>(false)
   const [isSidebarTemporarilyExpanded, setIsSidebarTemporarilyExpanded] = useState<boolean>(false)
   const chatState = useChatState({
-    initialMessages,
-    initialLines,
-    initialTags,
-    initialCurrentLineId
+    initialMessages: messages,
+    initialLines: lines,
+    initialTags: tags,
+    initialCurrentLineId: currentLineId
   })
+
+  // Propsの変更をuseChatStateの内部状態に同期させる
+  useEffect(() => {
+    console.log('[ChatContainer] Messages prop changed:', Object.keys(messages).length)
+    chatState.setMessages(messages)
+    // メッセージが変更されたらキャッシュをクリアしてタイムラインを再計算
+    chatState.clearAllCaches()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages])
+
+  useEffect(() => {
+    console.log('[ChatContainer] Lines prop changed:', Object.keys(lines).length)
+    chatState.setLines(lines)
+    // ラインが変更されたらキャッシュをクリアしてタイムラインを再計算
+    chatState.clearAllCaches()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines])
+
+  useEffect(() => {
+    console.log('[ChatContainer] Tags prop changed:', Object.keys(tags).length)
+    chatState.setTags(tags)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tags])
+
+  useEffect(() => {
+    console.log('[ChatContainer] CurrentLineId prop changed:', currentLineId)
+    if (currentLineId) {
+      chatState.setCurrentLineId(currentLineId)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLineId])
+
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'instant' })

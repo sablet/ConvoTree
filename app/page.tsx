@@ -19,40 +19,60 @@ import {
 function HomeContent() {
   const searchParams = useSearchParams()
   const [currentLineId, setCurrentLineId] = useState<string>('')
+  const [lineNotFound, setLineNotFound] = useState(false)
   const { user, signOut } = useAuth()
   const isOnline = useOnlineStatus()
 
-  const { messages, lines, tags, error, loadChatData, chatRepository } = useChatData({
-    onDataLoaded: (data) => {
-      // URLからライン名を取得
-      const lineFromUrl = searchParams.get('line')
+  const { messages, lines, tags, error, loadChatData, chatRepository } = useChatData({})
 
-      if (lineFromUrl && !currentLineId) {
-        // URLで指定されたライン名に一致するラインを検索
-        const targetLine = Object.values(data.lines).find(line =>
-          line.name === decodeURIComponent(lineFromUrl)
-        )
-        if (targetLine) {
-          setCurrentLineId(targetLine.id)
-          return
-        }
-      }
-
-      // デフォルトライン設定（現在のラインIDが空の場合のみ）
-      if (!currentLineId) {
-        const mainLine = data.lines[MAIN_LINE_ID] || Object.values(data.lines)[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
-        }
-      }
-    }
-  })
-
-  // 初期データローディング（初回のみ）
+  // 初期データローディング
   useEffect(() => {
+    console.log('[HomePage] Calling loadChatData')
     loadChatData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [loadChatData])
+
+  // messages, lines, tags の変更を監視
+  useEffect(() => {
+    console.log('[HomePage] Data state updated:', {
+      messagesCount: Object.keys(messages).length,
+      linesCount: Object.keys(lines).length,
+      tagsCount: Object.keys(tags).length,
+      currentLineId
+    })
+  }, [messages, lines, tags, currentLineId])
+
+  // linesが更新されたときにcurrentLineIdを設定
+  useEffect(() => {
+    if (Object.keys(lines).length === 0) {
+      console.log('[HomePage] Lines is empty, skipping currentLineId setup')
+      return
+    }
+
+    console.log('[HomePage] Setting up currentLineId')
+
+    // URLからライン名を取得
+    const lineFromUrl = searchParams.get('line')
+    const decodedLineName = lineFromUrl ? decodeURIComponent(lineFromUrl) : MAIN_LINE_ID
+
+    // 指定されたライン名でラインを検索
+    const targetLine = Object.values(lines).find(
+      line => line.name === decodedLineName || line.id === decodedLineName
+    )
+
+    if (targetLine) {
+      console.log('[HomePage] Target line found:', targetLine.id)
+      setCurrentLineId(targetLine.id)
+      setLineNotFound(false)
+    } else {
+      // ラインが見つからない場合、メインラインにフォールバック
+      const mainLine = lines[MAIN_LINE_ID] || Object.values(lines)[0]
+      if (mainLine) {
+        console.log('[HomePage] Using fallback line:', mainLine.id)
+        setCurrentLineId(mainLine.id)
+      }
+      setLineNotFound(lineFromUrl !== null)
+    }
+  }, [lines, searchParams])
 
 
   // ライン切り替えハンドラー（状態更新を優先し、URL更新は遅延実行）
@@ -68,6 +88,15 @@ function HomeContent() {
       }, 200)
     }
   }, [lines])
+
+  // データが読み込まれるまで待つ
+  const isDataReady = Object.keys(lines).length > 0
+  console.log('[HomePage] Render check:', {
+    isDataReady,
+    linesCount: Object.keys(lines).length,
+    messagesCount: Object.keys(messages).length,
+    currentLineId
+  })
 
   // Firestoreデータ取得エラー（オンライン時のみ権限不足エラーを表示）
   if (error && user && isOnline) {
@@ -98,13 +127,41 @@ function HomeContent() {
     )
   }
 
+  // データが読み込まれるまでローディング表示
+  if (!isDataReady) {
+    console.log('[HomePage] Showing loading screen')
+    return (
+      <PageLayout>
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-gray-600">チャットデータを読み込み中...</p>
+          </div>
+        </div>
+      </PageLayout>
+    )
+  }
+
+  console.log('[HomePage] Rendering ChatContainer with data')
+
   return (
     <PageLayout>
+      {lineNotFound && (
+        <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-4">
+          <div className="flex">
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700">
+                指定されたラインが見つかりませんでした。メインラインを表示しています。
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <ChatContainer
-        initialMessages={messages}
-        initialLines={lines}
-        initialTags={tags}
-        initialCurrentLineId={currentLineId}
+        messages={messages}
+        lines={lines}
+        tags={tags}
+        currentLineId={currentLineId}
         onLineChange={handleLineChange}
         chatRepository={chatRepository}
       />

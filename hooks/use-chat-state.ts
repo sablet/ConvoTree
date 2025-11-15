@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { Message, Line, Tag } from '@/lib/types'
 import type { MessageType } from '@/lib/constants'
 
@@ -92,25 +92,6 @@ export function useChatState({
   const [filterDateEnd, setFilterDateEnd] = useState<string>('')
   const [filterTag, setFilterTag] = useState<string>('')
   const [searchKeyword, setSearchKeyword] = useState<string>('')
-
-  // 初期データ監視 - propsが変更されたら常に更新
-  useEffect(() => {
-    setMessages(initialMessages)
-  }, [initialMessages])
-
-  useEffect(() => {
-    setLines(initialLines)
-  }, [initialLines])
-
-  useEffect(() => {
-    setTags(initialTags)
-  }, [initialTags])
-
-  useEffect(() => {
-    if (initialCurrentLineId) {
-      setCurrentLineId(initialCurrentLineId)
-    }
-  }, [initialCurrentLineId])
 
   /**
    * Clear all performance caches

@@ -11,8 +11,9 @@ const MIN_WIDTH_MULTIPLIER = 2
  *   - shouldAutoCollapse: True if window width < SIDEBAR_WIDTH * MIN_WIDTH_MULTIPLIER (sidebar should be auto-collapsed)
  */
 export function useWindowWidth() {
+  // デフォルト値を1920に設定してHydrationエラーを防ぐ（サーバー側ではデスクトップビューをレンダリング）
   const [windowWidth, setWindowWidth] = useState<number>(
-    typeof window !== 'undefined' ? window.innerWidth : 0
+    typeof window !== 'undefined' ? window.innerWidth : 1920
   )
 
   useEffect(() => {

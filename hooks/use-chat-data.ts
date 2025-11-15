@@ -79,9 +79,17 @@ const applyLoadedData = (
   setters: DataSetters,
   onDataLoaded?: (data: ChatData) => void
 ) => {
-  setters.setMessages((prev: Record<string, Message>) => ({ ...prev, ...chatData.messages }))
-  setters.setLines((prev: Record<string, Line>) => ({ ...prev, ...chatData.lines }))
-  setters.setTags((prev: Record<string, Tag>) => ({ ...prev, ...chatData.tags }))
+  console.log('[useChatData] applyLoadedData called:', {
+    messagesCount: Object.keys(chatData.messages).length,
+    linesCount: Object.keys(chatData.lines).length,
+    tagsCount: Object.keys(chatData.tags).length
+  })
+
+  // ChatRepositoryから返されるデータは常に完全なデータセットなので、
+  // マージではなく完全置き換えにする
+  setters.setMessages(chatData.messages)
+  setters.setLines(chatData.lines)
+  setters.setTags(chatData.tags)
 
   if (onDataLoaded) {
     onDataLoaded(chatData)
@@ -109,9 +117,6 @@ export function useChatData(options: UseChatDataOptions = {}) {
     const opts = optionsRef.current;
 
     try {
-      if (opts.setIsLoading) {
-        opts.setIsLoading(true)
-      }
       setError(null)
 
       // キャッシュクリアが要求された場合
@@ -139,18 +144,10 @@ export function useChatData(options: UseChatDataOptions = {}) {
 
       const chatData = transformChatData(result.data)
       applyLoadedData(chatData, setters, opts.onDataLoaded)
-
-      if (opts.setIsLoading) {
-        opts.setIsLoading(false)
-      }
     } catch (error) {
       console.error('[useChatData] Failed to load chat data:', error)
       clearAllData(setters)
       setError(error instanceof Error ? error : new Error('データの読み込みに失敗しました'))
-
-      if (opts.setIsLoading) {
-        opts.setIsLoading(false)
-      }
     }
   }, [chatRepository])
 

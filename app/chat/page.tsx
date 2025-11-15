@@ -20,35 +20,59 @@ function ChatPageContent() {
 
   const [currentView, setCurrentView] = useState<'chat' | 'management' | 'branches'>('chat')
   const [currentLineId, setCurrentLineId] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(true)
   const [lineNotFound, setLineNotFound] = useState(false)
 
-  const { messages, lines, tags, loadChatData, chatRepository } = useChatData({
-    setIsLoading,
-    onDataLoaded: (data) => {
-      // 指定されたライン名でラインを検索
-      const targetLine = Object.values(data.lines).find(
-        line => line.name === decodedLineName || line.id === decodedLineName
-      )
-
-      if (targetLine) {
-        setCurrentLineId(targetLine.id)
-        setLineNotFound(false)
-      } else {
-        // ラインが見つからない場合、メインラインにフォールバック
-        const mainLine = data.lines[MAIN_LINE_ID] || Object.values(data.lines)[0]
-        if (mainLine) {
-          setCurrentLineId(mainLine.id)
-        }
-        setLineNotFound(true)
-      }
-    }
-  })
+  const { messages, lines, tags, loadChatData, chatRepository } = useChatData({})
 
   // 初期データローディング
   useEffect(() => {
+    console.log('[ChatPage] Calling loadChatData')
     loadChatData()
   }, [loadChatData])
+
+  // messages, lines, tags の変更を監視
+  useEffect(() => {
+    console.log('[ChatPage] Data state updated:', {
+      messagesCount: Object.keys(messages).length,
+      linesCount: Object.keys(lines).length,
+      tagsCount: Object.keys(tags).length,
+      currentLineId
+    })
+  }, [messages, lines, tags, currentLineId])
+
+  // linesが更新されたときにcurrentLineIdを設定
+  useEffect(() => {
+    console.log('[ChatPage] Lines effect triggered:', {
+      linesCount: Object.keys(lines).length,
+      isEmpty: Object.keys(lines).length === 0
+    })
+
+    if (Object.keys(lines).length === 0) {
+      console.log('[ChatPage] Lines is empty, skipping currentLineId setup')
+      return
+    }
+
+    console.log('[ChatPage] Setting up currentLineId with decodedLineName:', decodedLineName)
+
+    // 指定されたライン名でラインを検索
+    const targetLine = Object.values(lines).find(
+      line => line.name === decodedLineName || line.id === decodedLineName
+    )
+
+    if (targetLine) {
+      console.log('[ChatPage] Target line found:', targetLine.id)
+      setCurrentLineId(targetLine.id)
+      setLineNotFound(false)
+    } else {
+      // ラインが見つからない場合、メインラインにフォールバック
+      const mainLine = lines[MAIN_LINE_ID] || Object.values(lines)[0]
+      if (mainLine) {
+        console.log('[ChatPage] Using fallback line:', mainLine.id)
+        setCurrentLineId(mainLine.id)
+      }
+      setLineNotFound(true)
+    }
+  }, [lines, decodedLineName])
 
   // ライン切り替えハンドラー（URL更新、履歴あり）
   const handleLineChange = useCallback((lineId: string) => {
@@ -77,7 +101,17 @@ function ChatPageContent() {
     // chatの場合は現在のページに留まる
   }
 
-  if (isLoading) {
+  // データが読み込まれるまで待つ
+  const isDataReady = Object.keys(lines).length > 0
+  console.log('[ChatPage] Render check:', {
+    isDataReady,
+    linesCount: Object.keys(lines).length,
+    messagesCount: Object.keys(messages).length,
+    currentLineId
+  })
+
+  if (!isDataReady) {
+    console.log('[ChatPage] Showing loading screen')
     return (
       <ChatLayout>
         <div className="min-h-screen bg-white flex items-center justify-center">
@@ -89,6 +123,8 @@ function ChatPageContent() {
       </ChatLayout>
     )
   }
+
+  console.log('[ChatPage] Rendering ChatContainer with data')
 
   return (
     <TagProvider>
@@ -113,10 +149,10 @@ function ChatPageContent() {
         )}
 
         <ChatContainer
-          initialMessages={messages}
-          initialLines={lines}
-          initialTags={tags}
-          initialCurrentLineId={currentLineId}
+          messages={messages}
+          lines={lines}
+          tags={tags}
+          currentLineId={currentLineId}
           onLineChange={handleLineChange}
           chatRepository={chatRepository}
         />

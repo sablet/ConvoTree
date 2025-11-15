@@ -201,6 +201,7 @@ export class ChatRepository {
     const dataSource = this.resolveDataSource(source);
     const since = await getLastFetchTimestamp(ChatRepository.CACHE_KEY);
 
+    console.log(`[ChatRepository] loadFromSource START - currentData exists:`, !!this.currentData);
     console.log(`[ChatRepository] Fetching data${since ? ` since ${since.toISOString()}` : ' (full)'}`);
     const fetchedData = await dataSource.loadChatData(since ?? undefined);
     const fetchedCount = {
@@ -212,6 +213,12 @@ export class ChatRepository {
     // 既存データとマージ
     let mergedData = fetchedData;
     if (this.currentData) {
+      console.log('[ChatRepository] Merging with existing data:', {
+        existingMessages: Object.keys(this.currentData.messages).length,
+        existingLines: this.currentData.lines.length,
+        newMessages: Object.keys(fetchedData.messages).length,
+        newLines: fetchedData.lines.length
+      });
       const mergedMessages = { ...this.currentData.messages, ...fetchedData.messages };
 
       // deleted=true のメッセージを除外
@@ -255,11 +262,16 @@ export class ChatRepository {
 
     // マージしたデータをメモリとIndexedDBにキャッシュ
     this.currentData = mergedData;
+    console.log('[ChatRepository] loadFromSource END - saving cache:', {
+      messages: Object.keys(mergedData.messages).length,
+      lines: mergedData.lines.length
+    });
     await Promise.all([
       saveChatDataCache(ChatRepository.CACHE_KEY, mergedData),
       setLastFetchTimestamp(ChatRepository.CACHE_KEY, latestTimestamp)
     ]);
 
+    console.log('[ChatRepository] loadFromSource COMPLETE');
     return {
       data: mergedData,
       source,
