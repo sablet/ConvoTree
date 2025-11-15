@@ -1203,6 +1203,7 @@ def _build_meta_intents(
             "objective_facts": group.get("objective_facts", ""),
             "context": group.get("context", ""),
             "covered_intent_ids": covered_intent_ids,
+            "covered_intent_ids_flat": covered_intent_ids,
             "source_full_paths": aggregated_full_paths,
             "start_timestamps": aggregated_timestamps,
             "aggregate_status": aggregate_status,
