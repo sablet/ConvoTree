@@ -35,7 +35,10 @@ intent-extraction: ## ステップ2: 意図抽出と階層化（Gemini API使用
 	$(UV) run python $(ENTRY_POINT) intent_extraction --gemini --aggregate --aggregate_all
 
 goal-network: ## ステップ3: ゴールネットワーク構築
-	$(UV) run python $(ENTRY_POINT) goal_network --save_prompts 
+	$(UV) run python $(ENTRY_POINT) goal_network --save_prompts
+
+goal-network-export: ## ゴールネットワークをMarkdownリスト形式でエクスポート
+	$(UV) run python $(ENTRY_POINT) goal_network_export
 
 rag-build: ## RAGインデックス構築
 	$(UV) run python $(ENTRY_POINT) rag_build

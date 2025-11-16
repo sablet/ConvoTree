@@ -10,6 +10,7 @@
   python main.py clustering --csv_path=data/messages.csv
   python main.py intent_extraction --gemini --aggregate --aggregate_all
   python main.py goal_network
+  python main.py goal_network_export
   python main.py rag_build
   python main.py rag_query --query="ここ1週間、開発ツールについて何をやっていたか"
   python main.py rag_query_debug --topic="開発ツール" --status="doing,done"
@@ -32,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from lib.config import config
 from lib.pipelines.goal_network_builder import build_ultra_goal_network
+from lib.pipelines.goal_network_exporter import export_goal_network_to_markdown
 from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
 from lib.pipelines.message_clustering import ClusteringConfig, run_clustering_pipeline
 
@@ -240,6 +242,24 @@ class Pipeline:
             input_path=input_path or config.goal_network_input_path,
             ultra_id=ultra_id,
             save_prompts=save_prompts,
+        )
+
+    def goal_network_export(
+        self,
+        input_path: str | None = None,
+        output_path: str | None = None,
+    ):
+        """
+        ゴールネットワークをMarkdownリスト形式でエクスポート
+
+        Args:
+            input_path: ultra_intent_goal_network.jsonのパス
+            output_path: 出力Markdownファイルパス
+        """
+        export_goal_network_to_markdown(
+            input_path=input_path
+            or "output/goal_network/ultra_intent_goal_network.json",
+            output_path=output_path,
         )
 
 
