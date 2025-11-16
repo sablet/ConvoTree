@@ -78,9 +78,9 @@ cat output/claude-history/project_line_mapping.json
 出力例：
 ```json
 {
-  "/Users/mikke/git_dir/chat-line": "chat-line",
-  "/Users/mikke/git_dir/chat-line_data_api/data_api": "chat-line_data_api/data_api",
-  "/Users/mikke/git_dir/spec2code": "spec2code"
+  "/Users/your-username/git_dir/chat-line": "chat-line",
+  "/Users/your-username/git_dir/chat-line_data_api/data_api": "chat-line_data_api/data_api",
+  "/Users/your-username/git_dir/spec2code": "spec2code"
 }
 ```
 
