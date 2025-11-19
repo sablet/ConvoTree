@@ -1,30 +1,29 @@
 #!/usr/bin/env python3
 """
-ChatGPT History Parser
+Gemini History Parser
 
-ChatGPTのconversations.jsonを messages_with_hierarchy.csv と同じフォーマットのCSVに変換する。
+Google Takeoutのマイアクティビティ.htmlを messages_with_hierarchy.csv と同じフォーマットのCSVに変換する。
 
 使用例:
   # 基本的な使い方（config.yamlから設定を読み込む）
-  python scripts/chatgpt_history_parser.py parse
+  python scripts/gemini_history_parser.py parse
 
   # 入出力パスを明示的に指定
-  python scripts/chatgpt_history_parser.py parse \
-    --input_path=/path/to/conversations.json \
-    --output_dir=output/chatgpt-history
+  python scripts/gemini_history_parser.py parse \
+    --input_path=/path/to/マイアクティビティ.html \
+    --output_dir=output/gemini-history
 
   # 処理件数を制限（テスト用）
-  python scripts/chatgpt_history_parser.py parse --limit=100
+  python scripts/gemini_history_parser.py parse --limit=100
 
   # カスタム設定ファイルを使用
-  python scripts/chatgpt_history_parser.py parse \
+  python scripts/gemini_history_parser.py parse \
     --config_path=custom_config.yaml
 
 主な機能:
   - Q/Aそれぞれが3行以上の場合、2行 + "..." に切り詰め
-  - 会話ごとに時系列順にメッセージを結合
-  - 会話タイトルをcombined_contentの先頭に追加
-  - 改行を\nに置き換え
+  - アクティビティごとにメッセージを結合
+  - 改行を\\nに置き換え
   - 4文字以下のメッセージは省略
   - Aの先頭の定型句を除去
 """
@@ -39,6 +38,7 @@ from typing import Any, Dict, List, Optional
 
 import fire  # type: ignore[import-untyped]
 import yaml
+from bs4 import BeautifulSoup
 
 # Aの先頭で除去する定型句パターン
 ASSISTANT_PREFIX_PATTERNS = [
@@ -51,7 +51,7 @@ ASSISTANT_PREFIX_PATTERNS = [
     r"^---+\s*",
     r"^#{1,6}\s+",  # Markdownのヘッダー
     r"^\*{3,}\s*",  # Markdownの区切り線
-    r"^_{3,}\s*",   # Markdownの区切り線
+    r"^_{3,}\s*",  # Markdownの区切り線
 ]
 
 
@@ -133,141 +133,138 @@ def truncate_message(message: str, max_lines: int = 2) -> str:
     return "\n".join(truncated)
 
 
-def format_timestamp(timestamp: float) -> str:
-    """UNIXタイムスタンプ（秒）を 'YYYY-MM-DD HH:MM' 形式に変換"""
-    dt = datetime.fromtimestamp(timestamp)
+def format_timestamp(timestamp_str: str) -> str:
+    """
+    'YYYY/MM/DD HH:MM:SS JST' を 'YYYY-MM-DD HH:MM' 形式に変換
+
+    Args:
+        timestamp_str: 元のタイムスタンプ文字列
+
+    Returns:
+        フォーマット済みタイムスタンプ
+    """
+    # "2025/11/13 20:10:22 JST" -> datetime
+    dt = datetime.strptime(timestamp_str.replace(" JST", ""), "%Y/%m/%d %H:%M:%S")
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
-def extract_messages_from_mapping(mapping: Dict[str, Any]) -> List[Dict[str, Any]]:
+def extract_activity_data(activity_div: Any) -> Optional[Dict[str, str]]:
     """
-    mappingオブジェクトからメッセージを時系列順に抽出
+    1つのアクティビティブロックからデータを抽出
 
     Args:
-        mapping: 会話のmappingオブジェクト
+        activity_div: BeautifulSoupのアクティビティ要素
 
     Returns:
-        メッセージのリスト（時系列順）
+        抽出されたデータ（user_message, timestamp, assistant_response）
+        抽出できない場合はNone
     """
-    messages = []
+    content_cells = activity_div.find_all("div", class_="content-cell")
+    if not content_cells:
+        return None
 
-    for node_id, node in mapping.items():
-        msg = node.get("message")
-        if not msg:
-            continue
+    # 最初のセルにユーザーメッセージとGeminiの応答が含まれる
+    first_cell = content_cells[0]
+    text = first_cell.get_text()
 
-        role = msg.get("author", {}).get("role", "unknown")
-        # user と assistant のメッセージのみを抽出
-        if role not in ["user", "assistant"]:
-            continue
+    # ユーザーメッセージとタイムスタンプを抽出
+    # パターン: "送信したメッセージ: XXX\n2025/11/13 20:10:22 JST"
+    pattern = r"送信したメッセージ:\s*(.*?)\s*(\d{4}/\d{2}/\d{2}\s+\d{1,2}:\d{2}:\d{2}\s+JST)"
+    match = re.search(pattern, text, re.DOTALL)
 
-        create_time = msg.get("create_time")
-        if not create_time:
-            continue
+    if not match:
+        return None
 
-        content_parts = msg.get("content", {}).get("parts", [])
-        if not content_parts:
-            continue
+    user_message = match.group(1).strip()
+    timestamp_str = match.group(2).strip()
 
-        # パーツを結合してコンテンツを作成
-        content = " ".join([str(part) for part in content_parts if part])
+    # Geminiの応答を抽出（タイムスタンプ以降、サービス情報の前まで）
+    # タイムスタンプの後の部分を取得
+    timestamp_pos = text.find(timestamp_str)
+    if timestamp_pos == -1:
+        assistant_response = ""
+    else:
+        after_timestamp = text[timestamp_pos + len(timestamp_str) :]
+        # "サービス:" より前の部分を取得
+        service_pos = after_timestamp.find("サービス:")
+        if service_pos != -1:
+            assistant_response = after_timestamp[:service_pos].strip()
+        else:
+            assistant_response = after_timestamp.strip()
 
-        messages.append(
-            {
-                "time": datetime.fromtimestamp(create_time),
-                "role": role,
-                "content": content.strip(),
-            }
-        )
-
-    # 時系列順にソート
-    messages.sort(key=lambda x: x["time"])
-    return messages
+    return {
+        "user_message": user_message,
+        "timestamp": timestamp_str,
+        "assistant_response": assistant_response,
+    }
 
 
-def process_conversation(conv: Dict[str, Any]) -> Optional[Dict[str, str]]:
+def process_activity(activity_data: Dict[str, str]) -> Optional[Dict[str, str]]:
     """
-    1つの会話を処理してCSV行データを生成
+    1つのアクティビティを処理してCSV行データを生成
 
     Args:
-        conv: 会話オブジェクト
+        activity_data: extract_activity_dataで抽出されたデータ
 
     Returns:
         CSV行データ（full_path, start_time, end_time, combined_content）
         メッセージがない場合はNone
     """
-    title = conv.get("title", "Untitled")
-    mapping = conv.get("mapping", {})
+    user_msg = activity_data["user_message"]
+    assistant_msg = activity_data["assistant_response"]
+    timestamp_str = activity_data["timestamp"]
 
-    messages = extract_messages_from_mapping(mapping)
-
-    if not messages:
+    # 4文字以下のユーザーメッセージはスキップ
+    if len(user_msg.strip()) <= 4:
         return None
 
-    # 時刻範囲
-    start_time = messages[0]["time"]
-    end_time = messages[-1]["time"]
+    # アシスタントメッセージの処理
+    if assistant_msg:
+        # 先頭の定型句を除去
+        assistant_msg = clean_assistant_message(assistant_msg)
 
-    # 全メッセージを結合（3行以上は2行+...に切り詰める）
-    combined_parts = []
-    for msg in messages:
-        content = msg["content"]
+        # 4文字以下ならスキップ
+        if len(assistant_msg.strip()) <= 4:
+            assistant_msg = ""
 
-        # 4文字以下のメッセージはスキップ
-        if len(content.strip()) <= 4:
-            continue
+    # メッセージを切り詰め
+    user_truncated = truncate_message(user_msg)
+    assistant_truncated = truncate_message(assistant_msg) if assistant_msg else ""
 
-        # アシスタントメッセージの場合、先頭の定型句を除去
-        if msg["role"] == "assistant":
-            content = clean_assistant_message(content)
+    # 改行を\\nに置き換え
+    user_escaped = user_truncated.replace("\n", "\\n")
+    assistant_escaped = assistant_truncated.replace("\n", "\\n") if assistant_truncated else ""
 
-            # クリーニング後も4文字以下ならスキップ
-            if len(content.strip()) <= 4:
-                continue
+    # combined_contentを構築
+    combined_parts = [f"[Q] {user_escaped}"]
+    if assistant_escaped:
+        combined_parts.append(f"[A] {assistant_escaped}")
 
-        # メッセージを切り詰め
-        truncated_content = truncate_message(content)
-
-        # メッセージ内の改行を\nに置き換え
-        truncated_content = truncated_content.replace("\n", "\\n")
-
-        # プレフィックスを追加
-        prefix = "[Q] " if msg["role"] == "user" else "[A] "
-        combined_parts.append(f"{prefix}{truncated_content}")
-
-    # 有効なメッセージがない場合
-    if not combined_parts:
-        return None
-
-    # 会話タイトル内の改行も置き換え
-    title_escaped = title.replace("\n", "\\n")
-
-    # 会話タイトルを先頭に追加
-    combined_parts.insert(0, f"[Title] {title_escaped}")
-
-    # パーツを\nで結合（実際のバックスラッシュn）
     combined_content = "\\n".join(combined_parts)
 
+    # タイムスタンプをフォーマット
+    formatted_time = format_timestamp(timestamp_str)
+
     return {
-        "full_path": "chatgpt",  # full_pathは"chatgpt"固定
-        "start_time": format_timestamp(start_time.timestamp()),
-        "end_time": format_timestamp(end_time.timestamp()),
+        "full_path": "gemini",  # full_pathは"gemini"固定
+        "start_time": formatted_time,
+        "end_time": formatted_time,  # Geminiは1つのQ/Aなので同じ時刻
         "combined_content": combined_content,
     }
 
 
-def parse_chatgpt_history(
+def parse_gemini_history(
     input_path: str,
     output_dir: str,
     limit: Optional[int] = None,
 ) -> None:
     """
-    ChatGPT履歴をパースしてCSVに変換
+    Gemini履歴をパースしてCSVに変換
 
     Args:
-        input_path: 入力JSONファイルパス
+        input_path: 入力HTMLファイルパス
         output_dir: 出力ディレクトリ
-        limit: 処理する会話数の上限（Noneの場合は全て処理）
+        limit: 処理するアクティビティ数の上限（Noneの場合は全て処理）
     """
     # パスを展開
     input_file = Path(input_path).expanduser()
@@ -281,31 +278,46 @@ def parse_chatgpt_history(
         print(f"Error: Input file not found: {input_file}", file=sys.stderr)
         sys.exit(1)
 
-    # JSONファイルを読み込み
-    print("Loading JSON file...")
+    # HTMLファイルを読み込み
+    print("Loading HTML file...")
     with open(input_file, "r", encoding="utf-8") as f:
-        conversations = json.load(f)
+        html_content = f.read()
 
-    total_conversations = len(conversations)
-    print(f"Loaded {total_conversations} conversations")
+    # BeautifulSoupでパース
+    print("Parsing HTML...")
+    soup = BeautifulSoup(html_content, "html.parser")
 
-    # 処理する会話数を制限
+    # 全アクティビティを取得
+    activities = soup.find_all("div", class_="outer-cell")
+    total_activities = len(activities)
+    print(f"Loaded {total_activities} activities")
+
+    # 処理するアクティビティ数を制限
     if limit:
-        conversations = conversations[:limit]
-        print(f"Processing first {limit} conversations (limit applied)")
+        activities = activities[:limit]
+        print(f"Processing first {limit} activities (limit applied)")
 
-    # 全会話を処理してrow_dataのリストを作成
-    print("\nProcessing conversations...")
+    # 全アクティビティを処理してrow_dataのリストを作成
+    print("\nProcessing activities...")
     processed = 0
     skipped = 0
     all_rows = []
 
-    for i, conv in enumerate(conversations, 1):
+    for i, activity in enumerate(activities, 1):
         # 100件ごとに進捗表示
         if i % 100 == 0:
-            print(f"  Processing... {i}/{len(conversations)} conversations ({i*100//len(conversations)}%)")
+            print(
+                f"  Processing... {i}/{len(activities)} activities ({i*100//len(activities)}%)"
+            )
 
-        row_data = process_conversation(conv)
+        # アクティビティからデータを抽出
+        activity_data = extract_activity_data(activity)
+        if not activity_data:
+            skipped += 1
+            continue
+
+        # CSV行データを生成
+        row_data = process_activity(activity_data)
 
         if row_data:
             all_rows.append(row_data)
@@ -313,7 +325,7 @@ def parse_chatgpt_history(
         else:
             skipped += 1
 
-    # タイムスタンプで重複を除去（同じstart_timeの最後のものだけを残す）
+    # タイムスタンプで重複を除去（同じタイムスタンプの最後のものだけを残す）
     print("\nDeduplicating by timestamp...")
     from collections import OrderedDict
 
@@ -350,7 +362,7 @@ def parse_chatgpt_history(
 
     print(f"CSV written to: {csv_path}")
     print(f"\nStatistics:")
-    print(f"  Total conversations: {total_conversations}")
+    print(f"  Total activities: {total_activities}")
     print(f"  Processed: {processed}")
     print(f"  Skipped (no messages): {skipped}")
     print(f"  Deduplicated (same timestamp): {deduplicated_count}")
@@ -359,10 +371,10 @@ def parse_chatgpt_history(
     # 統計情報をJSON出力
     stats_path = output_path / "statistics.json"
     statistics = {
-        "total_conversations": total_conversations,
-        "processed_conversations": processed,
-        "skipped_conversations": skipped,
-        "deduplicated_conversations": deduplicated_count,
+        "total_activities": total_activities,
+        "processed_activities": processed,
+        "skipped_activities": skipped,
+        "deduplicated_activities": deduplicated_count,
         "final_output_count": len(final_rows),
         "limit_applied": limit,
     }
@@ -374,7 +386,7 @@ def parse_chatgpt_history(
 
 
 class CLI:
-    """ChatGPT History Parser CLI"""
+    """Gemini History Parser CLI"""
 
     def parse(
         self,
@@ -384,12 +396,12 @@ class CLI:
         config_path: Optional[str] = None,
     ) -> None:
         """
-        ChatGPT履歴をパースしてCSVに変換
+        Gemini履歴をパースしてCSVに変換
 
         Args:
-            input_path: 入力JSONファイルパス（Noneの場合はconfig.yamlから取得）
+            input_path: 入力HTMLファイルパス（Noneの場合はconfig.yamlから取得）
             output_dir: 出力ディレクトリ（Noneの場合はconfig.yamlから取得）
-            limit: 処理する会話数の上限（テスト用、Noneの場合は全て処理）
+            limit: 処理するアクティビティ数の上限（テスト用、Noneの場合は全て処理）
             config_path: 設定ファイルパス（Noneの場合はdata_api/config.yaml）
         """
         # 設定ファイルを読み込み
@@ -397,18 +409,18 @@ class CLI:
         config = load_config(config_file)
 
         # config.yamlからデフォルト値を取得
-        chatgpt_config = config.get("parsers", {}).get("chatgpt", {})
+        gemini_config = config.get("parsers", {}).get("gemini", {})
 
         # パラメータが指定されていない場合、config.yamlから取得
-        final_input_path = input_path or chatgpt_config.get(
+        final_input_path = input_path or gemini_config.get(
             "input_path",
-            "/Users/mikke/Downloads/98e96bc0b6dac515d2f490fdf85f5f18002a282106d8ac4a30f9033021d2e4d4-2025-11-13-11-11-29-9d4f6d2d4eae48e9a7d4f59ea5a13a74/conversations.json",
+            "/Users/mikke/Downloads/Takeout/マイ アクティビティ/Gemini アプリ/マイアクティビティ.html",
         )
-        final_output_dir = output_dir or chatgpt_config.get(
-            "output_dir", "output/chatgpt-history"
+        final_output_dir = output_dir or gemini_config.get(
+            "output_dir", "output/gemini-history"
         )
 
-        parse_chatgpt_history(final_input_path, final_output_dir, limit)
+        parse_gemini_history(final_input_path, final_output_dir, limit)
 
 
 if __name__ == "__main__":

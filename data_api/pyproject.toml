@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Message Intent Analysis - Gemini API integration"
 requires-python = ">=3.12"
 dependencies = [
+    "beautifulsoup4>=4.14.2",
     "chromadb",
     "fire>=0.7.1",
     "fugashi>=1.5.2",
@@ -11,6 +12,7 @@ dependencies = [
     "joblib>=1.4.2",
     "k-means-constrained>=0.7.6",
     "litellm[caching]>=1.79.3",
+    "lxml>=6.0.2",
     "matplotlib>=3.10.7",
     "numpy>=1.26.0",
     "pandas>=2.3.3",

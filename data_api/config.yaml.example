@@ -15,6 +15,8 @@ input:
     # - "output/claude-history/parsed_messages.csv"
     # ChatGPT履歴を含める場合:
     # - "output/chatgpt-history/parsed_messages.csv"
+    # Gemini履歴を含める場合:
+    # - "output/gemini-history/parsed_messages.csv"
 
 # 履歴パーサー設定
 parsers:
@@ -30,6 +32,13 @@ parsers:
     # Claude Codeの履歴ファイル（通常は~/.claude/history.jsonl）
     input_path: "~/.claude/history.jsonl"
     output_dir: "output/claude-history"
+
+  # Gemini履歴パーサー
+  gemini:
+    # Google TakeoutからエクスポートしたマイアクティビティHTMLのパス
+    # エクスポート方法: https://takeout.google.com/ → マイアクティビティ → Gemini アプリを選択
+    input_path: "/Users/your-username/Downloads/Takeout/マイ アクティビティ/Gemini アプリ/マイアクティビティ.html"
+    output_dir: "output/gemini-history"
 
 # 出力ディレクトリパス
 output:
