@@ -21,6 +21,7 @@ Google Takeoutのマイアクティビティ.htmlを messages_with_hierarchy.csv
     --config_path=custom_config.yaml
 
 主な機能:
+  - デフォルトでQのみ抽出（--include_assistantでAも含める）
   - Q/Aそれぞれが3行以上の場合、2行 + "..." に切り詰め
   - アクティビティごとにメッセージを結合
   - 改行を\\nに置き換え
@@ -199,12 +200,13 @@ def extract_activity_data(activity_div: Any) -> Optional[Dict[str, str]]:
     }
 
 
-def process_activity(activity_data: Dict[str, str]) -> Optional[Dict[str, str]]:
+def process_activity(activity_data: Dict[str, str], include_assistant: bool = False) -> Optional[Dict[str, str]]:
     """
     1つのアクティビティを処理してCSV行データを生成
 
     Args:
         activity_data: extract_activity_dataで抽出されたデータ
+        include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
 
     Returns:
         CSV行データ（full_path, start_time, end_time, combined_content）
@@ -218,22 +220,24 @@ def process_activity(activity_data: Dict[str, str]) -> Optional[Dict[str, str]]:
     if len(user_msg.strip()) <= 4:
         return None
 
-    # アシスタントメッセージの処理
-    if assistant_msg:
+    # アシスタントメッセージの処理（include_assistant=True の場合のみ）
+    assistant_escaped = ""
+    if include_assistant and assistant_msg:
         # 先頭の定型句を除去
         assistant_msg = clean_assistant_message(assistant_msg)
 
         # 4文字以下ならスキップ
-        if len(assistant_msg.strip()) <= 4:
-            assistant_msg = ""
+        if len(assistant_msg.strip()) > 4:
+            # メッセージを切り詰め
+            assistant_truncated = truncate_message(assistant_msg)
+            # 改行を\\nに置き換え
+            assistant_escaped = assistant_truncated.replace("\n", "\\n")
 
     # メッセージを切り詰め
     user_truncated = truncate_message(user_msg)
-    assistant_truncated = truncate_message(assistant_msg) if assistant_msg else ""
 
     # 改行を\\nに置き換え
     user_escaped = user_truncated.replace("\n", "\\n")
-    assistant_escaped = assistant_truncated.replace("\n", "\\n") if assistant_truncated else ""
 
     # combined_contentを構築
     combined_parts = [f"[Q] {user_escaped}"]
@@ -257,6 +261,7 @@ def parse_gemini_history(
     input_path: str,
     output_dir: str,
     limit: Optional[int] = None,
+    include_assistant: bool = False,
 ) -> None:
     """
     Gemini履歴をパースしてCSVに変換
@@ -265,6 +270,7 @@ def parse_gemini_history(
         input_path: 入力HTMLファイルパス
         output_dir: 出力ディレクトリ
         limit: 処理するアクティビティ数の上限（Noneの場合は全て処理）
+        include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
     """
     # パスを展開
     input_file = Path(input_path).expanduser()
@@ -317,7 +323,7 @@ def parse_gemini_history(
             continue
 
         # CSV行データを生成
-        row_data = process_activity(activity_data)
+        row_data = process_activity(activity_data, include_assistant=include_assistant)
 
         if row_data:
             all_rows.append(row_data)
@@ -393,6 +399,7 @@ class CLI:
         input_path: Optional[str] = None,
         output_dir: Optional[str] = None,
         limit: Optional[int] = None,
+        include_assistant: bool = False,
         config_path: Optional[str] = None,
     ) -> None:
         """
@@ -402,6 +409,7 @@ class CLI:
             input_path: 入力HTMLファイルパス（Noneの場合はconfig.yamlから取得）
             output_dir: 出力ディレクトリ（Noneの場合はconfig.yamlから取得）
             limit: 処理するアクティビティ数の上限（テスト用、Noneの場合は全て処理）
+            include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
             config_path: 設定ファイルパス（Noneの場合はdata_api/config.yaml）
         """
         # 設定ファイルを読み込み
@@ -420,7 +428,7 @@ class CLI:
             "output_dir", "output/gemini-history"
         )
 
-        parse_gemini_history(final_input_path, final_output_dir, limit)
+        parse_gemini_history(final_input_path, final_output_dir, limit, include_assistant)
 
 
 if __name__ == "__main__":

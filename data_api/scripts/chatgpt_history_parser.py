@@ -21,6 +21,7 @@ ChatGPTのconversations.jsonを messages_with_hierarchy.csv と同じフォー�
     --config_path=custom_config.yaml
 
 主な機能:
+  - デフォルトでQのみ抽出（--include_assistantでAも含める）
   - Q/Aそれぞれが3行以上の場合、2行 + "..." に切り詰め
   - 会話ごとに時系列順にメッセージを結合
   - 会話タイトルをcombined_contentの先頭に追加
@@ -185,12 +186,13 @@ def extract_messages_from_mapping(mapping: Dict[str, Any]) -> List[Dict[str, Any
     return messages
 
 
-def process_conversation(conv: Dict[str, Any]) -> Optional[Dict[str, str]]:
+def process_conversation(conv: Dict[str, Any], include_assistant: bool = False) -> Optional[Dict[str, str]]:
     """
     1つの会話を処理してCSV行データを生成
 
     Args:
         conv: 会話オブジェクト
+        include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
 
     Returns:
         CSV行データ（full_path, start_time, end_time, combined_content）
@@ -211,6 +213,10 @@ def process_conversation(conv: Dict[str, Any]) -> Optional[Dict[str, str]]:
     # 全メッセージを結合（3行以上は2行+...に切り詰める）
     combined_parts = []
     for msg in messages:
+        # include_assistant=False の場合、assistantメッセージをスキップ
+        if not include_assistant and msg["role"] == "assistant":
+            continue
+
         content = msg["content"]
 
         # 4文字以下のメッセージはスキップ
@@ -260,6 +266,7 @@ def parse_chatgpt_history(
     input_path: str,
     output_dir: str,
     limit: Optional[int] = None,
+    include_assistant: bool = False,
 ) -> None:
     """
     ChatGPT履歴をパースしてCSVに変換
@@ -268,6 +275,7 @@ def parse_chatgpt_history(
         input_path: 入力JSONファイルパス
         output_dir: 出力ディレクトリ
         limit: 処理する会話数の上限（Noneの場合は全て処理）
+        include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
     """
     # パスを展開
     input_file = Path(input_path).expanduser()
@@ -305,7 +313,7 @@ def parse_chatgpt_history(
         if i % 100 == 0:
             print(f"  Processing... {i}/{len(conversations)} conversations ({i*100//len(conversations)}%)")
 
-        row_data = process_conversation(conv)
+        row_data = process_conversation(conv, include_assistant=include_assistant)
 
         if row_data:
             all_rows.append(row_data)
@@ -381,6 +389,7 @@ class CLI:
         input_path: Optional[str] = None,
         output_dir: Optional[str] = None,
         limit: Optional[int] = None,
+        include_assistant: bool = False,
         config_path: Optional[str] = None,
     ) -> None:
         """
@@ -390,6 +399,7 @@ class CLI:
             input_path: 入力JSONファイルパス（Noneの場合はconfig.yamlから取得）
             output_dir: 出力ディレクトリ（Noneの場合はconfig.yamlから取得）
             limit: 処理する会話数の上限（テスト用、Noneの場合は全て処理）
+            include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
             config_path: 設定ファイルパス（Noneの場合はdata_api/config.yaml）
         """
         # 設定ファイルを読み込み
@@ -408,7 +418,7 @@ class CLI:
             "output_dir", "output/chatgpt-history"
         )
 
-        parse_chatgpt_history(final_input_path, final_output_dir, limit)
+        parse_chatgpt_history(final_input_path, final_output_dir, limit, include_assistant)
 
 
 if __name__ == "__main__":
