@@ -201,7 +201,7 @@ export class ChatRepository {
     const dataSource = this.resolveDataSource(source);
     const since = await getLastFetchTimestamp(ChatRepository.CACHE_KEY);
 
-    console.log(`[ChatRepository] loadFromSource START - currentData exists:`, !!this.currentData);
+    console.log(`[ChatRepository] loadFromSource START - currentData exists:`, Boolean(this.currentData));
     console.log(`[ChatRepository] Fetching data${since ? ` since ${since.toISOString()}` : ' (full)'}`);
     const fetchedData = await dataSource.loadChatData(since ?? undefined);
     const fetchedCount = {

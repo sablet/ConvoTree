@@ -30,16 +30,6 @@ function ChatPageContent() {
     loadChatData()
   }, [loadChatData])
 
-  // messages, lines, tags の変更を監視
-  useEffect(() => {
-    console.log('[ChatPage] Data state updated:', {
-      messagesCount: Object.keys(messages).length,
-      linesCount: Object.keys(lines).length,
-      tagsCount: Object.keys(tags).length,
-      currentLineId
-    })
-  }, [messages, lines, tags, currentLineId])
-
   // linesが更新されたときにcurrentLineIdを設定
   useEffect(() => {
     console.log('[ChatPage] Lines effect triggered:', {
