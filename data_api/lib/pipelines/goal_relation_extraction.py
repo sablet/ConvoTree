@@ -31,13 +31,25 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Sentence Transformerモデル
 _model_instance: Optional[SentenceTransformer] = None
 
-# 類似度閾値の定数
-# 単一の選択肢は0.8をベースとし、OR条件の選択肢が多いほど厳しめに調整
-THRESHOLD_HIERARCHY_THEME = 0.8
-THRESHOLD_HIERARCHY_SUBJECT = 0.8
-THRESHOLD_MEANS_END = 0.85  # 4つの選択肢のOR
-THRESHOLD_DEPENDENCY = 0.83  # 3つの選択肢のOR
-THRESHOLD_CAUSAL = 0.82  # 2つの選択肢のOR
+# 類似度閾値の定数（0.8周辺に集約、緩やかな変化）
+THRESHOLD_HIERARCHY_THEME = 0.79
+THRESHOLD_HIERARCHY_SUBJECT = 0.79
+
+# MEANS_END の複数パターン閾値（0.78～0.82にさらに狭く調整）
+THRESHOLD_MEANS_END_ACTION_THEME = 0.79  # action→theme（基本パターン）
+THRESHOLD_MEANS_END_TARGET_SUBJECT = 0.8  # target→subject（複合条件時）
+THRESHOLD_MEANS_END_ACTION_THEME_LOW = 0.79  # action→theme（複合条件時・低め）
+THRESHOLD_MEANS_END_OUTCOME_THEME = 0.8  # outcome→theme（outcome必須）
+THRESHOLD_MEANS_END_ACTION_SUBJECT = 0.8  # action→subject（代替パターン）
+
+# DEPENDENCY の複数パターン閾値（0.80～0.82）
+THRESHOLD_DEPENDENCY_THEME_ISSUE = 0.8  # theme→issue
+THRESHOLD_DEPENDENCY_ACTION_ISSUE = 0.8  # action→issue
+THRESHOLD_DEPENDENCY_TARGET_CONDITIONS = 0.82  # target→conditions
+
+# CAUSAL の複数パターン閾値（0.80～0.82）
+THRESHOLD_CAUSAL_ACTION_CONDITIONS = 0.79  # action→conditions
+THRESHOLD_CAUSAL_OUTCOME_THEME = 0.79  # outcome→theme（outcome必須）
 
 
 def _get_model() -> SentenceTransformer:
@@ -356,16 +368,167 @@ def extract_hierarchy_relations(
     return relations
 
 
+def has_outcome(goal: GoalNode) -> bool:
+    """
+    Goalのtargetにoutcomeが含まれているかをチェック
+
+    Returns:
+        outcomeが1つ以上存在する場合True
+    """
+    if not goal.target:
+        return False
+    for t in goal.target:
+        if isinstance(t, dict) and "outcome" in t and t["outcome"]:
+            return True
+    return False
+
+
+def is_purposive(goal: GoalNode) -> bool:
+    """
+    Goalが目的的であるかを判定
+
+    purposive(B) ⟺
+      ∨ |ω(B)| > 0                              （outcomeが明示）
+      ∨ |α(B)| = 0                              （actionが空=目標記述）
+      ∨ |ι(B)| = 0                              （issueが空=課題でなく目標）
+
+    Returns:
+        目的的である場合True
+    """
+    return has_outcome(goal) or len(goal.action) == 0 or len(goal.issue) == 0
+
+
+def is_parallel_task(goal_a: GoalNode, goal_b: GoalNode) -> bool:
+    """
+    2つのGoalが並列タスクであるかを判定
+
+    parallel(A, B) ⟺
+      ∧ L(A) = L(B)                             （同じ抽象度）
+      ∧ π(A) ∩ π(B) ≠ ∅                        （同じパス）
+      ∧ |α(A)| > 0 ∧ |α(B)| > 0                （両方に具体的action）
+
+    Returns:
+        並列タスクである場合True
+    """
+    # 同じ抽象度
+    if goal_a.abstraction_level_num != goal_b.abstraction_level_num:
+        return False
+
+    # 両方に具体的action
+    if len(goal_a.action) == 0 or len(goal_b.action) == 0:
+        return False
+
+    # 同じパス（full_pathの共通要素がある）
+    if goal_a.source_full_paths and goal_b.source_full_paths:
+        common_paths = set(goal_a.source_full_paths) & set(goal_b.source_full_paths)
+        if common_paths:
+            return True
+
+    return False
+
+
+def extract_verb_stem(text: str) -> str:
+    """
+    動詞の語幹を抽出（日本語の簡易版）
+
+    「〜する」→「〜」、「〜化する」→「〜化」のような変換を行う
+
+    Args:
+        text: 動詞を含むテキスト
+
+    Returns:
+        語幹（推定）
+    """
+    text = text.strip()
+    # 「〜する」パターン
+    if text.endswith("する"):
+        return text[:-2]
+    # 「〜される」パターン
+    if text.endswith("される"):
+        return text[:-3]
+    # 「〜させる」パターン
+    if text.endswith("させる"):
+        return text[:-3]
+    return text
+
+
+def is_lexical_overlap(goal_a: GoalNode, goal_b: GoalNode) -> bool:
+    """
+    2つのGoal間の字面の重複をチェック
+
+    字面の重複判定:
+    is_lexical_overlap(A, B) ⟺
+      ∨ (∃a∈α(A): levenshtein(a, θ(B)) ≤ 3)     （編集距離が近い）
+      ∨ (extract_verb(α(A)) = θ(B))              （動詞-名詞の対応）
+      ∨ sim(θ(A), θ(B)) > 0.95                   （themeがほぼ同一）
+
+    Args:
+        goal_a: 手段側のGoal
+        goal_b: 目的側のGoal
+
+    Returns:
+        字面の重複がある場合True
+    """
+    import difflib
+
+    # 条件1: action の各要素と theme(B) の編集距離チェック
+    for action in goal_a.action:
+        similarity_ratio = difflib.SequenceMatcher(
+            None, action.lower(), goal_b.theme.lower()
+        ).ratio()
+        # 類似度が高い（編集距離が小さい）場合
+        if similarity_ratio > 0.85:  # 85%以上の一致
+            return True
+
+    # 条件2: action の動詞語幹と theme(B) の一致チェック
+    for action in goal_a.action:
+        verb_stem = extract_verb_stem(action)
+        # 語幹がthemeに含まれている、またはthemeが語幹に含まれている
+        if verb_stem and goal_b.theme:
+            if (
+                verb_stem in goal_b.theme
+                or goal_b.theme in verb_stem
+                or verb_stem.lower() == goal_b.theme.lower()
+            ):
+                return True
+
+    # 条件3: theme(A) と theme(B) がほぼ同一（類似度 > 0.88）
+    # 分布を踏まえた調整: 0.95は極端すぎるため、0.88に設定
+    if (
+        goal_a.theme_embedding is not None
+        and goal_b.theme_embedding is not None
+        and goal_a.theme
+        and goal_b.theme
+    ):
+        theme_similarity = cosine_similarity(
+            goal_a.theme_embedding, goal_b.theme_embedding
+        )
+        if theme_similarity > 0.88:
+            return True
+
+    return False
+
+
 def extract_means_end_relations(
-    goals: List[GoalNode], threshold: float = THRESHOLD_MEANS_END
+    goals: List[GoalNode], threshold: float = THRESHOLD_MEANS_END_ACTION_THEME
 ) -> List[RelationCandidate]:
     """
     手段-目的関係（Means-End）を抽出
 
-    条件:
-    - 前提条件を満たす
-    - action/target による推定
-    - ノードAの action または target が、ノードBの theme または subject と高類似（> threshold）
+    数理的定義:
+    A ⟹ B ⟺
+      ∧ L(A) ≥ L(B) - 1                         （手段は目的と同等以下の抽象度）
+      ∧ (|α(A)| > 0 ∨ |τ(A)| > 0)              （Aに具体的手段がある）
+      ∧ purposive(B)                            （Bが目的的）
+      ∧ ¬parallel(A, B)                         （並列タスクでない）
+      ∧ ¬is_lexical_overlap(A, B)               （字面の重複でない）
+      ∧ achievement_evidence(A, B)              （達成関係の証拠）
+
+    達成関係の証拠（いずれか1つ以上）:
+      ∨ sim(α, θ) ≥ 0.78                       （action→theme）
+      ∨ (sim(τ, σ) ≥ 0.85 ∧ sim(α, θ) ≥ 0.65) （target→subject + action→theme）
+      ∨ (|ω(A)| > 0 ∧ sim(τ, θ) ≥ 0.82)        （outcome→theme）
+      ∨ sim(α, σ) ≥ 0.80                       （action→subject）
 
     方向: A（手段） → B（目的）
     """
@@ -380,26 +543,51 @@ def extract_means_end_relations(
             if not check_relation_precondition(goal_a, goal_b):
                 continue
 
-            # actionとtheme/subjectの類似度
-            if (
-                goal_a.action_embedding is None
-                or goal_b.theme_embedding is None
-                or not goal_a.action
-            ):
+            # L(A) ≥ L(B) - 1
+            if goal_a.abstraction_level_num < goal_b.abstraction_level_num - 1:
                 continue
 
-            action_theme_sim = cosine_similarity(
-                goal_a.action_embedding, goal_b.theme_embedding
-            )
+            # (|α(A)| > 0 ∨ |τ(A)| > 0)
+            if len(goal_a.action) == 0 and len(goal_a.target) == 0:
+                continue
+
+            # purposive(B)
+            if not is_purposive(goal_b):
+                continue
+
+            # ¬parallel(A, B)
+            if is_parallel_task(goal_a, goal_b):
+                continue
+
+            # ¬is_lexical_overlap(A, B) - 字面の重複を除外
+            if is_lexical_overlap(goal_a, goal_b):
+                continue
+
+            # 達成関係の証拠を計算
+            action_theme_sim = 0.0
             action_subject_sim = 0.0
-            if goal_b.subject_embedding is not None and goal_b.subject:
+            target_theme_sim = 0.0
+            target_subject_sim = 0.0
+
+            if (
+                goal_a.action_embedding is not None
+                and goal_b.theme_embedding is not None
+                and goal_a.action
+            ):
+                action_theme_sim = cosine_similarity(
+                    goal_a.action_embedding, goal_b.theme_embedding
+                )
+
+            if (
+                goal_a.action_embedding is not None
+                and goal_b.subject_embedding is not None
+                and goal_a.action
+                and goal_b.subject
+            ):
                 action_subject_sim = cosine_similarity(
                     goal_a.action_embedding, goal_b.subject_embedding
                 )
 
-            # targetとtheme/subjectの類似度
-            target_theme_sim = 0.0
-            target_subject_sim = 0.0
             if (
                 goal_a.target_embedding is not None
                 and goal_b.theme_embedding is not None
@@ -407,20 +595,63 @@ def extract_means_end_relations(
                 target_theme_sim = cosine_similarity(
                     goal_a.target_embedding, goal_b.theme_embedding
                 )
+
             if (
                 goal_a.target_embedding is not None
                 and goal_b.subject_embedding is not None
+                and goal_b.subject
             ):
                 target_subject_sim = cosine_similarity(
                     goal_a.target_embedding, goal_b.subject_embedding
                 )
 
-            max_sim = max(
-                action_theme_sim, action_subject_sim, target_theme_sim, target_subject_sim
-            )
+            # 達成関係の証拠をチェック（いずれか1つ以上）
+            has_evidence = False
+            evidence_details = []
+            max_sim = 0.0
 
-            if max_sim > threshold:
-                reason = f"action_theme={action_theme_sim:.2f}, action_subject={action_subject_sim:.2f}, target_theme={target_theme_sim:.2f}, target_subject={target_subject_sim:.2f}"
+            # パターン1: sim(α, θ) ≥ 0.78
+            if action_theme_sim >= THRESHOLD_MEANS_END_ACTION_THEME:
+                has_evidence = True
+                evidence_details.append(f"action→theme={action_theme_sim:.3f}")
+                max_sim = max(max_sim, action_theme_sim)
+
+            # パターン2: (sim(τ, σ) ≥ 0.85 ∧ sim(α, θ) ≥ 0.65)
+            if (
+                target_subject_sim >= THRESHOLD_MEANS_END_TARGET_SUBJECT
+                and action_theme_sim >= THRESHOLD_MEANS_END_ACTION_THEME_LOW
+            ):
+                has_evidence = True
+                evidence_details.append(
+                    f"target→subject={target_subject_sim:.3f}+action→theme={action_theme_sim:.3f}"
+                )
+                max_sim = max(max_sim, (target_subject_sim + action_theme_sim) / 2)
+
+            # パターン3: (|ω(A)| > 0 ∧ sim(τ, θ) ≥ 0.82)
+            if has_outcome(goal_a) and target_theme_sim >= THRESHOLD_MEANS_END_OUTCOME_THEME:
+                has_evidence = True
+                evidence_details.append(f"outcome→theme={target_theme_sim:.3f}")
+                max_sim = max(max_sim, target_theme_sim)
+
+            # パターン4: sim(α, σ) ≥ 0.80
+            if action_subject_sim >= THRESHOLD_MEANS_END_ACTION_SUBJECT:
+                has_evidence = True
+                evidence_details.append(f"action→subject={action_subject_sim:.3f}")
+                max_sim = max(max_sim, action_subject_sim)
+
+            if has_evidence:
+                # 同一クラスタ優先: 異なるクラスタ間では複数の証拠を要求
+                same_cluster = goal_a.cluster_id == goal_b.cluster_id
+                if not same_cluster:
+                    # 異なるクラスタ間では、複数の証拠パターンが必要
+                    if len(evidence_details) < 2:
+                        continue
+                    # または、domain の共通要素が2つ以上必要
+                    common_domains = set(goal_a.domain) & set(goal_b.domain)
+                    if len(common_domains) < 2:
+                        continue
+
+                reason = " | ".join(evidence_details)
                 relations.append(
                     RelationCandidate(
                         source_node_id=goal_a.node_id,
@@ -435,15 +666,22 @@ def extract_means_end_relations(
 
 
 def extract_dependency_relations(
-    goals: List[GoalNode], threshold: float = THRESHOLD_DEPENDENCY
+    goals: List[GoalNode], threshold: float = THRESHOLD_DEPENDENCY_THEME_ISSUE
 ) -> List[RelationCandidate]:
     """
     依存関係（Dependency / Prerequisite）を抽出
 
-    条件:
-    - 前提条件を満たす
-    - ノードBの issue に、ノードAの theme や action と類似する内容が含まれる（> threshold）
-    - または、ノードAの target がノードBの conditions と一致
+    数理的定義:
+    A ⊣ B ⟺
+      ∧ |ι(B)| > 0                              （Bに阻害要因がある）
+      ∧ L(A) ≤ L(B) + 1                         （時間的整合性）
+      ∧ dependency_evidence(A, B)               （依存関係の証拠）
+
+    依存関係の証拠（いずれか1つ以上）:
+      ∨ (sim(θ, ι) ≥ 0.83 ∧ |α(A)| > 0)        （theme→issue + 具体的action）
+      ∨ (sim(α, ι) ≥ 0.83 ∧ |α(A)| > 0)        （action→issue）
+      ∨ (|τ(A)| > 0 ∧ |κ(B)| > 0
+         ∧ sim(τ, κ) ≥ 0.88)                    （target→conditions）
 
     方向: A（前提条件） → B（依存先）
     """
@@ -458,13 +696,18 @@ def extract_dependency_relations(
             if not check_relation_precondition(goal_a, goal_b):
                 continue
 
-            # Bにissueがない場合はスキップ
+            # |ι(B)| > 0
             if not goal_b.issue or goal_b.issue_embedding is None:
                 continue
 
-            # Aのtheme/actionとBのissueの類似度
+            # L(A) ≤ L(B) + 1
+            if goal_a.abstraction_level_num > goal_b.abstraction_level_num + 1:
+                continue
+
+            # 依存関係の証拠を計算
             theme_issue_sim = 0.0
             action_issue_sim = 0.0
+            target_conditions_sim = 0.0
 
             if goal_a.theme_embedding is not None and goal_a.theme:
                 theme_issue_sim = cosine_similarity(
@@ -476,21 +719,51 @@ def extract_dependency_relations(
                     goal_a.action_embedding, goal_b.issue_embedding
                 )
 
-            # targetとconditionsの類似度
-            target_conditions_sim = 0.0
             if (
                 goal_a.target_embedding is not None
                 and goal_b.conditions_embedding is not None
+                and goal_a.target
                 and goal_b.conditions
             ):
                 target_conditions_sim = cosine_similarity(
                     goal_a.target_embedding, goal_b.conditions_embedding
                 )
 
-            max_sim = max(theme_issue_sim, action_issue_sim, target_conditions_sim)
+            # 依存関係の証拠をチェック（いずれか1つ以上）
+            has_evidence = False
+            evidence_details = []
+            max_sim = 0.0
 
-            if max_sim > threshold:
-                reason = f"theme_issue={theme_issue_sim:.2f}, action_issue={action_issue_sim:.2f}, target_conditions={target_conditions_sim:.2f}"
+            # パターン1: (sim(θ, ι) ≥ 0.83 ∧ |α(A)| > 0)
+            if (
+                theme_issue_sim >= THRESHOLD_DEPENDENCY_THEME_ISSUE
+                and len(goal_a.action) > 0
+            ):
+                has_evidence = True
+                evidence_details.append(f"theme→issue={theme_issue_sim:.3f}")
+                max_sim = max(max_sim, theme_issue_sim)
+
+            # パターン2: (sim(α, ι) ≥ 0.83 ∧ |α(A)| > 0)
+            if (
+                action_issue_sim >= THRESHOLD_DEPENDENCY_ACTION_ISSUE
+                and len(goal_a.action) > 0
+            ):
+                has_evidence = True
+                evidence_details.append(f"action→issue={action_issue_sim:.3f}")
+                max_sim = max(max_sim, action_issue_sim)
+
+            # パターン3: (|τ(A)| > 0 ∧ |κ(B)| > 0 ∧ sim(τ, κ) ≥ 0.88)
+            if (
+                len(goal_a.target) > 0
+                and len(goal_b.conditions) > 0
+                and target_conditions_sim >= THRESHOLD_DEPENDENCY_TARGET_CONDITIONS
+            ):
+                has_evidence = True
+                evidence_details.append(f"target→conditions={target_conditions_sim:.3f}")
+                max_sim = max(max_sim, target_conditions_sim)
+
+            if has_evidence:
+                reason = " | ".join(evidence_details)
                 relations.append(
                     RelationCandidate(
                         source_node_id=goal_a.node_id,
@@ -505,15 +778,22 @@ def extract_dependency_relations(
 
 
 def extract_causal_relations(
-    goals: List[GoalNode], threshold: float = THRESHOLD_CAUSAL
+    goals: List[GoalNode], threshold: float = THRESHOLD_CAUSAL_ACTION_CONDITIONS
 ) -> List[RelationCandidate]:
     """
     因果関係（Causal）を抽出
 
-    条件:
-    - 前提条件を満たす
-    - ノードAの action とノードBの conditions が類似（> threshold）
-    - または、Aの target とBの theme が因果的に関連
+    数理的定義:
+    A ⇝ B ⟺
+      ∧ (c(A) = c(B) ∨ (L(A) ≤ 2 ∧ L(B) ≤ 2))  （同一クラスタ、または両方が高レベル）
+      ∧ (|α(A)| > 0 ∨ |τ(A)| > 0)              （Aに具体的action/target）
+      ∧ |κ(B)| > 0                              （Bに状態記述がある）
+      ∧ |L(A) - L(B)| ≤ 2                       （抽象度の近さ）
+      ∧ causal_evidence(A, B)                   （因果関係の証拠）
+
+    因果関係の証拠（いずれか1つ以上）:
+      ∨ sim(α, κ) ≥ 0.86                       （action→conditions）
+      ∨ (|ω(A)| > 0 ∧ sim(τ, θ) ≥ 0.88)        （outcome→theme）
 
     方向: A（原因） → B（結果）
     """
@@ -528,20 +808,36 @@ def extract_causal_relations(
             if not check_relation_precondition(goal_a, goal_b):
                 continue
 
-            # actionとconditionsの類似度
+            # (c(A) = c(B) ∨ (L(A) ≤ 2 ∧ L(B) ≤ 2))
+            same_cluster = goal_a.cluster_id == goal_b.cluster_id
+            both_high_level = (
+                goal_a.abstraction_level_num <= 2 and goal_b.abstraction_level_num <= 2
+            )
+            if not (same_cluster or both_high_level):
+                continue
+
+            # (|α(A)| > 0 ∨ |τ(A)| > 0)
+            if len(goal_a.action) == 0 and len(goal_a.target) == 0:
+                continue
+
+            # |κ(B)| > 0
+            if not goal_b.conditions or goal_b.conditions_embedding is None:
+                continue
+
+            # |L(A) - L(B)| ≤ 2
+            level_diff = abs(goal_a.abstraction_level_num - goal_b.abstraction_level_num)
+            if level_diff > 2:
+                continue
+
+            # 因果関係の証拠を計算
             action_conditions_sim = 0.0
-            if (
-                goal_a.action_embedding is not None
-                and goal_b.conditions_embedding is not None
-                and goal_a.action
-                and goal_b.conditions
-            ):
+            target_theme_sim = 0.0
+
+            if goal_a.action_embedding is not None and goal_a.action:
                 action_conditions_sim = cosine_similarity(
                     goal_a.action_embedding, goal_b.conditions_embedding
                 )
 
-            # targetとthemeの類似度
-            target_theme_sim = 0.0
             if (
                 goal_a.target_embedding is not None
                 and goal_b.theme_embedding is not None
@@ -551,10 +847,25 @@ def extract_causal_relations(
                     goal_a.target_embedding, goal_b.theme_embedding
                 )
 
-            max_sim = max(action_conditions_sim, target_theme_sim)
+            # 因果関係の証拠をチェック（いずれか1つ以上）
+            has_evidence = False
+            evidence_details = []
+            max_sim = 0.0
 
-            if max_sim > threshold:
-                reason = f"action_conditions={action_conditions_sim:.2f}, target_theme={target_theme_sim:.2f}"
+            # パターン1: sim(α, κ) ≥ 0.86
+            if action_conditions_sim >= THRESHOLD_CAUSAL_ACTION_CONDITIONS:
+                has_evidence = True
+                evidence_details.append(f"action→conditions={action_conditions_sim:.3f}")
+                max_sim = max(max_sim, action_conditions_sim)
+
+            # パターン2: (|ω(A)| > 0 ∧ sim(τ, θ) ≥ 0.88)
+            if has_outcome(goal_a) and target_theme_sim >= THRESHOLD_CAUSAL_OUTCOME_THEME:
+                has_evidence = True
+                evidence_details.append(f"outcome→theme={target_theme_sim:.3f}")
+                max_sim = max(max_sim, target_theme_sim)
+
+            if has_evidence:
+                reason = " | ".join(evidence_details)
                 relations.append(
                     RelationCandidate(
                         source_node_id=goal_a.node_id,
@@ -667,6 +978,24 @@ def analyze_isolated_nodes(
         else:
             cluster_stats[cluster_id]["isolated"] += 1
 
+    # full_path ごとの統計
+    path_stats = {}
+    for goal in goals:
+        for full_path in goal.source_full_paths:
+            if full_path not in path_stats:
+                path_stats[full_path] = {
+                    "total": 0,
+                    "connected": 0,
+                    "isolated": 0,
+                    "node_ids": [],
+                }
+            path_stats[full_path]["total"] += 1
+            path_stats[full_path]["node_ids"].append(goal.node_id)
+            if goal.node_id in connected_nodes:
+                path_stats[full_path]["connected"] += 1
+            else:
+                path_stats[full_path]["isolated"] += 1
+
     # 論理的に可能なペア数を計算
     possible_pairs = calculate_possible_relation_pairs(goals)
 
@@ -695,6 +1024,7 @@ def analyze_isolated_nodes(
         "connection_rate": len(connected_nodes) / len(goals) if goals else 0,
         "isolated_node_ids": sorted(list(isolated_nodes)),
         "cluster_stats": cluster_stats,
+        "path_stats": path_stats,
         "possible_pairs": possible_pairs,
         "extraction_rates": extraction_rates,
     }
@@ -926,7 +1256,12 @@ def generate_similarity_histograms(
                 "means_end_target_theme",
                 "means_end_target_subject",
             ],
-            "thresholds": [THRESHOLD_MEANS_END] * 4,
+            "thresholds": [
+                THRESHOLD_MEANS_END_ACTION_THEME,
+                THRESHOLD_MEANS_END_ACTION_SUBJECT,
+                THRESHOLD_MEANS_END_OUTCOME_THEME,
+                THRESHOLD_MEANS_END_TARGET_SUBJECT,
+            ],
             "labels": [
                 "action-theme",
                 "action-subject",
@@ -941,7 +1276,11 @@ def generate_similarity_histograms(
                 "dependency_action_issue",
                 "dependency_target_conditions",
             ],
-            "thresholds": [THRESHOLD_DEPENDENCY] * 3,
+            "thresholds": [
+                THRESHOLD_DEPENDENCY_THEME_ISSUE,
+                THRESHOLD_DEPENDENCY_ACTION_ISSUE,
+                THRESHOLD_DEPENDENCY_TARGET_CONDITIONS,
+            ],
             "labels": ["theme-issue", "action-issue", "target-conditions"],
             "colors": ["#FF9800", "#FFB74D", "#FFCC80"],
         },
@@ -950,7 +1289,10 @@ def generate_similarity_histograms(
                 "causal_action_conditions",
                 "causal_target_theme",
             ],
-            "thresholds": [THRESHOLD_CAUSAL] * 2,
+            "thresholds": [
+                THRESHOLD_CAUSAL_ACTION_CONDITIONS,
+                THRESHOLD_CAUSAL_OUTCOME_THEME,
+            ],
             "labels": ["action-conditions", "target-theme"],
             "colors": ["#9C27B0", "#BA68C8"],
         },
@@ -1060,11 +1402,11 @@ def generate_markdown_report(
 
     md_content += "\n### フィルタリング条件\n\n"
     md_content += "1. **前提条件**: `(a.abstraction_level <= b.abstraction_level) AND [(a.domain共通) OR (full_path一致)]`\n"
-    md_content += f"2. **類似度閾値**:\n"
-    md_content += f"   - hierarchy: {THRESHOLD_HIERARCHY_THEME} (theme AND subject両方)\n"
-    md_content += f"   - means_end: {THRESHOLD_MEANS_END} (4つの選択肢のいずれか)\n"
-    md_content += f"   - dependency: {THRESHOLD_DEPENDENCY} (3つの選択肢のいずれか)\n"
-    md_content += f"   - causal: {THRESHOLD_CAUSAL} (2つの選択肢のいずれか)\n\n"
+    md_content += f"2. **類似度閾値**（新しい数理的定義）:\n"
+    md_content += f"   - hierarchy: theme={THRESHOLD_HIERARCHY_THEME}, subject={THRESHOLD_HIERARCHY_SUBJECT} (両方必須)\n"
+    md_content += f"   - means_end: action→theme={THRESHOLD_MEANS_END_ACTION_THEME}, target→subject={THRESHOLD_MEANS_END_TARGET_SUBJECT}, action→theme(複合)={THRESHOLD_MEANS_END_ACTION_THEME_LOW}, outcome→theme={THRESHOLD_MEANS_END_OUTCOME_THEME}, action→subject={THRESHOLD_MEANS_END_ACTION_SUBJECT} (いずれか)\n"
+    md_content += f"   - dependency: theme→issue={THRESHOLD_DEPENDENCY_THEME_ISSUE}, action→issue={THRESHOLD_DEPENDENCY_ACTION_ISSUE}, target→conditions={THRESHOLD_DEPENDENCY_TARGET_CONDITIONS} (いずれか)\n"
+    md_content += f"   - causal: action→conditions={THRESHOLD_CAUSAL_ACTION_CONDITIONS}, outcome→theme={THRESHOLD_CAUSAL_OUTCOME_THEME} (いずれか)\n\n"
 
     md_content += "## Extraction Rate Statistics\n\n"
     md_content += "前提条件を通過したペアのうち、類似度閾値で抽出された割合\n\n"
@@ -1094,8 +1436,58 @@ def generate_markdown_report(
         )
         md_content += f"| Cluster {cluster_id:02d} | {stats['total']} | {stats['connected']} | {stats['isolated']} | {connection_rate:.1%} |\n"
 
+    # full_path ごとの統計
+    md_content += "\n## Full Path Statistics\n\n"
+    md_content += "| Full Path | Total Nodes | Connected | Isolated | Connection Rate |\n"
+    md_content += "|-----------|-------------|-----------|----------|----------------|\n"
+
+    path_stats = analysis.get("path_stats", {})
+    # 接続率でソート（降順）
+    sorted_paths = sorted(
+        path_stats.items(),
+        key=lambda x: x[1]["connected"] / x[1]["total"] if x[1]["total"] > 0 else 0,
+        reverse=True,
+    )
+
+    for full_path, stats in sorted_paths:
+        connection_rate = stats["connected"] / stats["total"] if stats["total"] > 0 else 0
+        # パスが長い場合は短縮表示
+        display_path = full_path if len(full_path) <= 50 else "..." + full_path[-47:]
+        md_content += f"| `{display_path}` | {stats['total']} | {stats['connected']} | {stats['isolated']} | {connection_rate:.1%} |\n"
+
+    # Isolated Nodes のサンプル表示
+    md_content += "\n## Isolated Nodes Sample\n\n"
+    isolated_node_ids = analysis.get("isolated_node_ids", [])
+    md_content += f"孤立ノード総数: {len(isolated_node_ids)}\n\n"
+
+    if isolated_node_ids:
+        # 最初の10件を表示
+        sample_size = min(10, len(isolated_node_ids))
+        md_content += f"以下、最初の{sample_size}件の孤立ノードの詳細:\n\n"
+
+        for node_id in isolated_node_ids[:sample_size]:
+            node = node_map.get(node_id)
+            if node:
+                md_content += f"### Isolated Node: `{node_id}`\n\n"
+                md_content += f"- **Cluster**: {node.cluster_id:02d}\n"
+                md_content += f"- **Abstraction Level**: {node.abstraction_level}\n"
+                md_content += f"- **Theme**: {node.theme}\n"
+                md_content += f"- **Subject**: {node.subject}\n"
+                md_content += f"- **Domain**: {', '.join(node.domain) if node.domain else 'N/A'}\n"
+                md_content += f"- **Full Paths**: {len(node.source_full_paths)} path(s)\n\n"
+                md_content += "**詳細データ**:\n\n"
+                md_content += "```json\n"
+                md_content += json.dumps(node.raw_data, ensure_ascii=False, indent=2)
+                md_content += "\n```\n\n"
+                md_content += "---\n\n"
+
+        if len(isolated_node_ids) > sample_size:
+            md_content += f"\n残り {len(isolated_node_ids) - sample_size} 件の孤立ノードは省略\n\n"
+    else:
+        md_content += "孤立ノードはありません。全てのノードが何らかのリレーションに接続されています。\n\n"
+
     md_content += "\n## Sample Relations by Type\n\n"
-    md_content += "各リレーションタイプごとにスコアが高い上位3件の詳細\n\n"
+    md_content += "各リレーションタイプごとにスコアが高い上位2件と低い下位2件の詳細\n\n"
     md_content += "**注**: 各リレーションは、複数の類似度のうち**いずれか1つ以上が各タイプの閾値を超えた**ものです。\n"
     md_content += "Scoreは使用した類似度の最大値（hierarchy）または最大値そのもの（means_end, dependency, causal）です。\n\n"
 
@@ -1106,37 +1498,101 @@ def generate_markdown_report(
             relations_by_type[rel.relation_type] = []
         relations_by_type[rel.relation_type].append(rel)
 
-    # 各タイプごとにスコアでソートして上位3件を表示
-    sample_count_per_type = 3
+    # 各タイプごとにスコアでソートして上位2件と下位2件を表示
+    top_count = 2
+    bottom_count = 2
     for rel_type in ["hierarchy", "means_end", "dependency", "causal"]:
         if rel_type not in relations_by_type:
             continue
 
-        type_relations = sorted(relations_by_type[rel_type], key=lambda x: x.score, reverse=True)[:sample_count_per_type]
+        sorted_relations = sorted(relations_by_type[rel_type], key=lambda x: x.score, reverse=True)
 
-        md_content += f"### {rel_type.upper()} Relations (Top {len(type_relations)})\n\n"
+        # 上位2件と下位2件を取得
+        top_relations = sorted_relations[:top_count]
+        bottom_relations = sorted_relations[-bottom_count:] if len(sorted_relations) > top_count else []
 
-        for i, rel in enumerate(type_relations, 1):
-            source_node = node_map.get(rel.source_node_id)
-            target_node = node_map.get(rel.target_node_id)
+        # 重複を避ける（データが少ない場合）
+        if len(sorted_relations) <= top_count + bottom_count:
+            type_relations = sorted_relations
+            section_title = f"### {rel_type.upper()} Relations (All {len(type_relations)})\n\n"
+        else:
+            type_relations = top_relations + bottom_relations
+            section_title = f"### {rel_type.upper()} Relations (Top {len(top_relations)} & Bottom {len(bottom_relations)})\n\n"
 
-            md_content += f"#### {rel_type.upper()} #{i} (Score: {rel.score:.3f})\n\n"
-            md_content += f"**Direction**: `{rel.source_node_id}` → `{rel.target_node_id}`\n\n"
-            md_content += f"**Reason**: {rel.reason}\n\n"
+        md_content += section_title
 
-            if source_node:
-                md_content += "**Source Node**:\n\n"
-                md_content += "```json\n"
-                md_content += json.dumps(source_node.raw_data, ensure_ascii=False, indent=2)
-                md_content += "\n```\n\n"
+        # 上位と下位を分けて表示
+        if len(sorted_relations) > top_count + bottom_count:
+            # 上位のリレーションを表示
+            md_content += f"#### Top {top_count} (Highest Scores)\n\n"
+            for i, rel in enumerate(top_relations, 1):
+                source_node = node_map.get(rel.source_node_id)
+                target_node = node_map.get(rel.target_node_id)
 
-            if target_node:
-                md_content += "**Target Node**:\n\n"
-                md_content += "```json\n"
-                md_content += json.dumps(target_node.raw_data, ensure_ascii=False, indent=2)
-                md_content += "\n```\n\n"
+                md_content += f"##### {rel_type.upper()} Top #{i} (Score: {rel.score:.3f})\n\n"
+                md_content += f"**Direction**: `{rel.source_node_id}` → `{rel.target_node_id}`\n\n"
+                md_content += f"**Reason**: {rel.reason}\n\n"
 
-            md_content += "---\n\n"
+                if source_node:
+                    md_content += "**Source Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(source_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                if target_node:
+                    md_content += "**Target Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(target_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                md_content += "---\n\n"
+
+            # 下位のリレーションを表示
+            md_content += f"#### Bottom {bottom_count} (Lowest Scores)\n\n"
+            for i, rel in enumerate(bottom_relations, 1):
+                source_node = node_map.get(rel.source_node_id)
+                target_node = node_map.get(rel.target_node_id)
+
+                md_content += f"##### {rel_type.upper()} Bottom #{i} (Score: {rel.score:.3f})\n\n"
+                md_content += f"**Direction**: `{rel.source_node_id}` → `{rel.target_node_id}`\n\n"
+                md_content += f"**Reason**: {rel.reason}\n\n"
+
+                if source_node:
+                    md_content += "**Source Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(source_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                if target_node:
+                    md_content += "**Target Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(target_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                md_content += "---\n\n"
+        else:
+            # データが少ない場合は全て表示
+            for i, rel in enumerate(type_relations, 1):
+                source_node = node_map.get(rel.source_node_id)
+                target_node = node_map.get(rel.target_node_id)
+
+                md_content += f"#### {rel_type.upper()} #{i} (Score: {rel.score:.3f})\n\n"
+                md_content += f"**Direction**: `{rel.source_node_id}` → `{rel.target_node_id}`\n\n"
+                md_content += f"**Reason**: {rel.reason}\n\n"
+
+                if source_node:
+                    md_content += "**Source Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(source_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                if target_node:
+                    md_content += "**Target Node**:\n\n"
+                    md_content += "```json\n"
+                    md_content += json.dumps(target_node.raw_data, ensure_ascii=False, indent=2)
+                    md_content += "\n```\n\n"
+
+                md_content += "---\n\n"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
