@@ -32,6 +32,7 @@ import fire  # type: ignore[import-untyped]
 sys.path.insert(0, str(Path(__file__).parent))
 
 from lib.config import config
+from lib.pipelines.goal_extraction import run_goal_extraction_pipeline
 from lib.pipelines.goal_network_builder import build_ultra_goal_network
 from lib.pipelines.goal_network_exporter import export_goal_network_to_markdown
 from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
@@ -221,6 +222,29 @@ class Pipeline:
             save_raw=save_raw,
             aggregate=aggregate,
             aggregate_all=aggregate_all,
+            max_workers=max_workers or config.intent_extraction_max_workers,
+        )
+
+    def goal_extraction(
+        self,
+        gemini: bool = False,
+        cluster: int | None = None,
+        save_raw: bool = False,
+        max_workers: int | None = None,
+    ):
+        """
+        Goal抽出（GoalItemスキーマ）
+
+        Args:
+            gemini: Gemini APIでGoal抽出を実行
+            cluster: 特定のクラスタIDのみ処理
+            save_raw: 生レスポンスを保存
+            max_workers: 並列実行の最大ワーカー数（Noneの場合は設定ファイルから読み込み）
+        """
+        run_goal_extraction_pipeline(
+            gemini=gemini,
+            cluster=cluster,
+            save_raw=save_raw,
             max_workers=max_workers or config.intent_extraction_max_workers,
         )
 
