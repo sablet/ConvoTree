@@ -29,6 +29,14 @@ def load_goal_data(goal_extraction_dir: Path) -> dict[str, dict]:
     return goal_map
 
 
+def extract_level_number(level_str: str) -> int:
+    """abstraction_levelから数値を抽出 (例: "L3_プロジェクト" -> 3)"""
+    try:
+        return int(level_str.split("_")[0][1:])  # "L3" -> 3
+    except (ValueError, IndexError):
+        return 5  # デフォルトは最下位
+
+
 def create_graph_data(relations_csv: Path, goal_map: dict) -> dict:
     """グラフデータをD3.js用のJSON形式に変換"""
     df = pd.read_csv(relations_csv)
@@ -39,12 +47,14 @@ def create_graph_data(relations_csv: Path, goal_map: dict) -> dict:
     nodes = []
     for node_id in sorted(node_ids):
         goal = goal_map.get(node_id, {})
+        level_str = goal.get("abstraction_level", "Unknown")
         nodes.append(
             {
                 "id": node_id,
                 "subject": goal.get("subject", "Unknown"),
                 "theme": goal.get("theme", "Unknown"),
-                "level": goal.get("abstraction_level", "Unknown"),
+                "level": level_str,
+                "levelNum": extract_level_number(level_str),
                 "cluster": node_id.split("_")[0],
             }
         )
@@ -222,8 +232,11 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
 
             const activeNodeIds = new Set();
             filteredLinks.forEach(d => {{
-                activeNodeIds.add(d.source.id || d.source);
-                activeNodeIds.add(d.target.id || d.target);
+                // Handle both string IDs (before simulation) and object references (after simulation)
+                const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+                const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+                activeNodeIds.add(sourceId);
+                activeNodeIds.add(targetId);
             }});
 
             const filteredNodes = graphData.nodes.filter(d => {{
@@ -234,6 +247,7 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
                 return inGraph && searchMatch;
             }});
 
+            console.log('Filtered:', filteredNodes.length, 'nodes,', filteredLinks.length, 'links');
             updateGraph(filteredNodes, filteredLinks);
         }}
 
@@ -245,14 +259,53 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
             // Clear existing
             g.selectAll("*").remove();
 
-            // Create simulation
+            // Create simulation with hierarchical layout
+            // レベルごとの高さを計算 (L1が上、L5が下)
+            const levelHeight = height / 6;  // 5レベル + マージン
+            const getYPosition = (levelNum) => levelHeight * levelNum;
+
             const simulation = d3.forceSimulation(nodes)
                 .force("link", d3.forceLink(links)
                     .id(d => d.id)
                     .distance(d => 100 * (1 - d.score)))
-                .force("charge", d3.forceManyBody().strength(-300))
-                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("charge", d3.forceManyBody().strength(-200))
+                .force("x", d3.forceX(width / 2).strength(0.05))
+                .force("y", d3.forceY(d => getYPosition(d.levelNum)).strength(0.8))
                 .force("collision", d3.forceCollide().radius(20));
+
+            // Level guides (horizontal lines and labels)
+            const levelLabels = [
+                {{ level: 1, label: "L1: 人生目的" }},
+                {{ level: 2, label: "L2: 大目標" }},
+                {{ level: 3, label: "L3: プロジェクト" }},
+                {{ level: 4, label: "L4: サブゴール" }},
+                {{ level: 5, label: "L5: タスク" }}
+            ];
+
+            const levelGuides = g.append("g").attr("class", "level-guides");
+
+            levelLabels.forEach(({{ level, label }}) => {{
+                const y = getYPosition(level);
+
+                // Horizontal guide line
+                levelGuides.append("line")
+                    .attr("x1", 0)
+                    .attr("x2", width)
+                    .attr("y1", y)
+                    .attr("y2", y)
+                    .attr("stroke", "#ddd")
+                    .attr("stroke-width", 1)
+                    .attr("stroke-dasharray", "5,5");
+
+                // Level label
+                levelGuides.append("text")
+                    .attr("x", 10)
+                    .attr("y", y - 10)
+                    .attr("font-size", 14)
+                    .attr("font-weight", "bold")
+                    .attr("fill", "#666")
+                    .text(label);
+            }});
 
             // Links
             const link = g.append("g")
