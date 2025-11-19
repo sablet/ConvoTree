@@ -219,6 +219,7 @@ export function ChatContainer({
           onToggleSidebar={() => setIsSidebarTemporarilyExpanded(prev => !prev)}
           showSidebarButton={shouldAutoCollapse}
           isSelectionMode={branchOps.isSelectionMode}
+          selectedMessages={branchOps.selectedMessages}
         />
       )}
         <MessageList

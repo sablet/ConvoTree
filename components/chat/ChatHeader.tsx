@@ -19,6 +19,7 @@ interface ChatHeaderProps {
   onToggleSidebar?: () => void
   showSidebarButton?: boolean
   isSelectionMode?: boolean
+  selectedMessages?: Set<string>
 }
 
 /**
@@ -38,17 +39,30 @@ export function ChatHeader({
   onToggleLineConnection,
   onToggleSidebar,
   showSidebarButton = false,
-  isSelectionMode = false
+  isSelectionMode = false,
+  selectedMessages = new Set()
 }: ChatHeaderProps) {
   const [copied, setCopied] = useState(false)
 
   if (!currentLine) return null
 
   const handleCopyLineMessages = async () => {
-    // Get messages for this line using helper function
-    const lineMessages = getLineMessages(messages, currentLine.id)
+    // Get messages to copy: selected messages if any, otherwise all line messages
+    let messagesToCopy: Message[]
+    if (selectedMessages.size > 0) {
+      // Copy only selected messages
+      messagesToCopy = Array.from(selectedMessages)
+        .map(id => messages[id])
+        .filter(msg => msg && msg.content)
+        // Sort by timestamp to maintain chronological order
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+    } else {
+      // Copy all messages in the current line
+      const lineMessages = getLineMessages(messages, currentLine.id)
+      messagesToCopy = lineMessages.filter(msg => msg && msg.content)
+    }
 
-    if (lineMessages.length === 0) {
+    if (messagesToCopy.length === 0) {
       return
     }
 
@@ -61,7 +75,7 @@ export function ChatHeader({
       .join(' > ')
 
     // Format messages like the export script
-    const filteredMessages = lineMessages.filter(msg => msg && msg.content)
+    const filteredMessages = messagesToCopy
 
     const formattedMessages = filteredMessages.map(msg => {
       // Format timestamp (YYYY-MM-DD HH:MM:SS)
@@ -111,7 +125,11 @@ export function ChatHeader({
       await navigator.clipboard.writeText(outputText)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
-      toast.success('ラインのメッセージをコピーしました')
+      if (selectedMessages.size > 0) {
+        toast.success(`選択した${selectedMessages.size}件のメッセージをコピーしました`)
+      } else {
+        toast.success('ラインのメッセージをコピーしました')
+      }
     } catch (err) {
       console.error('Failed to copy:', err)
       toast.error('コピーに失敗しました')
