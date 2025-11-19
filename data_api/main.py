@@ -35,6 +35,7 @@ from lib.config import config
 from lib.pipelines.goal_extraction import run_goal_extraction_pipeline
 from lib.pipelines.goal_network_builder import build_ultra_goal_network
 from lib.pipelines.goal_network_exporter import export_goal_network_to_markdown
+from lib.pipelines.goal_relation_extraction import run_goal_relation_extraction_pipeline
 from lib.pipelines.intent_extraction import run_intent_extraction_pipeline
 from lib.pipelines.message_clustering import ClusteringConfig, run_clustering_pipeline
 
@@ -285,6 +286,21 @@ class Pipeline:
             or "output/goal_network/ultra_intent_goal_network.json",
             output_path=output_path,
         )
+
+    def goal_relation_extraction(self):
+        """
+        Goal間のリレーション抽出と孤立ノード分析
+
+        クラスタごとに抽出されたGoalオブジェクト間のリレーションを判定し、
+        孤立ノードの分析を行う。
+
+        リレーションタイプ:
+        - hierarchy: 階層関係（Parent-Child / 抽象-具体）
+        - means_end: 手段-目的関係（Means-End）
+        - dependency: 依存関係（Dependency / Prerequisite）
+        - causal: 因果関係（Causal）
+        """
+        run_goal_relation_extraction_pipeline()
 
 
 if __name__ == "__main__":
