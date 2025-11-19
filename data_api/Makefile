@@ -61,6 +61,9 @@ rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
 parse-claude-history: ## Claude履歴をパースしてCSVに変換
 	$(UV) run python scripts/claude_history_parser.py parse
 
+parse-chatgpt-history: ## ChatGPT履歴をパースしてCSVに変換
+	$(UV) run python scripts/chatgpt_history_parser.py parse
+
 export-neon: ## 親ディレクトリでnpm run export:neonを実行
 	cd ../../chat-line && npm run export:neon
 

@@ -11,6 +11,25 @@ input:
   csv_path:
     - "/Users/your-username/git_dir/chat-line/output/db-exports/2025-11-01/messages_with_hierarchy.csv"
     - "/Users/your-username/git_dir/chat-line/output/db-exports/2025-11-02/messages_with_hierarchy.csv"
+    # Claude履歴を含める場合:
+    # - "output/claude-history/parsed_messages.csv"
+    # ChatGPT履歴を含める場合:
+    # - "output/chatgpt-history/parsed_messages.csv"
+
+# 履歴パーサー設定
+parsers:
+  # ChatGPT履歴パーサー
+  chatgpt:
+    # ChatGPTからエクスポートしたconversations.jsonのパス
+    # エクスポート方法: ChatGPT設定 → Data controls → Export data
+    input_path: "/Users/your-username/Downloads/conversations.json"
+    output_dir: "output/chatgpt-history"
+
+  # Claude履歴パーサー
+  claude:
+    # Claude Codeの履歴ファイル（通常は~/.claude/history.jsonl）
+    input_path: "~/.claude/history.jsonl"
+    output_dir: "output/claude-history"
 
 # 出力ディレクトリパス
 output:
