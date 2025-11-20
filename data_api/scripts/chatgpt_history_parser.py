@@ -28,6 +28,8 @@ ChatGPTのconversations.jsonを messages_with_hierarchy.csv と同じフォー�
   - 改行を\nに置き換え
   - 4文字以下のメッセージは省略
   - Aの先頭の定型句を除去
+  - タイムスタンプによる重複除去
+  - 類似メッセージの除去（SequenceMatcher OR Levenshtein距離、最初のメッセージを保持）
 """
 
 import csv
@@ -41,19 +43,13 @@ from typing import Any, Dict, List, Optional
 import fire  # type: ignore[import-untyped]
 import yaml
 
-# Aの先頭で除去する定型句パターン
-ASSISTANT_PREFIX_PATTERNS = [
-    r"^いい質問ですね。?\s*",
-    r"^良い質問ですね。?\s*",
-    r"^なるほど[、。]\s*",
-    r"^はい[、。]\s*",
-    r"^そうですね[、。]\s*",
-    r"^ありがとうございます[、。]\s*",
-    r"^---+\s*",
-    r"^#{1,6}\s+",  # Markdownのヘッダー
-    r"^\*{3,}\s*",  # Markdownの区切り線
-    r"^_{3,}\s*",   # Markdownの区切り線
-]
+from utils.message_deduplication import (
+    clean_assistant_message,
+    deduplicate_by_timestamp,
+    deduplicate_sequential_messages,
+    should_skip_message,
+    truncate_message,
+)
 
 
 def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -84,54 +80,6 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     except Exception as e:
         print(f"Warning: Failed to load config: {e}", file=sys.stderr)
         return {}
-
-
-def clean_assistant_message(message: str) -> str:
-    """
-    アシスタントメッセージの先頭から情報量の薄い定型句を除去
-
-    Args:
-        message: アシスタントのメッセージ
-
-    Returns:
-        クリーニング済みメッセージ
-    """
-    cleaned = message
-
-    # 各パターンを先頭から除去（最大3回まで繰り返し）
-    for _ in range(3):
-        original = cleaned
-        for pattern in ASSISTANT_PREFIX_PATTERNS:
-            cleaned = re.sub(pattern, "", cleaned, count=1, flags=re.MULTILINE)
-
-        # 変化がなければ終了
-        if cleaned == original:
-            break
-
-    return cleaned.strip()
-
-
-def truncate_message(message: str, max_lines: int = 2) -> str:
-    """
-    長いメッセージを切り詰める
-
-    3行以上のメッセージの場合、max_lines行まで保持し、残りを "..." に置き換える
-
-    Args:
-        message: メッセージテキスト
-        max_lines: 保持する最大行数
-
-    Returns:
-        切り詰められたメッセージ
-    """
-    lines = message.split("\n")
-    if len(lines) < 3:
-        return message
-
-    # max_lines行まで保持
-    truncated = lines[:max_lines]
-    truncated.append("...")
-    return "\n".join(truncated)
 
 
 def format_timestamp(timestamp: float) -> str:
@@ -220,7 +168,7 @@ def process_conversation(conv: Dict[str, Any], include_assistant: bool = False) 
         content = msg["content"]
 
         # 4文字以下のメッセージはスキップ
-        if len(content.strip()) <= 4:
+        if should_skip_message(content, min_length=5):
             continue
 
         # アシスタントメッセージの場合、先頭の定型句を除去
@@ -228,7 +176,7 @@ def process_conversation(conv: Dict[str, Any], include_assistant: bool = False) 
             content = clean_assistant_message(content)
 
             # クリーニング後も4文字以下ならスキップ
-            if len(content.strip()) <= 4:
+            if should_skip_message(content, min_length=5):
                 continue
 
         # メッセージを切り詰め
@@ -321,21 +269,21 @@ def parse_chatgpt_history(
         else:
             skipped += 1
 
-    # タイムスタンプで重複を除去（同じstart_timeの最後のものだけを残す）
+    # タイムスタンプで重複を除去
     print("\nDeduplicating by timestamp...")
-    from collections import OrderedDict
+    timestamp_dedup_rows = deduplicate_by_timestamp(all_rows)
+    timestamp_dedup_count = processed - len(timestamp_dedup_rows)
 
-    # タイムスタンプをキーとしたOrderedDictを使用
-    # 後から追加されたものが上書きされるため、最後のものだけが残る
-    deduplicated = OrderedDict()
-    for row in all_rows:
-        timestamp = row["start_time"]
-        deduplicated[timestamp] = row
+    print(f"  Removed {timestamp_dedup_count} duplicate timestamp entries")
+    print(f"  After timestamp dedup: {len(timestamp_dedup_rows)} rows")
 
-    deduplicated_count = processed - len(deduplicated)
-    final_rows = list(deduplicated.values())
+    # 類似メッセージを除去（SequenceMatcher OR Levenshtein）
+    print("\nDeduplicating sequential messages...")
+    before_dedup_count = len(timestamp_dedup_rows)
+    final_rows = deduplicate_sequential_messages(timestamp_dedup_rows)
+    sequential_dedup_count = before_dedup_count - len(final_rows)
 
-    print(f"  Removed {deduplicated_count} duplicate timestamp entries")
+    print(f"  Removed {sequential_dedup_count} similar messages (keeping first)")
     print(f"  Final output count: {len(final_rows)}")
 
     # CSV出力
@@ -361,7 +309,8 @@ def parse_chatgpt_history(
     print(f"  Total conversations: {total_conversations}")
     print(f"  Processed: {processed}")
     print(f"  Skipped (no messages): {skipped}")
-    print(f"  Deduplicated (same timestamp): {deduplicated_count}")
+    print(f"  After timestamp dedup: {len(timestamp_dedup_rows)}")
+    print(f"  After sequential dedup: {len(final_rows)}")
     print(f"  Final output count: {len(final_rows)}")
 
     # 統計情報をJSON出力
@@ -370,7 +319,8 @@ def parse_chatgpt_history(
         "total_conversations": total_conversations,
         "processed_conversations": processed,
         "skipped_conversations": skipped,
-        "deduplicated_conversations": deduplicated_count,
+        "timestamp_dedup_count": len(timestamp_dedup_rows),
+        "sequential_dedup_count": len(final_rows),
         "final_output_count": len(final_rows),
         "limit_applied": limit,
     }

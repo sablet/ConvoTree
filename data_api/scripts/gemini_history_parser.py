@@ -16,6 +16,9 @@ Google Takeoutのマイアクティビティ.htmlを messages_with_hierarchy.csv
   # 処理件数を制限（テスト用）
   python scripts/gemini_history_parser.py parse --limit=100
 
+  # 時間窓での統合を無効化
+  python scripts/gemini_history_parser.py parse --merge_time_window=0
+
   # カスタム設定ファイルを使用
   python scripts/gemini_history_parser.py parse \
     --config_path=custom_config.yaml
@@ -27,6 +30,10 @@ Google Takeoutのマイアクティビティ.htmlを messages_with_hierarchy.csv
   - 改行を\\nに置き換え
   - 4文字以下のメッセージは省略
   - Aの先頭の定型句を除去
+  - タイムスタンプによる重複除去
+  - 類似メッセージの除去（SequenceMatcher OR Levenshtein距離、最初のメッセージを保持）
+  - 時間窓（デフォルト30分）内のメッセージを統合
+  - セッション内類似メッセージの除去（Levenshtein距離）
 """
 
 import csv
@@ -41,19 +48,14 @@ import fire  # type: ignore[import-untyped]
 import yaml
 from bs4 import BeautifulSoup
 
-# Aの先頭で除去する定型句パターン
-ASSISTANT_PREFIX_PATTERNS = [
-    r"^いい質問ですね。?\s*",
-    r"^良い質問ですね。?\s*",
-    r"^なるほど[、。]\s*",
-    r"^はい[、。]\s*",
-    r"^そうですね[、。]\s*",
-    r"^ありがとうございます[、。]\s*",
-    r"^---+\s*",
-    r"^#{1,6}\s+",  # Markdownのヘッダー
-    r"^\*{3,}\s*",  # Markdownの区切り線
-    r"^_{3,}\s*",  # Markdownの区切り線
-]
+from utils.message_deduplication import (
+    clean_assistant_message,
+    deduplicate_by_timestamp,
+    deduplicate_sequential_messages,
+    merge_by_time_window,
+    should_skip_message,
+    truncate_message,
+)
 
 
 def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
@@ -84,54 +86,6 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     except Exception as e:
         print(f"Warning: Failed to load config: {e}", file=sys.stderr)
         return {}
-
-
-def clean_assistant_message(message: str) -> str:
-    """
-    アシスタントメッセージの先頭から情報量の薄い定型句を除去
-
-    Args:
-        message: アシスタントのメッセージ
-
-    Returns:
-        クリーニング済みメッセージ
-    """
-    cleaned = message
-
-    # 各パターンを先頭から除去（最大3回まで繰り返し）
-    for _ in range(3):
-        original = cleaned
-        for pattern in ASSISTANT_PREFIX_PATTERNS:
-            cleaned = re.sub(pattern, "", cleaned, count=1, flags=re.MULTILINE)
-
-        # 変化がなければ終了
-        if cleaned == original:
-            break
-
-    return cleaned.strip()
-
-
-def truncate_message(message: str, max_lines: int = 2) -> str:
-    """
-    長いメッセージを切り詰める
-
-    3行以上のメッセージの場合、max_lines行まで保持し、残りを "..." に置き換える
-
-    Args:
-        message: メッセージテキスト
-        max_lines: 保持する最大行数
-
-    Returns:
-        切り詰められたメッセージ
-    """
-    lines = message.split("\n")
-    if len(lines) < 3:
-        return message
-
-    # max_lines行まで保持
-    truncated = lines[:max_lines]
-    truncated.append("...")
-    return "\n".join(truncated)
 
 
 def format_timestamp(timestamp_str: str) -> str:
@@ -217,7 +171,7 @@ def process_activity(activity_data: Dict[str, str], include_assistant: bool = Fa
     timestamp_str = activity_data["timestamp"]
 
     # 4文字以下のユーザーメッセージはスキップ
-    if len(user_msg.strip()) <= 4:
+    if should_skip_message(user_msg, min_length=5):
         return None
 
     # アシスタントメッセージの処理（include_assistant=True の場合のみ）
@@ -227,7 +181,7 @@ def process_activity(activity_data: Dict[str, str], include_assistant: bool = Fa
         assistant_msg = clean_assistant_message(assistant_msg)
 
         # 4文字以下ならスキップ
-        if len(assistant_msg.strip()) > 4:
+        if not should_skip_message(assistant_msg, min_length=5):
             # メッセージを切り詰め
             assistant_truncated = truncate_message(assistant_msg)
             # 改行を\\nに置き換え
@@ -262,6 +216,7 @@ def parse_gemini_history(
     output_dir: str,
     limit: Optional[int] = None,
     include_assistant: bool = False,
+    merge_time_window: int = 30,
 ) -> None:
     """
     Gemini履歴をパースしてCSVに変換
@@ -271,6 +226,7 @@ def parse_gemini_history(
         output_dir: 出力ディレクトリ
         limit: 処理するアクティビティ数の上限（Noneの場合は全て処理）
         include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
+        merge_time_window: メッセージ統合の時間窓（分、0で無効化）
     """
     # パスを展開
     input_file = Path(input_path).expanduser()
@@ -331,22 +287,34 @@ def parse_gemini_history(
         else:
             skipped += 1
 
-    # タイムスタンプで重複を除去（同じタイムスタンプの最後のものだけを残す）
+    # タイムスタンプで重複を除去
     print("\nDeduplicating by timestamp...")
-    from collections import OrderedDict
+    timestamp_dedup_rows = deduplicate_by_timestamp(all_rows)
+    timestamp_dedup_count = processed - len(timestamp_dedup_rows)
 
-    # タイムスタンプをキーとしたOrderedDictを使用
-    # 後から追加されたものが上書きされるため、最後のものだけが残る
-    deduplicated = OrderedDict()
-    for row in all_rows:
-        timestamp = row["start_time"]
-        deduplicated[timestamp] = row
+    print(f"  Removed {timestamp_dedup_count} duplicate timestamp entries")
+    print(f"  After timestamp dedup: {len(timestamp_dedup_rows)} rows")
 
-    deduplicated_count = processed - len(deduplicated)
-    final_rows = list(deduplicated.values())
+    # 類似メッセージを除去（SequenceMatcher OR Levenshtein）
+    print("\nDeduplicating sequential messages...")
+    before_dedup_count = len(timestamp_dedup_rows)
+    sequential_dedup_rows = deduplicate_sequential_messages(timestamp_dedup_rows)
+    sequential_dedup_count = before_dedup_count - len(sequential_dedup_rows)
 
-    print(f"  Removed {deduplicated_count} duplicate timestamp entries")
-    print(f"  Final output count: {len(final_rows)}")
+    print(f"  Removed {sequential_dedup_count} similar messages (keeping first)")
+    print(f"  After sequential dedup: {len(sequential_dedup_rows)} rows")
+
+    # 時間窓でメッセージを統合（merge_time_window > 0 の場合のみ）
+    if merge_time_window > 0:
+        print(f"\nMerging messages within {merge_time_window} min...")
+        before_merge_count = len(sequential_dedup_rows)
+        final_rows = merge_by_time_window(sequential_dedup_rows, merge_time_window)
+        merge_count = before_merge_count - len(final_rows)
+        print(f"  Merged {merge_count} messages into {len(final_rows)} groups (within {merge_time_window} min)")
+    else:
+        final_rows = sequential_dedup_rows
+
+    print(f"\nFinal output count: {len(final_rows)}")
 
     # CSV出力
     csv_path = output_path / "parsed_messages.csv"
@@ -371,7 +339,8 @@ def parse_gemini_history(
     print(f"  Total activities: {total_activities}")
     print(f"  Processed: {processed}")
     print(f"  Skipped (no messages): {skipped}")
-    print(f"  Deduplicated (same timestamp): {deduplicated_count}")
+    print(f"  After timestamp dedup: {len(timestamp_dedup_rows)}")
+    print(f"  After sequential dedup: {len(sequential_dedup_rows)}")
     print(f"  Final output count: {len(final_rows)}")
 
     # 統計情報をJSON出力
@@ -380,9 +349,11 @@ def parse_gemini_history(
         "total_activities": total_activities,
         "processed_activities": processed,
         "skipped_activities": skipped,
-        "deduplicated_activities": deduplicated_count,
+        "timestamp_dedup_count": len(timestamp_dedup_rows),
+        "sequential_dedup_count": len(sequential_dedup_rows),
         "final_output_count": len(final_rows),
         "limit_applied": limit,
+        "merge_time_window": merge_time_window,
     }
 
     with stats_path.open("w", encoding="utf-8") as f:
@@ -394,12 +365,91 @@ def parse_gemini_history(
 class CLI:
     """Gemini History Parser CLI"""
 
+    def inspect_html(
+        self,
+        input_path: Optional[str] = None,
+        limit: int = 5,
+        config_path: Optional[str] = None,
+    ) -> None:
+        """
+        HTMLファイルの構造を調査（セッション情報の有無を確認）
+
+        Args:
+            input_path: 入力HTMLファイルパス（Noneの場合はconfig.yamlから取得）
+            limit: 表示するアクティビティ数（デフォルト: 5）
+            config_path: 設定ファイルパス（Noneの場合はdata_api/config.yaml）
+        """
+        # 設定ファイルを読み込み
+        config_file = Path(config_path).expanduser() if config_path else None
+        config = load_config(config_file)
+
+        # config.yamlからデフォルト値を取得
+        gemini_config = config.get("parsers", {}).get("gemini", {})
+
+        # パラメータが指定されていない場合、config.yamlから取得
+        final_input_path = input_path or gemini_config.get(
+            "input_path",
+            "/Users/mikke/Downloads/Takeout/マイ アクティビティ/Gemini アプリ/マイアクティビティ.html",
+        )
+
+        input_file = Path(final_input_path).expanduser()
+
+        if not input_file.exists():
+            print(f"Error: Input file not found: {input_file}", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"Inspecting: {input_file}\n")
+
+        # HTMLファイルを読み込み
+        with open(input_file, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        # BeautifulSoupでパース
+        soup = BeautifulSoup(html_content, "html.parser")
+
+        # 全アクティビティを取得
+        activities = soup.find_all("div", class_="outer-cell")
+        print(f"Total activities found: {len(activities)}\n")
+
+        # 最初のいくつかのアクティビティを詳細表示
+        for i, activity in enumerate(activities[:limit], 1):
+            print(f"=== Activity {i} ===")
+            print(f"Tag: {activity.name}")
+            print(f"Classes: {activity.get('class', [])}")
+            print(f"Attributes: {dict(activity.attrs)}")
+
+            # 親要素を確認
+            if activity.parent:
+                print(f"Parent tag: {activity.parent.name}")
+                print(f"Parent classes: {activity.parent.get('class', [])}")
+                print(f"Parent attributes: {dict(activity.parent.attrs)}")
+
+            # 兄弟要素を確認（前後1つずつ）
+            if activity.previous_sibling and activity.previous_sibling.name:
+                print(f"Previous sibling: {activity.previous_sibling.name}")
+                print(f"  Classes: {activity.previous_sibling.get('class', [])}")
+
+            if activity.next_sibling and activity.next_sibling.name:
+                print(f"Next sibling: {activity.next_sibling.name}")
+                print(f"  Classes: {activity.next_sibling.get('class', [])}")
+
+            # 内容の一部を表示
+            text = activity.get_text()[:200]
+            print(f"\nContent preview:\n{text}...")
+            print("\n" + "=" * 60 + "\n")
+
+        print("\nセッション情報の可能性:")
+        print("- 親要素に会話グループIDがあるか確認")
+        print("- 兄弟要素に会話タイトルやセッション名があるか確認")
+        print("- data-* 属性にセッション情報があるか確認")
+
     def parse(
         self,
         input_path: Optional[str] = None,
         output_dir: Optional[str] = None,
         limit: Optional[int] = None,
         include_assistant: bool = False,
+        merge_time_window: int = 30,
         config_path: Optional[str] = None,
     ) -> None:
         """
@@ -410,6 +460,7 @@ class CLI:
             output_dir: 出力ディレクトリ（Noneの場合はconfig.yamlから取得）
             limit: 処理するアクティビティ数の上限（テスト用、Noneの場合は全て処理）
             include_assistant: Assistantメッセージを含めるか（デフォルト: False = Qのみ）
+            merge_time_window: メッセージ統合の時間窓（分、0で無効化、デフォルト: 30）
             config_path: 設定ファイルパス（Noneの場合はdata_api/config.yaml）
         """
         # 設定ファイルを読み込み
@@ -428,7 +479,9 @@ class CLI:
             "output_dir", "output/gemini-history"
         )
 
-        parse_gemini_history(final_input_path, final_output_dir, limit, include_assistant)
+        parse_gemini_history(
+            final_input_path, final_output_dir, limit, include_assistant, merge_time_window
+        )
 
 
 if __name__ == "__main__":
