@@ -175,6 +175,12 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
                 <input type="text" id="searchInput" placeholder="Enter node ID or keyword">
             </label>
         </div>
+        <div class="filter-section">
+            <label>
+                N-Hop Range: <span id="nhopValue">1</span>
+                <input type="range" id="nhopFilter" min="1" max="5" step="1" value="1">
+            </label>
+        </div>
         <button id="resetBtn">Reset View</button>
         <div class="stats">
             <div>Nodes: <span id="nodeCount">0</span></div>
@@ -222,33 +228,95 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
         let currentRelationType = "all";
         let currentMinScore = 0.5;
         let currentSearch = "";
+        let currentNHops = 1;
+
+        // Build adjacency map for n-hop calculation
+        function buildAdjacencyMap(links) {{
+            const adjacency = new Map();
+            links.forEach(link => {{
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+
+                if (!adjacency.has(sourceId)) adjacency.set(sourceId, new Set());
+                if (!adjacency.has(targetId)) adjacency.set(targetId, new Set());
+
+                adjacency.get(sourceId).add(targetId);
+                adjacency.get(targetId).add(sourceId);
+            }});
+            return adjacency;
+        }}
+
+        // Get all nodes within n-hops from seed nodes
+        function getNHopNodes(seedNodeIds, adjacency, nHops) {{
+            const visited = new Set(seedNodeIds);
+            let current = new Set(seedNodeIds);
+
+            for (let i = 0; i < nHops; i++) {{
+                const next = new Set();
+                current.forEach(nodeId => {{
+                    const neighbors = adjacency.get(nodeId) || new Set();
+                    neighbors.forEach(neighbor => {{
+                        if (!visited.has(neighbor)) {{
+                            next.add(neighbor);
+                            visited.add(neighbor);
+                        }}
+                    }});
+                }});
+                current = next;
+                if (current.size === 0) break;
+            }}
+
+            return visited;
+        }}
 
         function filterGraph() {{
+            // First, filter links by relation type and score
             const filteredLinks = graphData.links.filter(d => {{
                 const typeMatch = currentRelationType === "all" || d.type === currentRelationType;
                 const scoreMatch = d.score >= currentMinScore;
                 return typeMatch && scoreMatch;
             }});
 
-            const activeNodeIds = new Set();
-            filteredLinks.forEach(d => {{
-                // Handle both string IDs (before simulation) and object references (after simulation)
+            // Build adjacency map from filtered links
+            const adjacency = buildAdjacencyMap(filteredLinks);
+
+            // Determine which nodes match search criteria
+            const searchMatchedNodes = new Set();
+            if (currentSearch) {{
+                graphData.nodes.forEach(d => {{
+                    if (d.id.toLowerCase().includes(currentSearch.toLowerCase()) ||
+                        d.subject.toLowerCase().includes(currentSearch.toLowerCase())) {{
+                        searchMatchedNodes.add(d.id);
+                    }}
+                }});
+            }}
+
+            // Determine final active nodes
+            let activeNodeIds;
+            if (searchMatchedNodes.size > 0) {{
+                // If there's a search, get n-hop neighborhood from matched nodes
+                activeNodeIds = getNHopNodes(searchMatchedNodes, adjacency, currentNHops);
+            }} else {{
+                // No search: include all nodes connected by filtered links
+                activeNodeIds = new Set();
+                filteredLinks.forEach(d => {{
+                    const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
+                    const targetId = typeof d.target === 'object' ? d.target.id : d.target;
+                    activeNodeIds.add(sourceId);
+                    activeNodeIds.add(targetId);
+                }});
+            }}
+
+            // Filter nodes and links based on active nodes
+            const filteredNodes = graphData.nodes.filter(d => activeNodeIds.has(d.id));
+            const finalLinks = filteredLinks.filter(d => {{
                 const sourceId = typeof d.source === 'object' ? d.source.id : d.source;
                 const targetId = typeof d.target === 'object' ? d.target.id : d.target;
-                activeNodeIds.add(sourceId);
-                activeNodeIds.add(targetId);
+                return activeNodeIds.has(sourceId) && activeNodeIds.has(targetId);
             }});
 
-            const filteredNodes = graphData.nodes.filter(d => {{
-                const inGraph = activeNodeIds.has(d.id);
-                const searchMatch = !currentSearch ||
-                    d.id.toLowerCase().includes(currentSearch.toLowerCase()) ||
-                    d.subject.toLowerCase().includes(currentSearch.toLowerCase());
-                return inGraph && searchMatch;
-            }});
-
-            console.log('Filtered:', filteredNodes.length, 'nodes,', filteredLinks.length, 'links');
-            updateGraph(filteredNodes, filteredLinks);
+            console.log('Filtered:', filteredNodes.length, 'nodes,', finalLinks.length, 'links');
+            updateGraph(filteredNodes, finalLinks);
         }}
 
         function updateGraph(nodes, links) {{
@@ -430,6 +498,12 @@ def generate_html(graph_data: dict, output_path: Path) -> None:
 
         d3.select("#searchInput").on("input", (event) => {{
             currentSearch = event.target.value;
+            filterGraph();
+        }});
+
+        d3.select("#nhopFilter").on("input", (event) => {{
+            currentNHops = +event.target.value;
+            d3.select("#nhopValue").text(currentNHops);
             filterGraph();
         }});
 
