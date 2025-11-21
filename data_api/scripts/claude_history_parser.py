@@ -35,26 +35,18 @@ import csv
 import json
 import sys
 from datetime import datetime
-from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
 import fire  # type: ignore[import-untyped]
 import yaml
 
-# 除外するスラッシュコマンド
-EXCLUDED_COMMANDS = {
-    "/clear",
-    "/login",
-    "/mcp",
-    "/stickers",
-    "/init",
-    "/compact",
-    "/agents",
-    "/stashAndMoveToNewBranch",
-    "/project_status",
-    "/refactor-test-driven",
-}
+from utils.message_deduplication import (
+    DEFAULT_EXCLUDED_COMMANDS,
+    is_similar_by_sequence_matcher,
+    should_skip_message,
+    truncate_message,
+)
 
 
 def load_line_mapping(config_path: Path | None = None) -> dict[str, str]:
@@ -137,27 +129,6 @@ def format_timestamp(timestamp_ms: int) -> str:
     return dt.strftime("%Y-%m-%d %H:%M")
 
 
-def truncate_long_message(message: str, max_lines: int = 3) -> str:
-    """
-    長いメッセージを切り詰める
-
-    7行以上のメッセージの場合、max_lines行まで保持し、残りを "..." に置き換える
-    """
-    lines = message.split("\n")
-    if len(lines) <= max_lines:
-        return message
-
-    # max_lines行まで保持
-    truncated = lines[:max_lines]
-    truncated.append("...")
-    return "\n".join(truncated)
-
-
-def calculate_similarity(text1: str, text2: str) -> float:
-    """2つのテキストの類似度を計算（0.0〜1.0）"""
-    return SequenceMatcher(None, text1, text2).ratio()
-
-
 def preprocess_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """
     エントリの前処理
@@ -166,7 +137,7 @@ def preprocess_entry(entry: dict[str, Any]) -> dict[str, Any]:
     """
     processed = entry.copy()
     display = processed.get("display", "")
-    processed["display"] = truncate_long_message(display)
+    processed["display"] = truncate_message(display, max_lines=3)
     return processed
 
 
@@ -179,24 +150,9 @@ def should_skip_entry(entry: dict[str, Any], min_length: int = 7) -> bool:
         min_length: 最小文字数（これ未満はスキップ）
     """
     display = entry.get("display", "").strip()
-
-    if not display:
-        return True
-
-    # 6文字以下のメッセージはスキップ
-    if len(display) < min_length:
-        return True
-
-    # スラッシュコマンド
-    first_word = display.split()[0] if display.split() else ""
-    if first_word in EXCLUDED_COMMANDS:
-        return True
-
-    # ファイルパス（メッセージではない）
-    if display.startswith("/Users/"):
-        return True
-
-    return False
+    return should_skip_message(
+        display, min_length=min_length, excluded_commands=DEFAULT_EXCLUDED_COMMANDS, exclude_file_paths=True
+    )
 
 
 def is_session_boundary(
@@ -233,7 +189,7 @@ def remove_duplicates_from_session(
 
     Args:
         session: セッション内のエントリリスト
-        similarity_threshold: 類似度の閾値（この値以上で重複とみなす）
+        similarity_threshold: 類似度の閾値（この値以上で重複とみなす、デフォルト: 0.9）
 
     Returns:
         重複を削除したエントリリスト
@@ -247,11 +203,10 @@ def remove_duplicates_from_session(
     for entry in session:
         display = entry.get("display", "").strip()
 
-        # 既存メッセージと類似度チェック
+        # 既存メッセージと類似度チェック（SequenceMatcher使用、閾値0.9固定）
         is_duplicate = False
         for seen in seen_messages:
-            similarity = calculate_similarity(display, seen)
-            if similarity >= similarity_threshold:
+            if is_similar_by_sequence_matcher(display, seen):
                 is_duplicate = True
                 break
 
@@ -332,11 +287,10 @@ def remove_cross_session_duplicates(
         for entry in session:
             display = entry.get("display", "").strip()
 
-            # 既出メッセージと類似度チェック
+            # 既出メッセージと類似度チェック（SequenceMatcher使用、閾値0.9固定）
             is_duplicate = False
             for seen in project_seen_messages[project]:
-                similarity = calculate_similarity(display, seen)
-                if similarity >= similarity_threshold:
+                if is_similar_by_sequence_matcher(display, seen):
                     is_duplicate = True
                     break
 

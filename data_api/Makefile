@@ -34,11 +34,17 @@ clustering: ## ステップ1: メッセージクラスタリング
 intent-extraction: ## ステップ2: 意図抽出と階層化（Gemini API使用）
 	$(UV) run python $(ENTRY_POINT) intent_extraction --gemini --aggregate --aggregate_all
 
+goal-extraction: ## Goal抽出（GoalItemスキーマ、Gemini API使用）
+	$(UV) run python $(ENTRY_POINT) goal_extraction --gemini
+
 goal-network: ## ステップ3: ゴールネットワーク構築
 	$(UV) run python $(ENTRY_POINT) goal_network --save_prompts
 
 goal-network-export: ## ゴールネットワークをMarkdownリスト形式でエクスポート
 	$(UV) run python $(ENTRY_POINT) goal_network_export
+
+goal-relation-extraction: ## Goal間のリレーション抽出と分析レポート生成
+	$(UV) run python $(ENTRY_POINT) goal_relation_extraction
 
 rag-build: ## RAGインデックス構築
 	$(UV) run python $(ENTRY_POINT) rag_build
@@ -55,6 +61,15 @@ rag-query-debug: ## RAG検索（デバッグ用・パラメータ直接指定）
 parse-claude-history: ## Claude履歴をパースしてCSVに変換
 	$(UV) run python scripts/claude_history_parser.py parse
 
+# 事前にchatgptの設定よりエクスポートを実行したものをダウンロード・展開
+parse-chatgpt-history: ## ChatGPT履歴をパースしてCSVに変換
+	$(UV) run python scripts/chatgpt_history_parser.py parse
+
+# 事前にhttps://takeout.google.com/ -> マイアクティビティ -> Geminiアプリを選択してダウンロード・展開したものを使用
+parse-gemini-history: ## Gemini履歴をパースしてCSVに変換
+	$(UV) run python scripts/gemini_history_parser.py parse
+
+
 export-neon: ## 親ディレクトリでnpm run export:neonを実行
 	cd ../../chat-line && npm run export:neon
 
@@ -62,17 +77,21 @@ all-build: ## 全パイプライン実行（データ取得→パース→クラ
 	@echo "========================================="
 	@echo "全パイプライン開始"
 	@echo "========================================="
-	@echo "\nステップ 1/6: データエクスポート（Neon）"
+	@echo "\nステップ 1/8: データエクスポート（Neon）"
 	@make export-neon
-	@echo "\nステップ 2/6: Claude履歴パース"
+	@echo "\nステップ 2/8: Claude履歴パース"
 	@make parse-claude-history
-	@echo "\nステップ 3/6: メッセージクラスタリング"
+	@echo "\nステップ 3/8: ChatGPT履歴パース"
+	@make parse-chatgpt-history
+	@echo "\nステップ 4/8: Gemini履歴パース"
+	@make parse-gemini-history
+	@echo "\nステップ 5/8: メッセージクラスタリング"
 	@make clustering
-	@echo "\nステップ 4/6: 意図抽出と階層化"
+	@echo "\nステップ 6/8: 意図抽出と階層化"
 	@make intent-extraction
-	@echo "\nステップ 5/6: ゴールネットワーク構築"
+	@echo "\nステップ 7/8: ゴールネットワーク構築"
 	@make goal-network
-	@echo "\nステップ 6/6: RAGインデックス構築"
+	@echo "\nステップ 8/8: RAGインデックス構築"
 	@make rag-build
 	@echo "\n========================================="
 	@echo "全パイプライン完了"
