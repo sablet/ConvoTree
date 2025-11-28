@@ -59,36 +59,25 @@ export function calculateLineAncestry(
 }
 
 /**
- * Get optimized path for a line
+ * Get messages for a single line only (no ancestry)
  */
 export function calculateOptimizedPath(
   lineId: string,
   lines: Record<string, Line>,
   messages: Record<string, Message>,
-  ancestryCache: Map<string, string[]>
+  _ancestryCache: Map<string, string[]>
 ): LineAncestryResult {
-  const ancestry = calculateLineAncestry(lineId, lines, messages, ancestryCache)
-  const fullLineChain = [...ancestry, lineId]
-
-  const allMessages: Message[] = []
-  const transitions: Array<{ index: number, lineId: string, lineName: string }> = []
-
-  for (let i = 0; i < fullLineChain.length; i++) {
-    const currentLineInChain = lines[fullLineChain[i]]
-    if (!currentLineInChain) continue
-
-    if (i > 0) {
-      transitions.push({
-        index: allMessages.length,
-        lineId: currentLineInChain.id,
-        lineName: currentLineInChain.name
-      })
-    }
-
-    // Simply get all messages for this line - no need for branch point logic anymore
-    const lineMessages = getLineMessages(messages, currentLineInChain.id)
-    allMessages.push(...lineMessages)
+  const line = lines[lineId]
+  if (!line) {
+    return { messages: [], transitions: [] }
   }
 
-  return { messages: allMessages, transitions }
+  const lineMessages = getLineMessages(messages, lineId)
+
+  // ライン遷移インジケーターを最初のメッセージに設定
+  const transitions = lineMessages.length > 0
+    ? [{ index: 0, lineId: line.id, lineName: line.name }]
+    : []
+
+  return { messages: lineMessages, transitions }
 }
