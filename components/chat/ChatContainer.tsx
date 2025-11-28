@@ -263,6 +263,7 @@ export function ChatContainer({
         isDraggable={isDesktop}
         onDragStart={isDesktop ? dragDropOps.handleDragStart : undefined}
         onDragEnd={isDesktop ? dragDropOps.handleDragEnd : undefined}
+        onPageChange={chatState.setCurrentPage}
       />
       <div className="border-t border-gray-100 bg-white p-2 sm:p-4 shrink-0">
         {showInsertMode ? (

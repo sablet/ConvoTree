@@ -1,5 +1,8 @@
 import type { Message } from '@/lib/types'
-import type { LineAncestryResult } from './branch-ancestry'
+import type { LineAncestryResult, PaginationInfo } from './branch-ancestry'
+
+/** 1ページあたりの表示件数 */
+const PAGE_SIZE = 200
 
 interface TimelineFilterOptions {
   filterMessageType: string
@@ -8,6 +11,8 @@ interface TimelineFilterOptions {
   filterDateEnd: string
   filterTag: string
   searchKeyword: string
+  /** ページ番号（1始まり、デフォルト1=最新ページ） */
+  page?: number
 }
 
 /**
@@ -85,7 +90,7 @@ export function filterTimeline(
   completeTimeline: LineAncestryResult,
   options: TimelineFilterOptions
 ): LineAncestryResult {
-  const { filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword } = options
+  const { filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword, page = 1 } = options
 
   const filtered = completeTimeline.messages.filter(message => {
     return matchesMessageType(message, filterMessageType) &&
@@ -95,8 +100,33 @@ export function filterTimeline(
            matchesKeyword(message, searchKeyword)
   })
 
+  const totalFilteredMessages = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalFilteredMessages / PAGE_SIZE))
+
+  // ページ番号を有効範囲に制限（1 = 最新ページ）
+  const validPage = Math.max(1, Math.min(page, totalPages))
+
+  // ページ1が最新（末尾）、ページ数が大きいほど古い（先頭）
+  // 例: 500件、PAGE_SIZE=200の場合
+  // - ページ1: 300-499 (最新200件)
+  // - ページ2: 100-299 (中間200件)
+  // - ページ3: 0-99 (最古100件)
+  const endIndex = totalFilteredMessages - (validPage - 1) * PAGE_SIZE
+  const startIndex = Math.max(0, endIndex - PAGE_SIZE)
+
+  const paginatedMessages = filtered.slice(startIndex, endIndex)
+
+  const pagination: PaginationInfo = {
+    currentPage: validPage,
+    totalPages,
+    totalFilteredMessages,
+    pageSize: PAGE_SIZE,
+    hasOlderMessages: validPage < totalPages
+  }
+
   return {
-    messages: filtered,
-    transitions: completeTimeline.transitions
+    messages: paginatedMessages,
+    transitions: completeTimeline.transitions,
+    pagination
   }
 }

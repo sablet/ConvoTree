@@ -1,9 +1,23 @@
 import type { Line, Message } from '@/lib/types'
 import { getLineMessages } from '@/lib/data-helpers'
 
+export interface PaginationInfo {
+  /** 現在のページ番号（1始まり） */
+  currentPage: number
+  /** 総ページ数 */
+  totalPages: number
+  /** フィルタリング後の総メッセージ数 */
+  totalFilteredMessages: number
+  /** 1ページあたりの表示件数 */
+  pageSize: number
+  /** 古いメッセージがあるかどうか */
+  hasOlderMessages: boolean
+}
+
 export interface LineAncestryResult {
   messages: Message[]
   transitions: Array<{ index: number; lineId: string; lineName: string }>
+  pagination?: PaginationInfo
 }
 
 /**

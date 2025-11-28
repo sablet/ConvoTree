@@ -4,12 +4,15 @@ import { MessageTimeColumn, type MessageConvertButtonConfig } from "./MessageTim
 import { createTaskTimeTrackingButton } from "./task-time-actions"
 import { DefaultMessageContent, MessageSelectionCheckbox } from "./message-item-internals"
 import type { MessageItemProps } from "./types"
+import type { Message } from "@/lib/types"
 import { MESSAGE_TYPE_TASK, MESSAGE_TYPE_TEXT } from "@/lib/constants"
 import { getDefaultMetadataForType } from "@/hooks/helpers/message-metadata"
 import {
   ACTION_CONVERT_TO_TASK,
   ACTION_CONVERT_TO_TEXT
 } from "@/lib/ui-strings"
+
+type UpdateMessageFn = (messageId: string, updates: Record<string, unknown>) => Promise<void>
 
 const TIME_FORMAT = new Intl.DateTimeFormat("ja-JP", {
   hour: "2-digit",
@@ -32,6 +35,67 @@ const TOOLTIP_DISPLAY_OPTIONS = {
   hour: "2-digit",
   minute: "2-digit"
 } as const
+
+function createConvertButtonConfig(
+  message: Message,
+  isSelectionMode: boolean,
+  onUpdateMessage: UpdateMessageFn
+): MessageConvertButtonConfig | undefined {
+  if (isSelectionMode) {
+    return undefined
+  }
+
+  const isTaskMessage = message.type === MESSAGE_TYPE_TASK
+  const isTextMessage = !message.type || message.type === MESSAGE_TYPE_TEXT
+
+  if (isTaskMessage) {
+    return {
+      label: ACTION_CONVERT_TO_TEXT,
+      icon: <MessageSquareText className="h-4 w-4 text-blue-600" />,
+      onClick: () => {
+        void onUpdateMessage(message.id, {
+          type: MESSAGE_TYPE_TEXT,
+          metadata: null as unknown as Record<string, unknown>
+        })
+      }
+    }
+  }
+
+  if (isTextMessage) {
+    return {
+      label: ACTION_CONVERT_TO_TASK,
+      icon: <ListTodo className="h-4 w-4 text-green-600" />,
+      onClick: () => {
+        const defaultMetadata = (getDefaultMetadataForType(MESSAGE_TYPE_TASK, message.content) ?? {}) as Record<string, unknown>
+        const metadataWithCreatedAt = {
+          ...defaultMetadata,
+          createdAt: new Date().toISOString()
+        }
+        void onUpdateMessage(message.id, {
+          type: MESSAGE_TYPE_TASK,
+          metadata: metadataWithCreatedAt
+        })
+      }
+    }
+  }
+
+  return undefined
+}
+
+function buildContainerClassName(
+  isDraggable: boolean,
+  isSelected: boolean,
+  isSelectedInBulk: boolean,
+  isCurrentLine: boolean
+): string {
+  const baseClass = "group relative transition-all duration-200"
+  const dragClass = isDraggable ? "cursor-move" : ""
+  const selectedClass = isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
+  const bulkSelectedClass = isSelectedInBulk ? "bg-blue-100 -mx-2 px-2 py-2 rounded-lg border-2 border-blue-500" : ""
+  const lineIndicatorClass = !isCurrentLine ? "border-l-2 border-blue-200 pl-3 ml-1" : ""
+
+  return [baseClass, dragClass, selectedClass, bulkSelectedClass, lineIndicatorClass].filter(Boolean).join(" ")
+}
 
 /**
  * 個別メッセージ表示コンポーネント
@@ -80,43 +144,8 @@ export function MessageItem({
   const editedLabel = showEditedTimestamp ? formatEditedLabel(createdAtDate, updatedAtDate) : ""
   const editedTooltip = showEditedTimestamp ? formatTooltip(updatedAtDate) : undefined
   const isTaskMessage = message.type === MESSAGE_TYPE_TASK
-  const isTextMessage = !message.type || message.type === MESSAGE_TYPE_TEXT
 
-  const handleConvertToTask = () => {
-    const defaultMetadata = (getDefaultMetadataForType(MESSAGE_TYPE_TASK, message.content) ?? {}) as Record<string, unknown>
-    const metadataWithCreatedAt = {
-      ...defaultMetadata,
-      createdAt: new Date().toISOString()
-    }
-
-    void onUpdateMessage(message.id, {
-      type: MESSAGE_TYPE_TASK,
-      metadata: metadataWithCreatedAt
-    })
-  }
-
-  const handleConvertToText = () => {
-    void onUpdateMessage(message.id, {
-      type: MESSAGE_TYPE_TEXT,
-      metadata: null as unknown as Record<string, unknown>
-    })
-  }
-
-  const convertButtonConfig: MessageConvertButtonConfig | undefined = isSelectionMode
-    ? undefined
-    : isTaskMessage
-      ? {
-          label: ACTION_CONVERT_TO_TEXT,
-          icon: <MessageSquareText className="h-4 w-4 text-blue-600" />,
-          onClick: handleConvertToText
-        }
-      : isTextMessage
-        ? {
-            label: ACTION_CONVERT_TO_TASK,
-            icon: <ListTodo className="h-4 w-4 text-green-600" />,
-            onClick: handleConvertToTask
-          }
-        : undefined
+  const convertButtonConfig = createConvertButtonConfig(message, isSelectionMode, onUpdateMessage)
   const timeTrackingButtonConfig: MessageConvertButtonConfig | undefined = createTaskTimeTrackingButton({
     message,
     isTaskMessage,
@@ -183,15 +212,7 @@ export function MessageItem({
           onDragEnd(e)
         }
       }}
-      className={`group relative transition-all duration-200 ${
-        isDraggable ? 'cursor-move' : ''
-      } ${
-        isSelected ? "bg-gray-100 -mx-2 px-2 py-2 rounded-lg border-2 border-green-600" : ""
-      } ${
-        isSelectedInBulk ? "bg-blue-100 -mx-2 px-2 py-2 rounded-lg border-2 border-blue-500" : ""
-      } ${
-        !isCurrentLine ? "border-l-2 border-blue-200 pl-3 ml-1" : ""
-      }`}
+      className={buildContainerClassName(isDraggable, isSelected, isSelectedInBulk, isCurrentLine)}
       onMouseEnter={() => onHoverMessage(message.id)}
       onMouseLeave={() => onHoverMessage(null)}
       onClick={() => {

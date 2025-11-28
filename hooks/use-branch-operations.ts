@@ -119,6 +119,7 @@ export function useBranchOperations({
     filterDateEnd,
     filterTag,
     searchKeyword,
+    currentPage,
     clearAllCaches
   } = chatState
 
@@ -182,7 +183,8 @@ export function useBranchOperations({
     filterDateStart,
     filterDateEnd,
     filterTag,
-    searchKeyword
+    searchKeyword,
+    currentPage
   })
 
   const getCurrentLine = useCallback((): Line | null => {

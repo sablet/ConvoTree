@@ -1,12 +1,14 @@
 /* eslint-disable max-lines */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
-import { GitBranch } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { GitBranch, ChevronUp } from "lucide-react"
 import { MessageItem } from "./MessageItem"
 import { getMessageLineInfo } from "./hooks/useMessageLineInfo"
 import { MessageDateNavigator } from "./MessageDateNavigator"
 import type { Message, Line, Tag } from "@/lib/types"
 import type { MessageType } from "@/lib/constants"
+import type { PaginationInfo } from "@/hooks/helpers/branch-ancestry"
 
 function ensureDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value)
@@ -30,6 +32,7 @@ function isSameMessageGroup(currentDate: Date, previousDate: Date | null): boole
 interface Timeline {
   messages: Message[]
   transitions: Array<{ index: number; lineId: string; lineName: string }>
+  pagination?: PaginationInfo
 }
 
 interface MessageRowActions {
@@ -221,6 +224,7 @@ interface MessageListProps extends MessageRowActions {
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
   onDragEnd?: (e: React.DragEvent) => void
+  onPageChange?: (page: number) => void
 }
 
 /**
@@ -269,7 +273,8 @@ export function MessageList({
   onUpdateMessage,
   isDraggable,
   onDragStart,
-  onDragEnd
+  onDragEnd,
+  onPageChange
 }: MessageListProps) {
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map())
   const dateNavigatorRef = useRef<HTMLDivElement | null>(null)
@@ -462,6 +467,13 @@ export function MessageList({
 
   const hasMessages = filteredTimeline.messages.length > 0
   const currentDateLabel = currentTopDate ? formatDateForSeparator(currentTopDate) : null
+  const pagination = filteredTimeline.pagination
+
+  const handleLoadOlderMessages = useCallback(() => {
+    if (pagination && onPageChange) {
+      onPageChange(pagination.currentPage + 1)
+    }
+  }, [pagination, onPageChange])
 
   // メッセージグループ情報を事前計算
   const messageGroupInfo = useMemo(() => {
@@ -562,6 +574,26 @@ export function MessageList({
       </div>
 
       <div className="space-y-2 pt-4" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
+        {/* ページネーション：古いメッセージを読み込むボタン */}
+        {pagination?.hasOlderMessages && (
+          <div className="flex justify-center pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadOlderMessages}
+              className="gap-2 text-gray-600 hover:text-gray-900"
+            >
+              <ChevronUp className="h-4 w-4" />
+              <span>
+                古いメッセージを表示
+                <span className="ml-1 text-xs text-gray-400">
+                  ({pagination.totalFilteredMessages - pagination.pageSize * pagination.currentPage}件)
+                </span>
+              </span>
+            </Button>
+          </div>
+        )}
+
         {filteredTimeline.messages.map((message, index) => {
           const groupInfo = messageGroupInfo.get(message.id) ?? { shouldShowTime: true, isNewGroup: true }
           return (

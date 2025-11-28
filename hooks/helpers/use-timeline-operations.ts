@@ -19,6 +19,7 @@ interface TimelineOperationsProps {
   filterDateEnd: ChatState['filterDateEnd']
   filterTag: ChatState['filterTag']
   searchKeyword: ChatState['searchKeyword']
+  currentPage: ChatState['currentPage']
 }
 
 export function useTimelineOperations({
@@ -34,7 +35,8 @@ export function useTimelineOperations({
   filterDateStart,
   filterDateEnd,
   filterTag,
-  searchKeyword
+  searchKeyword,
+  currentPage
 }: TimelineOperationsProps) {
   const getBranchingLines = useCallback((messageId: string): Line[] => {
     // Find the line that contains this message
@@ -127,9 +129,10 @@ export function useTimelineOperations({
       filterDateStart,
       filterDateEnd,
       filterTag,
-      searchKeyword
+      searchKeyword,
+      page: currentPage
     })
-  }, [completeTimeline, filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword])
+  }, [completeTimeline, filterMessageType, filterTaskCompleted, filterDateStart, filterDateEnd, filterTag, searchKeyword, currentPage])
 
   const clearTimelineCaches = useCallback(() => {
     setPathCache(new Map())

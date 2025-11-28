@@ -54,6 +54,10 @@ export interface ChatState {
   searchKeyword: string
   setSearchKeyword: React.Dispatch<React.SetStateAction<string>>
 
+  // ページネーション
+  currentPage: number
+  setCurrentPage: React.Dispatch<React.SetStateAction<number>>
+
   // ユーティリティ
   clearAllCaches: () => void
 }
@@ -93,6 +97,9 @@ export function useChatState({
   const [filterTag, setFilterTag] = useState<string>('')
   const [searchKeyword, setSearchKeyword] = useState<string>('')
 
+  // ページネーション（1 = 最新ページ）
+  const [currentPage, setCurrentPage] = useState<number>(1)
+
   /**
    * Clear all performance caches
    * Should be called when data structure changes
@@ -127,6 +134,8 @@ export function useChatState({
     setFilterTag,
     searchKeyword,
     setSearchKeyword,
+    currentPage,
+    setCurrentPage,
     clearAllCaches
   }
 }
