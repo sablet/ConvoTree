@@ -129,7 +129,8 @@ function MessageRow({
 }: MessageRowProps) {
   const isSelected = selectedBaseMessage === message.id
   const messageLineInfo = getMessageLineInfo(index, filteredTimeline, lines, currentLineId)
-  const isLineTransition = messageLineInfo.isLineStart && index > 0
+  // ライン開始点では常にライン遷移を表示（フィルタやページネーションで最初のメッセージでも表示）
+  const isLineTransition = messageLineInfo.isLineStart
 
   const previousMessage = index > 0 ? filteredTimeline.messages[index - 1] : null
   const currentMessageDate = ensureDate(message.timestamp)
