@@ -12,6 +12,21 @@ function ensureDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value)
 }
 
+/** 同一グループとみなす時間間隔（ミリ秒） */
+const MESSAGE_GROUP_THRESHOLD_MS = 10 * 60 * 1000
+
+/**
+ * 前のメッセージと同じグループかどうかを判定
+ * 閾値以内かつ同じ日付なら同じグループ
+ */
+function isSameMessageGroup(currentDate: Date, previousDate: Date | null): boolean {
+  if (!previousDate) {
+    return false
+  }
+  const diffMs = currentDate.getTime() - previousDate.getTime()
+  return diffMs >= 0 && diffMs < MESSAGE_GROUP_THRESHOLD_MS
+}
+
 interface Timeline {
   messages: Message[]
   transitions: Array<{ index: number; lineId: string; lineName: string }>
@@ -60,6 +75,10 @@ interface MessageRowProps {
   formatDateForSeparator: (date: Date) => string
   isSameDay: (date1: Date, date2: Date) => boolean
   actions: MessageRowActions
+  /** グループの先頭メッセージなら時刻を表示 */
+  shouldShowTime: boolean
+  /** 新しいグループの開始（グループ間のスペース用） */
+  isNewGroup: boolean
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
   onDragEnd?: (e: React.DragEvent) => void
@@ -89,6 +108,8 @@ function MessageRow({
   formatDateForSeparator,
   isSameDay,
   actions,
+  shouldShowTime,
+  isNewGroup,
   isDraggable,
   onDragStart,
   onDragEnd
@@ -120,10 +141,13 @@ function MessageRow({
     ...actions
   }
 
+  // 新しいグループの開始時は上にスペースを追加（日付セパレーターやライン遷移がある場合は不要）
+  const needsGroupSpacing = isNewGroup && !shouldShowDateSeparator && !isLineTransition && index > 0
+
   return (
     <div
       ref={(element) => registerMessageRef(message.id, element)}
-      className="space-y-4"
+      className={needsGroupSpacing ? "pt-3" : ""}
     >
       {shouldShowDateSeparator && (
         <div className="flex items-center justify-center py-4">
@@ -163,6 +187,7 @@ function MessageRow({
         isSelected={isSelected}
         isSelectionMode={isSelectionMode}
         isSelectedInBulk={selectedMessages.has(message.id)}
+        shouldShowTime={shouldShowTime}
         isDraggable={isDraggable}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
@@ -438,6 +463,26 @@ export function MessageList({
   const hasMessages = filteredTimeline.messages.length > 0
   const currentDateLabel = currentTopDate ? formatDateForSeparator(currentTopDate) : null
 
+  // メッセージグループ情報を事前計算
+  const messageGroupInfo = useMemo(() => {
+    const info = new Map<string, { shouldShowTime: boolean; isNewGroup: boolean }>()
+    let previousDate: Date | null = null
+
+    for (const message of filteredTimeline.messages) {
+      const currentDate = ensureDate(message.timestamp)
+      const inSameGroup = isSameMessageGroup(currentDate, previousDate)
+
+      info.set(message.id, {
+        shouldShowTime: !inSameGroup,
+        isNewGroup: !inSameGroup
+      })
+
+      previousDate = currentDate
+    }
+
+    return info
+  }, [filteredTimeline.messages])
+
   // Debug log to show the last 10 messages with timestamp info
   useEffect(() => {
     if (filteredTimeline.messages.length > 0) {
@@ -516,38 +561,43 @@ export function MessageList({
         </div>
       </div>
 
-      <div className="space-y-8 pt-4" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
-        {filteredTimeline.messages.map((message, index) => (
-          <MessageRow
-            key={message.id}
-            message={message}
-            index={index}
-            filteredTimeline={filteredTimeline}
-            lines={lines}
-            currentLineId={currentLineId}
-            selectedBaseMessage={selectedBaseMessage}
-            isSelectionMode={isSelectionMode}
-            selectedMessages={selectedMessages}
-            editingMessageId={editingMessageId}
-            editingContent={editingContent}
-            editingMessageType={editingMessageType}
-            editingMetadata={editingMetadata}
-            hoveredMessageId={hoveredMessageId}
-            hoveredImageId={hoveredImageId}
-            copySuccessMessageId={copySuccessMessageId}
-            hasSetCursorToEnd={hasSetCursorToEnd}
-            registerMessageRef={registerMessageRef}
-            messages={messages}
-            tags={tags}
-            isUpdating={isUpdating}
-            formatDateForSeparator={formatDateForSeparator}
-            isSameDay={isSameDay}
-            isDraggable={isDraggable && (message.lineId === currentLineId || selectedMessages.has(message.id))}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
-            actions={messageRowActions}
-          />
-        ))}
+      <div className="space-y-2 pt-4" style={{ maxWidth: '100%', wordBreak: 'break-word' }}>
+        {filteredTimeline.messages.map((message, index) => {
+          const groupInfo = messageGroupInfo.get(message.id) ?? { shouldShowTime: true, isNewGroup: true }
+          return (
+            <MessageRow
+              key={message.id}
+              message={message}
+              index={index}
+              filteredTimeline={filteredTimeline}
+              lines={lines}
+              currentLineId={currentLineId}
+              selectedBaseMessage={selectedBaseMessage}
+              isSelectionMode={isSelectionMode}
+              selectedMessages={selectedMessages}
+              editingMessageId={editingMessageId}
+              editingContent={editingContent}
+              editingMessageType={editingMessageType}
+              editingMetadata={editingMetadata}
+              hoveredMessageId={hoveredMessageId}
+              hoveredImageId={hoveredImageId}
+              copySuccessMessageId={copySuccessMessageId}
+              hasSetCursorToEnd={hasSetCursorToEnd}
+              registerMessageRef={registerMessageRef}
+              messages={messages}
+              tags={tags}
+              isUpdating={isUpdating}
+              formatDateForSeparator={formatDateForSeparator}
+              isSameDay={isSameDay}
+              shouldShowTime={groupInfo.shouldShowTime}
+              isNewGroup={groupInfo.isNewGroup}
+              isDraggable={isDraggable && (message.lineId === currentLineId || selectedMessages.has(message.id))}
+              onDragStart={onDragStart}
+              onDragEnd={onDragEnd}
+              actions={messageRowActions}
+            />
+          )
+        })}
       </div>
 
       <div ref={messagesEndRef} />

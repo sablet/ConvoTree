@@ -43,6 +43,8 @@ export interface MessageItemProps extends MessageOperationProps {
   isSelected: boolean
   isSelectionMode: boolean
   isSelectedInBulk: boolean
+  /** 時刻を表示するかどうか（グループの先頭メッセージのみtrue） */
+  shouldShowTime?: boolean
   isDraggable?: boolean
   onDragStart?: (e: React.DragEvent, messageId: string) => void
   onDragEnd?: (e: React.DragEvent) => void

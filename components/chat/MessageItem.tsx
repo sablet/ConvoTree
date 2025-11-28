@@ -42,6 +42,7 @@ export function MessageItem({
   isSelected,
   isSelectionMode,
   isSelectedInBulk,
+  shouldShowTime = true,
   editingMessageId,
   editingContent,
   editingMessageType,
@@ -74,8 +75,8 @@ export function MessageItem({
   const createdAtDate = toValidDate(message.timestamp)
   const updatedAtDate = toValidDate(message.updatedAt)
   const showEditedTimestamp = shouldShowEditedTimestamp(createdAtDate, updatedAtDate)
-  const createdLabel = formatTimeLabel(createdAtDate)
-  const createdTooltip = formatTooltip(createdAtDate)
+  const createdLabel = shouldShowTime ? formatTimeLabel(createdAtDate) : ""
+  const createdTooltip = shouldShowTime ? formatTooltip(createdAtDate) : undefined
   const editedLabel = showEditedTimestamp ? formatEditedLabel(createdAtDate, updatedAtDate) : ""
   const editedTooltip = showEditedTimestamp ? formatTooltip(updatedAtDate) : undefined
   const isTaskMessage = message.type === MESSAGE_TYPE_TASK
@@ -163,6 +164,8 @@ export function MessageItem({
       editedLabel={editedLabel}
       editedTooltip={editedTooltip}
       onUpdateMessage={onUpdateMessage}
+      convertButton={convertButtonConfig}
+      timeTrackingButton={timeTrackingButtonConfig}
     />
   )
 
@@ -206,8 +209,6 @@ export function MessageItem({
           createdLabel={createdLabel}
           createdTooltip={createdTooltip}
           isCurrentLine={isCurrentLine}
-          convertButton={convertButtonConfig}
-          timeTrackingButton={timeTrackingButtonConfig}
         />
 
         {/* メッセージ内容 */}

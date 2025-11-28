@@ -3,6 +3,7 @@ import { Copy, CheckCircle, Edit3, Trash2 } from "lucide-react"
 import Image from "next/image"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
 import type { Message } from "@/lib/types"
+import type { MessageConvertButtonConfig } from "./MessageTimeColumn"
 import { countTextLengthWithoutUrls as calculateMessageCharCount } from "@/lib/utils/linkify"
 
 interface MessageSelectionCheckboxProps {
@@ -46,6 +47,8 @@ interface DefaultMessageContentProps {
   editedLabel: string
   editedTooltip?: string
   onUpdateMessage: (messageId: string, updates: Partial<Message>) => Promise<void>
+  convertButton?: MessageConvertButtonConfig
+  timeTrackingButton?: MessageConvertButtonConfig
 }
 
 export function DefaultMessageContent({
@@ -63,7 +66,9 @@ export function DefaultMessageContent({
   showEditedTimestamp,
   editedLabel,
   editedTooltip,
-  onUpdateMessage
+  onUpdateMessage,
+  convertButton,
+  timeTrackingButton
 }: DefaultMessageContentProps) {
   const validImages = Array.isArray(message.images)
     ? message.images.filter((imageUrl) => isValidImageUrl(imageUrl))
@@ -103,6 +108,8 @@ export function DefaultMessageContent({
           showEditedTimestamp={showEditedTimestamp}
           editedLabel={editedLabel}
           editedTooltip={editedTooltip}
+          convertButton={convertButton}
+          timeTrackingButton={timeTrackingButton}
         />
       )}
     </div>
@@ -173,6 +180,8 @@ interface HoverActionButtonsProps {
   showEditedTimestamp: boolean
   editedLabel: string
   editedTooltip?: string
+  convertButton?: MessageConvertButtonConfig
+  timeTrackingButton?: MessageConvertButtonConfig
 }
 
 function HoverActionButtons({
@@ -183,12 +192,14 @@ function HoverActionButtons({
   onDelete,
   showEditedTimestamp,
   editedLabel,
-  editedTooltip
+  editedTooltip,
+  convertButton,
+  timeTrackingButton
 }: HoverActionButtonsProps) {
   const charCount = calculateMessageCharCount(messageContent)
 
   return (
-    <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1 transform translate-y-full">
+    <div className="absolute bottom-0 right-0 flex gap-1 bg-white shadow-md border border-gray-200 rounded-md p-1 transform translate-y-full z-10">
       {showEditedTimestamp && editedLabel && (
         <span
           className="px-2 text-[11px] text-gray-600 flex items-center gap-1"
@@ -200,6 +211,34 @@ function HoverActionButtons({
       <span className="px-2 text-[11px] text-gray-500 flex items-center">
         {charCount}文字
       </span>
+      {convertButton && (
+        <Button
+          onClick={(event) => {
+            event.stopPropagation()
+            convertButton.onClick()
+          }}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 hover:bg-gray-50"
+          title={convertButton.label}
+        >
+          {convertButton.icon}
+        </Button>
+      )}
+      {timeTrackingButton && (
+        <Button
+          onClick={(event) => {
+            event.stopPropagation()
+            timeTrackingButton.onClick()
+          }}
+          variant="ghost"
+          size="sm"
+          className="h-6 w-6 p-0 hover:bg-gray-50"
+          title={timeTrackingButton.label}
+        >
+          {timeTrackingButton.icon}
+        </Button>
+      )}
       <Button
         onClick={(event) => {
           event.stopPropagation()
