@@ -19,12 +19,22 @@ const MESSAGE_GROUP_THRESHOLD_MS = 10 * 60 * 1000
 
 /**
  * 前のメッセージと同じグループかどうかを判定
- * 閾値以内かつ同じ日付なら同じグループ
+ * - 閾値以内かつ同じ日付
+ * - 同じラインに属している
  */
-function isSameMessageGroup(currentDate: Date, previousDate: Date | null): boolean {
-  if (!previousDate) {
+function isSameMessageGroup(
+  currentMessage: Message,
+  previousMessage: Message | null
+): boolean {
+  if (!previousMessage) {
     return false
   }
+  // 異なるラインのメッセージは別グループ
+  if (currentMessage.lineId !== previousMessage.lineId) {
+    return false
+  }
+  const currentDate = ensureDate(currentMessage.timestamp)
+  const previousDate = ensureDate(previousMessage.timestamp)
   const diffMs = currentDate.getTime() - previousDate.getTime()
   return diffMs >= 0 && diffMs < MESSAGE_GROUP_THRESHOLD_MS
 }
@@ -478,18 +488,17 @@ export function MessageList({
   // メッセージグループ情報を事前計算
   const messageGroupInfo = useMemo(() => {
     const info = new Map<string, { shouldShowTime: boolean; isNewGroup: boolean }>()
-    let previousDate: Date | null = null
+    let previousMessage: Message | null = null
 
     for (const message of filteredTimeline.messages) {
-      const currentDate = ensureDate(message.timestamp)
-      const inSameGroup = isSameMessageGroup(currentDate, previousDate)
+      const inSameGroup = isSameMessageGroup(message, previousMessage)
 
       info.set(message.id, {
         shouldShowTime: !inSameGroup,
         isNewGroup: !inSameGroup
       })
 
-      previousDate = currentDate
+      previousMessage = message
     }
 
     return info

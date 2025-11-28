@@ -6,6 +6,14 @@ const nextConfig = {
   eslint: {
     dirs: PROJECT_PATHS.sourceArray,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+      },
+    ],
+  },
   trailingSlash: false,
   skipTrailingSlashRedirect: true,
   webpack: (config, { dev, isServer }) => {

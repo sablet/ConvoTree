@@ -1,5 +1,6 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Copy, CheckCircle, Edit3, Trash2 } from "lucide-react"
+import { Copy, CheckCircle, Edit3, Trash2, ImageOff } from "lucide-react"
 import Image from "next/image"
 import { MessageTypeRenderer } from "@/components/message-types/message-type-renderer"
 import type { Message } from "@/lib/types"
@@ -127,37 +128,70 @@ interface MessageImagesProps {
 function MessageImages({ messageId, images, hoveredImageId, onHoverImage, onImageDelete }: MessageImagesProps) {
   return (
     <div className="flex flex-wrap gap-2 mt-2">
-      {images.map((imageUrl, index) => {
-        const hoverKey = `${messageId}-${index}`
-        const isHovered = hoveredImageId === hoverKey
-        return (
-          <div
-            key={hoverKey}
-            className="relative group"
-            onMouseEnter={() => onHoverImage(hoverKey)}
-            onMouseLeave={() => onHoverImage(null)}
+      {images.map((imageUrl, index) => (
+        <MessageImageItem
+          key={`${messageId}-${index}`}
+          messageId={messageId}
+          imageUrl={imageUrl}
+          index={index}
+          isHovered={hoveredImageId === `${messageId}-${index}`}
+          onHoverImage={onHoverImage}
+          onImageDelete={onImageDelete}
+        />
+      ))}
+    </div>
+  )
+}
+
+interface MessageImageItemProps {
+  messageId: string
+  imageUrl: string
+  index: number
+  isHovered: boolean
+  onHoverImage: (imageId: string | null) => void
+  onImageDelete: (messageId: string, imageIndex: number) => void
+}
+
+function MessageImageItem({ messageId, imageUrl, index, isHovered, onHoverImage, onImageDelete }: MessageImageItemProps) {
+  const [hasError, setHasError] = useState(false)
+  const hoverKey = `${messageId}-${index}`
+
+  if (hasError) {
+    return (
+      <div
+        className="relative flex items-center justify-center w-[200px] h-[100px] rounded border border-gray-300 bg-gray-100"
+        title="画像を読み込めませんでした"
+      >
+        <ImageOff className="h-8 w-8 text-gray-400" />
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="relative group"
+      onMouseEnter={() => onHoverImage(hoverKey)}
+      onMouseLeave={() => onHoverImage(null)}
+    >
+      <Image
+        src={imageUrl}
+        alt={`Image ${index + 1}`}
+        width={200}
+        height={200}
+        className="rounded border border-gray-300 object-cover max-w-[200px] max-h-[200px]"
+        onError={() => setHasError(true)}
+      />
+      {isHovered && (
+        <div className="absolute top-1 right-1 flex gap-1">
+          <Button
+            onClick={() => onImageDelete(messageId, index)}
+            size="sm"
+            className="h-6 px-2 bg-red-500 hover:bg-red-600 text-white"
           >
-            <Image
-              src={imageUrl}
-              alt={`Image ${index + 1}`}
-              width={200}
-              height={200}
-              className="rounded border border-gray-300 object-cover max-w-[200px] max-h-[200px]"
-            />
-            {isHovered && (
-              <div className="absolute top-1 right-1 flex gap-1">
-                <Button
-                  onClick={() => onImageDelete(messageId, index)}
-                  size="sm"
-                  className="h-6 px-2 bg-red-500 hover:bg-red-600 text-white"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </div>
-            )}
-          </div>
-        )
-      })}
+            <Trash2 className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
     </div>
   )
 }

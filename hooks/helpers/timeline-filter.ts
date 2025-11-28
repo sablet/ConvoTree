@@ -116,6 +116,23 @@ export function filterTimeline(
 
   const paginatedMessages = filtered.slice(startIndex, endIndex)
 
+  // フィルタリング後のメッセージに対してtransitionsを再計算
+  const recalculatedTransitions: Array<{ index: number; lineId: string; lineName: string }> = []
+  let prevLineId: string | null = null
+
+  paginatedMessages.forEach((msg, index) => {
+    if (msg.lineId !== prevLineId) {
+      // 元のtransitionsからラインを探す
+      const originalTransition = completeTimeline.transitions.find(t => t.lineId === msg.lineId)
+      recalculatedTransitions.push({
+        index,
+        lineId: msg.lineId,
+        lineName: originalTransition?.lineName || msg.lineId
+      })
+      prevLineId = msg.lineId
+    }
+  })
+
   const pagination: PaginationInfo = {
     currentPage: validPage,
     totalPages,
@@ -126,7 +143,7 @@ export function filterTimeline(
 
   return {
     messages: paginatedMessages,
-    transitions: completeTimeline.transitions,
+    transitions: recalculatedTransitions,
     pagination
   }
 }
